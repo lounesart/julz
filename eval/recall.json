@@ -1,0 +1,22 @@
+[
+  {"q": "What is my own mnemonic for the OSI layers?",
+   "expect": ["pizza", "pilots"], "source": "osi-model.md"},
+  {"q": "Which port did I choose for Julz, and why that one?",
+   "expect": ["3100", "juice shop"], "source": "common-ports.md"},
+  {"q": "According to my notes, how many usable hosts does a /26 have?",
+   "expect": ["62"], "source": "subnetting.md"},
+  {"q": "What is my magic number trick for subnetting?",
+   "expect": ["256"], "source": "subnetting.md"},
+  {"q": "How do I picture DHCP's DORA process to remember it?",
+   "expect": ["explorer"], "source": "dhcp.md"},
+  {"q": "In my Julz threat model notes, which STRIDE category is the model confirming its own overwrite?",
+   "expect": ["elevation"], "source": "stride.md"},
+  {"q": "What Python methods do my notes say to use for a safe path check?",
+   "expect": ["resolve", "is_relative_to"], "source": "path-traversal.md"},
+  {"q": "In my notes mapping CIA and AAA to Julz, what does julz-actions.log represent?",
+   "expect": ["accounting"], "source": "cia-triad.md"},
+  {"q": "When does DNS switch from UDP to TCP, per my notes?",
+   "expect": ["zone transfer"], "source": "dns.md"},
+  {"q": "Какая политика у моей цепочки forward в nftables и что из-за этого нужно Docker?",
+   "expect": ["drop"], "source": "nftables-basics.md"}
+]
