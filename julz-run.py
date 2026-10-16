@@ -11,7 +11,8 @@ Security model: SECURITY.md threats 24 to 26.
   --restricted keeps the file tools inside /work and ignores project settings and hooks
 - the token is a separate one from `claude setup-token`, passed in the environment, never in
   argv: /proc/<pid>/cmdline is readable by every user, environ only by me (CWE-214)
-Usage: ./julz-run.py   (one spec per call)
+Usage: ./julz-run.py                 one spec per call
+       ./julz-run.py --until-empty   all approved specs (systemd julz-run.service)
 """
 import filecmp
 import hashlib
@@ -201,12 +202,18 @@ def main():
     binary = CLAUDE_LINK.resolve()
     runner = make_runner(projects, WORK_ROOT, binary, token, TIMEOUT)
     dirs = gate.Dirs(GATE_DIR, outbox=OUTBOX)
-    digest = gate.run_next(dirs, projects, runner, [token] + main_login_tokens(), MAX_PER_DAY)
-    if digest is None:
-        print("nothing ran (no approved spec, daily cap, or another runner busy)")
-        return
-    last = json.loads(dirs.log.read_text().splitlines()[-1])
-    print(f"{last['action']} {digest}: {last['status']} {last.get('reason', '')}".rstrip())
+    # --until-empty (systemd): an approval that lands while a run is going would be missed by
+    # the path unit, so keep going until nothing is left. The daily cap still stops it
+    while True:
+        digest = gate.run_next(dirs, projects, runner, [token] + main_login_tokens(),
+                               MAX_PER_DAY)
+        if digest is None:
+            print("nothing ran (no approved spec, daily cap, or another runner busy)")
+            return
+        last = json.loads(dirs.log.read_text().splitlines()[-1])
+        print(f"{last['action']} {digest}: {last['status']} {last.get('reason', '')}".rstrip())
+        if "--until-empty" not in sys.argv[1:]:
+            return
 
 
 if __name__ == "__main__":

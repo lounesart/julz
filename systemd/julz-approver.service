@@ -1,0 +1,32 @@
+# Phone approver on 127.0.0.1:8765, published to the phone by `tailscale serve` on 8443.
+# SECURITY.md threats 31 to 37 and 41. Install: see systemd/README.md
+[Unit]
+Description=julz phone approver
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/Projects/products/julz/julz-approve-web.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Sandbox (threat 41): an empty read only home, and only what the approver needs mounted
+# back. A secret we forgot to list stays invisible: default deny, not a deny list
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/Projects/products/julz
+BindReadOnlyPaths=%h/.config/julz/approver.json %h/.config/julz/projects.json
+BindReadOnlyPaths=%h/Documents/julz-mem/Outbox
+BindReadOnlyPaths=%h/.local/share/julz/done %h/.local/share/julz/quarantine
+BindPaths=%h/.config/julz/approver
+BindPaths=%h/Documents/julz-mem/Inbox/claude
+BindPaths=%h/.local/share/julz/approved %h/.local/share/julz/tmp
+BindPaths=%h/.local/share/julz/webauthn %h/.local/share/julz/runner.log
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

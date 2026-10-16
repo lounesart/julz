@@ -263,5 +263,39 @@ class GateTest(unittest.TestCase):
         self.assertNotIn(TOKEN, self.dirs.log.read_text())
 
 
+class AtomicApproveTest(unittest.TestCase):
+    """A path unit starts the runner as soon as a name appears in approved/, so that name
+    must only ever appear with the whole text in it (CWE-362)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dirs = gate.Dirs(Path(self.tmp.name) / "gate")
+        self.real_write_new = gate.write_new
+
+    def tearDown(self):
+        gate.write_new = self.real_write_new
+        self.tmp.cleanup()
+
+    def test_name_appears_only_when_complete(self):
+        seen = []
+
+        def spying_write_new(path, text, mode, err):
+            # At the moment the text is written, approved/ must not hold the final name yet
+            seen.append(sorted(p.name for p in self.dirs.approved.iterdir()))
+            return self.real_write_new(path, text, mode, err)
+
+        gate.write_new = spying_write_new
+        digest = gate.store_approved(GOOD, self.dirs, PROJECTS)
+        self.assertEqual(seen, [[]])
+        self.assertEqual((self.dirs.approved / f"{digest}.md").read_text(), GOOD)
+        self.assertEqual(list(self.dirs.tmp.iterdir()), [])
+
+    def test_second_approval_refused_and_tmp_clean(self):
+        gate.store_approved(GOOD, self.dirs, PROJECTS)
+        with self.assertRaises(gate.SpecError):
+            gate.store_approved(GOOD, self.dirs, PROJECTS)
+        self.assertEqual(list(self.dirs.tmp.iterdir()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,12 @@
+# Approval starts the run: a new name in approved/ starts julz-run.service.
+# store_approved links the file in whole, so the runner never sees half of it (CWE-362).
+# SECURITY.md threat 40
+[Unit]
+Description=julz: run approved Claude Code specs
+
+[Path]
+PathChanged=%h/.local/share/julz/approved
+Unit=julz-run.service
+
+[Install]
+WantedBy=default.target

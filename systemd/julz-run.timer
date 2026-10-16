@@ -1,0 +1,12 @@
+# Fallback for julz-run.path: a path unit ignores changes while the service is still running,
+# so an approval that lands at the very end of a run waits for this tick. Nothing approved
+# means the runner exits at once.
+[Unit]
+Description=julz: check for approved specs every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Unit=julz-run.service
+
+[Install]
+WantedBy=timers.target

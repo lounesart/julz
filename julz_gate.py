@@ -54,12 +54,13 @@ class Dirs:
         self.approved = base / "approved"
         self.done = base / "done"
         self.quarantine = base / "quarantine"
+        self.tmp = base / "tmp"
         self.outbox = Path(outbox) if outbox else base / "outbox"
         self.log = base / "runner.log"
         self.lockfile = base / "run.lock"
 
     def ensure(self):
-        for d in (self.approved, self.done, self.quarantine, self.outbox):
+        for d in (self.approved, self.done, self.quarantine, self.tmp, self.outbox):
             d.mkdir(mode=0o700, parents=True, exist_ok=True)
 
 
@@ -181,7 +182,17 @@ def store_approved(text: str, dirs: Dirs, projects: set[str]) -> str:
     dirs.ensure()
     if (dirs.done / f"{digest}.md").exists():
         raise SpecError("this exact spec already ran")
-    write_new(dirs.approved / f"{digest}.md", text, 0o600, SpecError("already approved"))
+    # Written whole in tmp/, then linked in: a path unit starts the runner the moment a name
+    # appears in approved/, so it must never see a half written file (CWE-362). link, like
+    # O_EXCL, refuses an existing name
+    tmp = dirs.tmp / f"{digest}.{time.time_ns()}"
+    write_new(tmp, text, 0o600, SpecError("temp file exists"))
+    try:
+        os.link(tmp, dirs.approved / f"{digest}.md")
+    except FileExistsError:
+        raise SpecError("already approved") from None
+    finally:
+        tmp.unlink()
     log(dirs, "approve", digest, "ok")
     return digest
 

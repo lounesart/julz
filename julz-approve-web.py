@@ -36,7 +36,9 @@ OUTBOX = HOME / "Documents" / "julz-mem" / "Outbox"
 GATE_DIR = HOME / ".local" / "share" / "julz"
 PROJECTS_FILE = HOME / ".config" / "julz" / "projects.json"
 CONFIG_FILE = HOME / ".config" / "julz" / "approver.json"
-CRED_FILE = HOME / ".config" / "julz" / "passkey.json"
+# Own folder: saving the sign counter needs a writable directory, and ~/.config/julz holds
+# the Claude token and API keys (threat 41)
+CRED_FILE = HOME / ".config" / "julz" / "approver" / "passkey.json"
 ENROLL_FILE = GATE_DIR / "webauthn" / "enroll.json"
 STATIC_DIR = Path(__file__).resolve().parent / "approver"
 

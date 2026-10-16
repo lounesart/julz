@@ -10,12 +10,18 @@ marked KEEP OR BACK UP below. Everything else can be recreated.
 ## 1. Stop the services
 
 ```
+systemctl --user disable --now julz-approver.service julz-run.path julz-run.timer
+systemctl --user disable --now julz-notify-inbox.path julz-notify-log.path
+rm ~/.config/systemd/user/julz-*
+systemctl --user daemon-reload
 sudo docker rm -f open-webui searxng speaches
 sudo tailscale serve reset
 ```
 
-The first line stops and removes the three containers (about 7 MB). The second stops serving
-the hub to the phone over the tailnet.
+The first four lines stop the phone approver, the auto runner and the notifications, and
+remove their units (listed in `systemd/README.md`). The docker line stops and removes the
+three containers (about 7 MB). The last line stops serving the hub (443) and the approver
+(8443) to the phone over the tailnet.
 
 ## 2. Docker images (about 9.9 GB)
 
@@ -57,7 +63,7 @@ The second frees the space. Keep a base model if something else uses it.
 |---|---|---|
 | `~/.local/share/julz/` | voices, gate folders, work copies, runner log | about 362 MB |
 | `~/.local/state/julz/` | julz action log | a few KB |
-| `~/.config/julz/` | env files with keys, Claude token, project list, pocket public key | a few KB |
+| `~/.config/julz/` | env files with keys, Claude token, project list, pocket public key, approver config and passkey (`approver/`), ntfy topic (`notify/`) | a few KB |
 | `~/.pocket-drop/` | encrypted drops waiting to be opened | usually empty |
 | `~/Projects/sandbox/julz-sandbox/` | the project Claude works on | empty |
 | `~/Projects/products/julz/` | this repository, including the local `private-history` branch | about 1.4 MB |
@@ -71,11 +77,13 @@ with `pocket-open.py` first, or they are lost with the private key.
 
 1. Revoke the long lived Claude token made with `claude setup-token` in my Claude account.
    Do this before deleting `~/.config/julz/`, so the token is dead even if a copy exists.
-2. Remove the Julz grants for the phone from the Tailscale policy. Keep the SSH grant if I
-   still use it.
+2. Remove the Julz grants for the phone from the Tailscale policy (443 and 8443). Keep the
+   SSH grant if I still use it.
 3. Delete the Julz entries (admin, phone account, pocket password) from KeePassXC.
 4. Delete the GitHub repository if I no longer want it public (`gh repo delete`).
 5. Delete the Claude Code memory folder for this project under `~/.claude/projects/`.
+6. On the phone: delete the julz passkey in Google Password Manager, and unsubscribe from the
+   julz topic in the ntfy app (then uninstall ntfy if nothing else uses it).
 
 ## 7. System packages (about 0.4 GB), only if nothing else needs them
 
@@ -97,4 +105,5 @@ ss -tln
 ```
 
 None of the Julz containers, the `open-webui` volume or the models should be listed, and
-nothing should listen on ports 3100, 8888, 8880 or 11434.
+nothing should listen on ports 3100, 8765, 8888, 8880 or 11434.
+`systemctl --user list-units --all 'julz*'` lists nothing.

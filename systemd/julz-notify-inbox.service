@@ -1,0 +1,19 @@
+[Unit]
+Description=julz: notify about specs waiting for approval
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/Projects/products/julz/julz-notify.py --inbox
+UMask=0077
+# Sandbox: reads file names in the inbox, the topic and its own state, talks to ntfy.sh
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/Projects/products/julz
+BindReadOnlyPaths=%h/.config/julz/notify %h/.config/julz/approver.json
+BindReadOnlyPaths=%h/Documents/julz-mem/Inbox/claude
+BindPaths=%h/.local/share/julz/notify
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

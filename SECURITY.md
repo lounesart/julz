@@ -412,6 +412,41 @@ mutations killed (server and page files):
   wrong Host 421. Not yet proved: the page in a real phone browser, and which Host header
   `tailscale serve` passes (both the public name and 127.0.0.1:<port> are accepted).
 
+Verified with the real phone (2026-10-16):
+- `sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765`, tailnet grant for the phone
+  extended to tcp 8443. Through serve: HTTP/2 200, CSP and `server: julz` intact, Host accepted.
+- Enrolled a passkey with a one time code (log `enroll`, code file gone), approved
+  `phone-test.md`: log has `approve` and `approve-channel phone`, the stored file's sha256
+  equals its name, the inbox copy was removed, nothing ran.
+- The passkey sends a real sign counter (1 after the first approval), so the clone check is
+  live. A "sign counter did not increase" error is a security alarm first.
+- Not yet tested from the phone: a refused case (wrong origin, swapped spec) end to end; the
+  unit tests cover them.
+
+Built step 4 (2026-10-16), `julz-notify.py` and `systemd/` user units, 20 notifier tests with
+12 of 12 mutations killed, 2 new gate tests, 228 tests in total:
+- Approver as `julz-approver.service` with default deny: `TemporaryFileSystem=%h:ro` and only
+  its own paths bound back. Checked through `/proc/<pid>/root`: `~/.config/julz` shows only
+  `approver/`, `approver.json`, `projects.json`; no token, no API keys, no `~/.ssh`, no work
+  copies (threat 41). The passkey moved to `~/.config/julz/approver/` so the approver needs no
+  write access to `~/.config/julz`.
+- Approval starts the run: `julz-run.path` on `approved/`, plus `julz-run.timer` every 10
+  minutes for an approval that lands mid run; `julz-run.py --until-empty` (threat 40).
+- Race found and fixed: `store_approved` created the file and then wrote it, so a path unit
+  could start the runner on a half written approval, which the hash check would then refuse.
+  Now written whole in `tmp/` and linked into `approved/` (CWE-362). `AtomicApproveTest`.
+- `systemd-analyze verify` caught `RuntimeMaxSec` being ignored for `Type=oneshot`, where the
+  start timeout defaults to infinity: a hung run would never be killed. Now `TimeoutStartSec`.
+- ntfy: topic is 128 random bits in `~/.config/julz/notify/ntfy.env` (mode 600). Messages are
+  fixed templates with 8 hash characters; the log's reason field (which can quote a spec
+  line) is never sent. Inbox notices are rate limited to one per 5 minutes. A new passkey
+  enrollment and a quarantined report are urgent (threats 39, 43).
+- Verified 2026-10-16: test push reached the phone; the phone approved spec ran unattended
+  from the timer at 04:10 (start, run ok in 4 s), `PHONE-TEST.md` only in the work copy, the
+  project folder untouched, report in Outbox, notifier fired after the run.
+- Still open: a stop button for a running spec (needs the approver to reach the user systemd
+  bus, which its sandbox blocks on purpose).
+
 ## Known issues
 - v0.11.4 title generation crashes (`KeyError: 'model'` in `background_tasks_handler`), which
   breaks the chat UI. Workaround: title, tags and follow-up generation off, task model `julz`.
