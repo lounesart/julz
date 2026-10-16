@@ -106,7 +106,7 @@ class Base(unittest.TestCase):
         return status, data
 
     def approved(self):
-        return sorted(p.name for p in self.dirs.approved.iterdir()) \
+        return sorted(p.name for p in self.dirs.approved.iterdir() if gate.APPROVED_NAME.match(p.name)) \
             if self.dirs.approved.exists() else []
 
 
@@ -327,12 +327,20 @@ class ApproveTest(Base):
                                                         "sha256": gate.sha256(GOOD)})
                 self.assertEqual(status, 400)
 
-    def test_only_approve_and_reject(self):
-        for action in ("stop", "continue", "run", None):
+    def test_only_known_actions(self):
+        for action in ("run", "enroll", "approve-all", None):
             with self.subTest(action=action):
                 status, _, _ = self.post("/api/begin", {"action": action, "name": "readme.md",
                                                         "sha256": gate.sha256(GOOD)})
                 self.assertEqual(status, 400)
+
+    def test_continue_needs_a_waiting_task(self):
+        # A spec name is not a task: continue and stop only work on open needs
+        for action in ("continue", "stop"):
+            status, _, _ = self.post("/api/begin", {"action": action, "name": "readme.md",
+                                                    "root": "readme.md",
+                                                    "sha256": gate.sha256(GOOD)})
+            self.assertEqual(status, 404)
 
     def test_hidden_spec_cannot_be_signed(self):
         # Fourth spec is not on the page, so it cannot be approved by guessing its name
@@ -366,6 +374,109 @@ class ApproveTest(Base):
         status, _, _ = self.post("/api/begin", {"action": "approve", "name": "readme.md",
                                                 "sha256": gate.sha256(GOOD)})
         self.assertEqual(status, 403)
+
+
+class NeedWebTest(Base):
+    """Threats 37 and 40 on the page: an open need is answered by a signed continue or stop."""
+
+    def setUp(self):
+        super().setUp()
+        self.enroll()
+        self.root = gate.sha256(GOOD)
+        self.need = {"need": "install python-requests", "why": "import fails"}
+        self.task = {"root": self.root, "project": "julz-sandbox",
+                     "goal": "add a usage line to the README", "step": 2,
+                     "status": "waiting", "need": self.need["need"], "why": self.need["why"],
+                     "need_hash": gate.need_hash(self.need), "opened": self.clock(),
+                     "last_run": self.root}
+        gate.save_task(self.dirs, self.task)
+
+    def answer(self, action, sha=None, key=None):
+        if sha is None:
+            sha = self.state()["needs"][0]["sha256"]
+        status, _, data = self.post("/api/begin", {"action": action, "root": self.root,
+                                                   "sha256": sha})
+        if status != 200:
+            return status, data
+        status, _, data = self.post("/api/finish", {"action": action, "nonce": data["nonce"],
+                                                    "credential": (key or self.key).sign(data)})
+        return status, data
+
+    def test_state_shows_need(self):
+        needs = self.state()["needs"]
+        self.assertEqual(len(needs), 1)
+        n = needs[0]
+        self.assertEqual((n["need"], n["why"], n["step"]), (self.need["need"],
+                                                              self.need["why"], 2))
+        self.assertEqual(n["text"], gate.continuation_text(self.task))
+        self.assertEqual(n["sha256"], gate.sha256(n["text"]))
+        self.assertEqual(n["work"], str(self.dirs.log.parent / "work" / self.root))
+
+    def test_continue_queues_continuation(self):
+        status, data = self.answer("continue")
+        self.assertEqual(status, 200, data)
+        text = gate.continuation_text(self.task)
+        self.assertEqual(self.approved(), [f"{gate.sha256(text)}.md"])
+        self.assertEqual(gate.load_task(self.dirs, self.root)["status"], "approved")
+        self.assertEqual(self.state()["needs"], [])
+        self.assertIn('"approve-channel"', self.dirs.log.read_text())
+
+    def test_stop_ends_task(self):
+        status, data = self.answer("stop")
+        self.assertEqual(status, 200, data)
+        self.assertEqual(self.approved(), [])
+        self.assertEqual(gate.load_task(self.dirs, self.root)["status"], "stopped")
+        self.assertIn('"stop"', self.dirs.log.read_text())
+
+    def test_need_changed_after_view_refused(self):
+        seen = self.state()["needs"][0]["sha256"]
+        other = {"need": "run sudo rm -rf /", "why": "cleanup"}
+        gate.save_task(self.dirs, {**self.task, **other, "need_hash": gate.need_hash(other)})
+        status, _ = self.answer("continue", sha=seen)
+        self.assertEqual(status, 409)
+        self.assertEqual(self.approved(), [])
+
+    def test_stop_signature_cannot_continue(self):
+        sha = self.state()["needs"][0]["sha256"]
+        _, _, data = self.post("/api/begin", {"action": "stop", "root": self.root, "sha256": sha})
+        status, _, _ = self.post("/api/finish", {"action": "continue", "nonce": data["nonce"],
+                                                 "credential": self.key.sign(data)})
+        self.assertEqual(status, 403)
+        self.assertEqual(self.approved(), [])
+
+    def test_other_key_cannot_continue(self):
+        status, _ = self.answer("continue", key=softkeys.SoftKey())
+        self.assertEqual(status, 403)
+        self.assertEqual(gate.load_task(self.dirs, self.root)["status"], "waiting")
+
+    def test_expired_need_hidden_and_refused(self):
+        sha = self.state()["needs"][0]["sha256"]
+        self.clock.now += gate.NEED_TTL + 1
+        self.assertEqual(self.state()["needs"], [])
+        status, _ = self.answer("continue", sha=sha)
+        self.assertEqual(status, 404)
+
+    def test_page_cannot_choose_the_text(self):
+        # Two tasks wait. The page asks to sign A but sends B's text along: the server must
+        # sign and store A's text from its own state, never what the page sent
+        other = {**self.task, "root": "b" * 64}
+        gate.save_task(self.dirs, other)
+        a_need = [n for n in self.state()["needs"] if n["root"] == self.root][0]
+        _, _, data = self.post("/api/begin", {"action": "continue", "root": self.root,
+                                              "sha256": a_need["sha256"],
+                                              "text": gate.continuation_text(other)})
+        status, _, _ = self.post("/api/finish", {"action": "continue", "nonce": data["nonce"],
+                                                 "credential": self.key.sign(data)})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.approved(), [f"{a_need['sha256']}.md"])
+        self.assertEqual(gate.load_task(self.dirs, "b" * 64)["status"], "waiting")
+
+    def test_bad_root_refused(self):
+        for root in ("../x", None, ["a"], "0" * 64):
+            with self.subTest(root=root):
+                status, _, _ = self.post("/api/begin", {"action": "continue", "root": root,
+                                                        "sha256": "0" * 64})
+                self.assertEqual(status, 404)
 
 
 class EnrollWebTest(Base):

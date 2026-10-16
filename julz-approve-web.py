@@ -93,7 +93,7 @@ class App:
         # Through tailscale serve the browser sends the public name; on the laptop itself,
         # 127.0.0.1. Anything else is DNS rebinding or a confused client (threat 36)
         self.hosts = {urlsplit(passkeys.origin).netloc, f"127.0.0.1:{port}"}
-        self.names: dict[str, str] = {}  # nonce -> inbox file name the text came from
+        self.names: dict[str, str] = {}  # nonce -> inbox file name, or task root for a need
 
     # ---------- plumbing ----------
 
@@ -178,28 +178,44 @@ class App:
             raise HTTPError(400, "bad spec name")
         return self.inbox / name
 
+    def needs(self) -> list[dict]:
+        """Tasks waiting for my answer (threats 37, 40), at most MAX_SHOWN."""
+        keys = ("root", "step", "project", "goal", "need", "why", "text", "sha256")
+        # Claude says /work; on the laptop that is the task's work copy. Shown so I do the
+        # step in the right place (found on 2026-10-16, see SECURITY.md step 3)
+        work = self.dirs.log.parent / "work"
+        return [{**{k: n[k] for k in keys}, "work": str(work / n["root"])}
+                for n in gate.open_needs(self.dirs, self.pk.clock())[:MAX_SHOWN]]
+
     def state(self) -> dict:
         shown, refused, waiting = self.specs()
         return {"enrolled": wa.load_credential(self.pk.cred_file) is not None,
-                "specs": shown, "refused": refused, "waiting": waiting}
+                "specs": shown, "refused": refused, "waiting": waiting,
+                "needs": self.needs()}
 
     # ---------- signed actions ----------
 
     def begin(self, data: dict) -> dict:
-        action = data.get("action")
-        if action not in ("approve", "reject"):
-            raise HTTPError(400, "action must be approve or reject")
-        name, seen = data.get("name"), data.get("sha256")
-        shown, _, _ = self.specs()
-        match = [s for s in shown if s["name"] == self.spec_path(name).name]
+        action, seen = data.get("action"), data.get("sha256")
+        if action in ("approve", "reject"):
+            name = data.get("name")
+            shown, _, _ = self.specs()
+            match = [s for s in shown if s["name"] == self.spec_path(name).name]
+            key = name
+        elif action in ("continue", "stop"):
+            # The text to sign is built from host task state, never sent by the page
+            key = data.get("root")
+            match = [n for n in self.needs() if n["root"] == key]
+        else:
+            raise HTTPError(400, "action must be approve, reject, continue or stop")
         if not match:
-            raise HTTPError(404, "spec not in the list: reload")
+            raise HTTPError(404, "not in the list: reload")
         if match[0]["sha256"] != seen:
-            # Julz rewrote it after the page showed it. Never sign text I did not see
-            raise HTTPError(409, "spec changed since you saw it: reload")
+            # Changed after the page showed it. Never sign text I did not see
+            raise HTTPError(409, "changed since you saw it: reload")
         nonce, options = self.pk.begin(action, match[0]["text"])
         self.names = {k: v for k, v in self.names.items() if k in self.pk.pending}
-        self.names[nonce] = name
+        self.names[nonce] = key
         return {"nonce": nonce, "publicKey": options["publicKey"]}
 
     def finish(self, data: dict) -> dict:
@@ -210,6 +226,13 @@ class App:
         name = self.names.pop(nonce, None)
         text = self.pk.finish(nonce, action, credential)  # the exact signed text, or raises
         digest = gate.sha256(text)
+        if action == "continue":
+            gate.store_continuation(text, self.dirs, self.pk.clock())
+            gate.log(self.dirs, "approve-channel", digest, "ok", "phone")
+            return {"done": "continued", "sha256": digest}
+        if action == "stop":
+            gate.stop_task(text, self.dirs, self.pk.clock())
+            return {"done": "stopped", "sha256": digest}
         if action == "approve":
             gate.store_approved(text, self.dirs, gate.load_projects(self.projects_file))
             gate.log(self.dirs, "approve-channel", digest, "ok", "phone")

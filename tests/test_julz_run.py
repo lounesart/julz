@@ -239,7 +239,9 @@ class SandboxTest(unittest.TestCase):
         return self.work_root / gate.sha256(GOOD)
 
     def test_report_has_result_and_changes(self):
-        report = self.runner(self.spec, GOOD)
+        out = self.runner(self.spec, GOOD)
+        report = out.report
+        self.assertIsNone(out.need)
         self.assertIn("made hello.txt", report)
         self.assertIn("added hello.txt", report)
         self.assertEqual((self.work() / "hello.txt").read_text(), "hello\n")
@@ -281,6 +283,58 @@ class SandboxTest(unittest.TestCase):
         self.binary.write_text("#!/bin/sh\nprintf '{\"is_error\":false,\"result\":\"ok\"}'\nexit 3\n")
         with self.assertRaises(RuntimeError):
             self.runner(self.spec, GOOD)
+
+
+    def fake_result(self, result):
+        # A quoted heredoc passes the JSON through the shell untouched
+        self.binary.write_text("#!/bin/sh\ncat > /work/prompt.txt\ncat <<'EOF'\n"
+                               + json.dumps({"is_error": False, "result": result})
+                               + "\nEOF\n")
+
+    def test_prompt_explains_need_block(self):
+        self.runner(self.spec, GOOD)
+        prompt = (self.work() / "prompt.txt").read_text()
+        self.assertIn("need: <what the owner must do", prompt)
+
+    def test_need_block_parsed(self):
+        self.fake_result("stopped\nneed: install python-requests\nwhy: import fails")
+        out = self.runner(self.spec, GOOD)
+        self.assertEqual(out.need, {"need": "install python-requests", "why": "import fails"})
+
+    def test_odd_need_block_fails_run(self):
+        self.fake_result("need: sudo rm -rf /\nwhy: cleanup\nand then some more text")
+        with self.assertRaises(gate.SpecError):
+            self.runner(self.spec, GOOD)
+
+    def continuation(self, **extra):
+        return {**self.spec, "kind": "continue", "root": gate.sha256(GOOD), "step": 2,
+                "need": "install python-requests", "why": "import fails",
+                "previous_report": "I stopped before hello2.txt", **extra}
+
+    def test_continuation_reuses_work_copy(self):
+        self.runner(self.spec, GOOD)
+        (self.work() / "from-run-1.txt").write_text("kept")
+        cont_text = "continue: x"  # only its hash names the stderr file
+        out = self.runner(self.continuation(), cont_text)
+        self.assertEqual((self.work() / "from-run-1.txt").read_text(), "kept")
+        prompt = (self.work() / "prompt.txt").read_text()
+        self.assertIn("Last time you stopped and asked the owner: install python-requests", prompt)
+        self.assertIn("I stopped before hello2.txt", prompt)
+        self.assertIn("step 2 of task", out.report)
+        self.assertEqual(sorted(p.name for p in self.work_root.iterdir() if p.is_dir()),
+                         [gate.sha256(GOOD)])
+
+    def test_continuation_without_work_copy_fails(self):
+        with self.assertRaises(RuntimeError):
+            self.runner(self.continuation(), "continue: x")
+
+    def test_continuation_work_copy_symlink_refused(self):
+        elsewhere = Path(self.tmp.name) / "elsewhere"
+        elsewhere.mkdir()
+        self.work_root.mkdir()
+        self.work().symlink_to(elsewhere)
+        with self.assertRaises(RuntimeError):
+            self.runner(self.continuation(), "continue: x")
 
 
 if __name__ == "__main__":

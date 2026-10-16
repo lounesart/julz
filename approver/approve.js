@@ -82,8 +82,30 @@ function card(spec) {
   const yes = el("button", "Approve", "approve");
   const no = el("button", "Reject", "reject");
   yes.type = no.type = "button";
-  yes.addEventListener("click", () => act("approve", spec, [yes, no]));
-  no.addEventListener("click", () => act("reject", spec, [yes, no]));
+  const body = { name: spec.name, sha256: spec.sha256 };
+  yes.addEventListener("click", () => act("approve", body, [yes, no]));
+  no.addEventListener("click", () => act("reject", body, [yes, no]));
+  row.append(yes, no);
+  c.append(row);
+  return c;
+}
+
+// A blocked task: I do what Claude asked on the laptop, then sign "done", or stop the task.
+// The text I sign comes from host task state and names the exact need shown here.
+function needCard(n) {
+  const c = el("article", undefined, "card need");
+  c.append(el("h2", `Claude needs you, ${n.project}, step ${n.step}`), el("p", n.goal, "muted"),
+           el("p", `need: ${n.need}`, "needline"), el("p", `why: ${n.why}`),
+           el("p", `/work on the laptop is ${n.work}`, "hash"),
+           el("p", "Tap Done only after you did it on the laptop.", "bad"),
+           el("pre", n.text), el("p", `sha256 ${n.sha256}`, "hash"));
+  const row = el("div", undefined, "row");
+  const yes = el("button", "Done, continue", "approve");
+  const no = el("button", "Stop task", "reject");
+  yes.type = no.type = "button";
+  const body = { root: n.root, sha256: n.sha256 };
+  yes.addEventListener("click", () => act("continue", body, [yes, no]));
+  no.addEventListener("click", () => act("stop", body, [yes, no]));
   row.append(yes, no);
   c.append(row);
   return c;
@@ -101,7 +123,8 @@ async function load() {
   $("queue").hidden = !s.enrolled;
   const list = $("specs");
   list.replaceChildren();
-  if (!s.specs.length) list.append(el("p", "Nothing waiting.", "muted"));
+  if (!s.specs.length && !s.needs.length) list.append(el("p", "Nothing waiting.", "muted"));
+  for (const n of s.needs) list.append(needCard(n));
   for (const spec of s.specs) list.append(card(spec));
   $("waiting").textContent = s.waiting ? `${s.waiting} more waiting, shown after these` : "";
   const refused = $("refused");
@@ -109,11 +132,11 @@ async function load() {
   for (const r of s.refused) refused.append(el("p", `refused ${r.name}: ${r.reason}`, "bad"));
 }
 
-async function act(action, spec, buttons) {
+async function act(action, body, buttons) {
   buttons.forEach((b) => (b.disabled = true));
   status(`${action}: touch the sensor`);
   try {
-    const b = await api("/api/begin", { action, name: spec.name, sha256: spec.sha256 });
+    const b = await api("/api/begin", { action, ...body });
     const cred = await navigator.credentials.get({ publicKey: requestOptions(b.publicKey) });
     const r = await api("/api/finish", { action, nonce: b.nonce, credential: assertionJSON(cred) });
     status(`${r.done} ${r.sha256.slice(0, 12)}`);

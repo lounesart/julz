@@ -7,6 +7,9 @@ Host side only, never mounted into a container. Security model: SECURITY.md thre
   the runner rechecks the hash, so a swap after approval is refused (CWE-367)
 - each spec runs once: it moves to done/ before the run starts, so a crash never loops
 - the report is untrusted too: too big or holding a secret, it goes to quarantine, not Outbox
+- a blocked run ends with a `need:` block; the task waits on the host for my signed answer,
+  then a continuation runs in the same work copy. Max 3 continuations, 24 h to answer,
+  task state lives here and never in the report (SECURITY.md threats 37, 38, 40)
 The runner itself (sandboxed `claude -p`) is passed in, so the tests use a fake.
 """
 import fcntl
@@ -31,6 +34,12 @@ PROJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 FIELD_LINE = re.compile(r"^([a-z_]+):[ \t]*(.*)$")
 # Control, format (zero width, bidi), private use, surrogates, unassigned
 BAD_CATEGORIES = {"Cc", "Cf", "Co", "Cs", "Cn"}
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+CONT_FIELDS = ("continue", "step", "need_hash", "answer")
+MAX_CONTINUATIONS = 3  # steps 2 to 4; a need at step 4 fails the task
+NEED_TTL = 24 * 3600
+MAX_NEED = 200
+MAX_WHY = 300
 
 
 class GateError(Exception):
@@ -54,34 +63,42 @@ class Dirs:
         self.approved = base / "approved"
         self.done = base / "done"
         self.quarantine = base / "quarantine"
-        self.tmp = base / "tmp"
+        # Temp files sit in the folder they are linked into: in the approver's systemd
+        # sandbox every folder is its own bind mount, and a link across mounts fails (EXDEV).
+        # The path unit watches approved/ itself, not this subfolder
+        self.tmp = self.approved / ".tmp"
+        self.tasks = base / "tasks"
         self.outbox = Path(outbox) if outbox else base / "outbox"
         self.log = base / "runner.log"
         self.lockfile = base / "run.lock"
 
     def ensure(self):
-        for d in (self.approved, self.done, self.quarantine, self.tmp, self.outbox):
+        for d in (self.approved, self.done, self.quarantine, self.tmp, self.tasks, self.outbox):
             d.mkdir(mode=0o700, parents=True, exist_ok=True)
 
 
 # ---------- spec checks ----------
 
-def check_spec(text: str, projects: set[str]) -> dict:
-    """Parse a spec into its three fields or raise SpecError. Refuses, never cleans up:
-    a spec that needs cleaning was written by something I should not trust."""
-    if len(text.encode()) > MAX_SPEC_BYTES:
-        raise SpecError(f"spec is over {MAX_SPEC_BYTES} bytes")
+def check_plain(text: str):
+    """No hidden or control characters (newline aside), no HTML comments."""
     for ch in text:
         if ch != "\n" and unicodedata.category(ch) in BAD_CATEGORIES:
             raise SpecError(f"hidden or control character U+{ord(ch):04X}")
     if "<!--" in text:
-        raise SpecError("HTML comment in spec")
+        raise SpecError("HTML comment")
+
+
+def parse_fields(text: str, fields: tuple[str, ...]) -> dict:
+    """Plain `field: value` lines, each known field exactly once, nothing else."""
+    if len(text.encode()) > MAX_SPEC_BYTES:
+        raise SpecError(f"spec is over {MAX_SPEC_BYTES} bytes")
+    check_plain(text)
     spec = {}
     for line in text.split("\n"):
         if not line.strip():
             continue
         m = FIELD_LINE.match(line)
-        if not m or m.group(1) not in FIELDS:
+        if not m or m.group(1) not in fields:
             raise SpecError(f"not a known field: {line[:40]!r}")
         key, value = m.group(1), m.group(2).strip()
         if key in spec:
@@ -89,9 +106,16 @@ def check_spec(text: str, projects: set[str]) -> dict:
         if not value:
             raise SpecError(f"field {key} is empty")
         spec[key] = value
-    missing = [f for f in FIELDS if f not in spec]
+    missing = [f for f in fields if f not in spec]
     if missing:
         raise SpecError(f"missing fields: {', '.join(missing)}")
+    return spec
+
+
+def check_spec(text: str, projects: set[str]) -> dict:
+    """Parse a spec into its three fields or raise SpecError. Refuses, never cleans up:
+    a spec that needs cleaning was written by something I should not trust."""
+    spec = parse_fields(text, FIELDS)
     if not PROJECT_NAME.match(spec["project"]) or spec["project"] not in projects:
         raise SpecError(f"project not in the allowlist: {spec['project'][:40]!r}")
     return {f: spec[f] for f in FIELDS}
@@ -178,6 +202,11 @@ def load_spec(path: Path, projects: set[str]) -> tuple[str, dict]:
 def store_approved(text: str, dirs: Dirs, projects: set[str]) -> str:
     """Store the text I approved under its hash. Call only after I said yes."""
     check_spec(text, projects)
+    return publish(text, dirs)
+
+
+def publish(text: str, dirs: Dirs) -> str:
+    """Put checked, approved text into approved/ under its hash, whole, once."""
     digest = sha256(text)
     dirs.ensure()
     if (dirs.done / f"{digest}.md").exists():
@@ -200,6 +229,204 @@ def store_approved(text: str, dirs: Dirs, projects: set[str]) -> str:
 def approve(path: Path, dirs: Dirs, projects: set[str]) -> str:
     text, _ = load_spec(path, projects)
     return store_approved(text, dirs, projects)
+
+
+# ---------- needs and tasks (threats 37, 38, 40) ----------
+
+class RunResult:
+    """What a runner returns once it parsed Claude's result: the report for Outbox, and the
+    need block if the run ended blocked."""
+
+    def __init__(self, report: str, need: dict | None = None):
+        self.report, self.need = report, need
+
+
+def parse_need(result: str) -> dict | None:
+    """The need block in Claude's own result, never in the runner's facts. It must be the last
+    two non-empty lines, `need:` then `why:`, plain and short. A need line anywhere else fails
+    the run: an odd block is refused, never ignored or repaired (threat 38)."""
+    lines = [line.strip() for line in result.split("\n") if line.strip()]
+    marks = [i for i, line in enumerate(lines) if line.lower().startswith("need:")]
+    if not marks:
+        return None
+    if marks != [len(lines) - 2] or not lines[-2].startswith("need:") \
+            or not lines[-1].startswith("why:"):
+        raise SpecError("need block must be the last two lines: need:, then why:")
+    need, why = lines[-2][5:].strip(), lines[-1][4:].strip()
+    if not need or not why:
+        raise SpecError("need block has an empty field")
+    if len(need) > MAX_NEED or len(why) > MAX_WHY:
+        raise SpecError("need block is too long")
+    check_plain(need + why)
+    return {"need": need, "why": why}
+
+
+def need_hash(need: dict) -> str:
+    return sha256(f"need: {need['need']}\nwhy: {need['why']}\n")
+
+
+def task_path(dirs: Dirs, root: str) -> Path:
+    if not isinstance(root, str) or not HEX64.match(root):
+        raise SpecError("bad task id")
+    return dirs.tasks / f"{root}.json"
+
+
+def load_task(dirs: Dirs, root: str) -> dict:
+    try:
+        task = json.loads(read_regular(task_path(dirs, root), MAX_CONFIG_BYTES))
+    except ValueError:
+        raise SpecError("task file is broken") from None
+    if not isinstance(task, dict) or task.get("root") != root:
+        raise SpecError("task file is broken")
+    return task
+
+
+def save_task(dirs: Dirs, task: dict):
+    dirs.ensure()
+    path = task_path(dirs, task["root"])
+    # Same folder as the task file, so the rename never crosses a mount (see Dirs.tmp)
+    tmp = dirs.tasks / f".{task['root']}.{time.time_ns()}.tmp"
+    write_new(tmp, json.dumps(task), 0o600, GateError("temp file exists"))
+    os.replace(tmp, path)
+
+
+def continuation_text(task: dict) -> str:
+    """What I sign to answer a need: it names the task, the step and the exact need I saw."""
+    return (f"continue: {task['root']}\nstep: {task['step']}\n"
+            f"need_hash: {task['need_hash']}\nanswer: done\n")
+
+
+def check_continuation(text: str) -> dict:
+    c = parse_fields(text, CONT_FIELDS)
+    if not HEX64.match(c["continue"]) or not HEX64.match(c["need_hash"]):
+        raise SpecError("continuation names a bad hash")
+    if not c["step"].isdigit() or not 2 <= int(c["step"]) <= 1 + MAX_CONTINUATIONS:
+        raise SpecError("continuation step out of range")
+    if c["answer"] != "done":
+        raise SpecError("continuation answer must be done")
+    return {"root": c["continue"], "step": int(c["step"]), "need_hash": c["need_hash"]}
+
+
+def waiting_task(dirs: Dirs, cont: dict, now: float) -> dict:
+    """The task this continuation answers, if it is still waiting for exactly this answer."""
+    task = load_task(dirs, cont["root"])
+    if task.get("status") != "waiting":
+        raise SpecError("task is not waiting for an answer")
+    if task.get("step") != cont["step"] or task.get("need_hash") != cont["need_hash"]:
+        raise SpecError("task changed since you saw it")
+    if now - task.get("opened", 0) > NEED_TTL:
+        raise SpecError("need expired")
+    return task
+
+
+def open_needs(dirs: Dirs, now: float) -> list[dict]:
+    """Waiting tasks for the approver page, oldest first, with the text to sign."""
+    out = []
+    if not dirs.tasks.is_dir():
+        return out
+    for path in dirs.tasks.iterdir():
+        if not (path.suffix == ".json" and HEX64.match(path.stem)):
+            continue
+        try:
+            task = load_task(dirs, path.stem)
+        except SpecError:
+            continue
+        if task.get("status") != "waiting" or now - task.get("opened", 0) > NEED_TTL:
+            continue
+        text = continuation_text(task)
+        out.append({"root": task["root"], "step": task["step"], "project": task["project"],
+                    "goal": task["goal"], "need": task["need"], "why": task["why"],
+                    "opened": task["opened"], "text": text, "sha256": sha256(text)})
+    return sorted(out, key=lambda t: t["opened"])
+
+
+def store_continuation(text: str, dirs: Dirs, now: float) -> str:
+    """I did what Claude needed: queue the next run. Call only after I signed it."""
+    cont = check_continuation(text)
+    task = waiting_task(dirs, cont, now)
+    digest = publish(text, dirs)
+    task["status"] = "approved"
+    save_task(dirs, task)
+    return digest
+
+
+def stop_task(text: str, dirs: Dirs, now: float):
+    """I will not do what Claude needed: the task ends here."""
+    cont = check_continuation(text)
+    task = waiting_task(dirs, cont, now)
+    task["status"] = "stopped"
+    save_task(dirs, task)
+    log(dirs, "stop", task["root"], "ok", f"step {task['step']}")
+
+
+def expire_tasks(dirs: Dirs, now: float) -> int:
+    """Needs nobody answered in NEED_TTL end their task. Never approved by timeout (40)."""
+    count = 0
+    if not dirs.tasks.is_dir():
+        return count
+    for path in dirs.tasks.iterdir():
+        if not (path.suffix == ".json" and HEX64.match(path.stem)):
+            continue
+        try:
+            task = load_task(dirs, path.stem)
+        except SpecError:
+            continue
+        if task.get("status") == "waiting" and now - task.get("opened", 0) > NEED_TTL:
+            task["status"] = "expired"
+            save_task(dirs, task)
+            log(dirs, "expire", task["root"], "ok", f"step {task['step']}")
+            count += 1
+    return count
+
+
+def load_job(text: str, dirs: Dirs, projects) -> dict:
+    """What the runner gets: a first run from a spec, or a continuation of a task I answered.
+    A continuation is rebuilt from host state only: the root spec from done/, the need from
+    the task file, Claude's previous report from Outbox."""
+    if not text.startswith("continue:"):
+        spec = check_spec(text, projects)
+        return {**spec, "kind": "spec", "root": sha256(text), "step": 1}
+    cont = check_continuation(text)
+    task = load_task(dirs, cont["root"])
+    if task.get("status") != "approved" or task.get("step") != cont["step"] \
+            or task.get("need_hash") != cont["need_hash"]:
+        raise SpecError("continuation does not match an approved task")
+    root_text = decode(read_regular(dirs.done / f"{cont['root']}.md", MAX_SPEC_BYTES))
+    if sha256(root_text) != cont["root"]:
+        raise SpecError("root spec does not match its hash")
+    spec = check_spec(root_text, projects)
+    last = task.get("last_run", "")
+    if not isinstance(last, str) or not HEX64.match(last):
+        raise SpecError("task has no previous run")
+    previous = decode(read_regular(dirs.outbox / f"{last}.md", MAX_REPORT_BYTES))
+    return {**spec, "kind": "continue", "root": cont["root"], "step": cont["step"],
+            "need": task["need"], "why": task["why"], "previous_report": previous}
+
+
+def settle_task(dirs: Dirs, job: dict, digest: str, status: str, need: dict | None):
+    """After a run: open a need, end the task, or nothing (a plain run without a need).
+    deliver() already dropped the need of a held back or failed run."""
+    if job["kind"] == "continue":
+        task = load_task(dirs, job["root"])
+    elif need is None:
+        return
+    else:
+        task = {"root": job["root"], "project": job["project"], "goal": job["goal"]}
+    task["step"] = job["step"]
+    if need is None:
+        task["status"] = "done" if status == "ok" else "failed"
+        save_task(dirs, task)
+        log(dirs, "task-end", job["root"], task["status"], f"step {job['step']}")
+        return
+    if job["step"] >= 1 + MAX_CONTINUATIONS:
+        task["status"] = "failed"
+        save_task(dirs, task)
+        log(dirs, "task-end", job["root"], "failed", "too many continuations")
+        return
+    task.update(status="waiting", step=job["step"] + 1, need=need["need"], why=need["why"],
+                need_hash=need_hash(need), opened=time.time(), last_run=digest)
+    save_task(dirs, task)
+    log(dirs, "need", job["root"], "ok", f"step {task['step']}")
 
 
 # ---------- running ----------
@@ -245,7 +472,7 @@ def _run_next(dirs, projects, runner, secrets, max_per_day):
             text = decode(read_regular(path, MAX_SPEC_BYTES))
             if sha256(text) != digest:
                 raise SpecError("hash does not match the approved text")
-            spec = check_spec(text, projects)
+            job = load_job(text, dirs, projects)
         except SpecError as e:
             quarantine_spec(dirs, path, digest, str(e))
             continue
@@ -253,20 +480,24 @@ def _run_next(dirs, projects, runner, secrets, max_per_day):
         os.replace(path, dirs.done / path.name)
         # Logged before the run, so a run that gets killed still leaves a trace (threat 29)
         log(dirs, "start", digest, "ok")
-        status, reason, report_hash = deliver(dirs, digest, spec, text, runner, secrets)
+        status, reason, report_hash, need = deliver(dirs, digest, job, text, runner, secrets)
         log(dirs, "run", digest, status, reason, report_hash)
+        settle_task(dirs, job, digest, status, need)
         return digest
     return None
 
 
-def deliver(dirs, digest, spec, text, runner, secrets) -> tuple[str, str, str]:
+def deliver(dirs, digest, job, text, runner, secrets) -> tuple[str, str, str, dict | None]:
     try:
-        report = runner(spec, text)
+        report = runner(job, text)
     except Exception as e:
         # Only the exception type: its message could quote the token or the report
-        return "failed", type(e).__name__, ""
+        return "failed", type(e).__name__, "", None
+    need = None
+    if isinstance(report, RunResult):
+        report, need = report.report, report.need
     if not isinstance(report, str):
-        return "failed", "runner returned no text", ""
+        return "failed", "runner returned no text", "", None
     report_hash = sha256(report)
     secrets = [s for s in secrets if s]
     if any(s in report for s in secrets):
@@ -275,9 +506,9 @@ def deliver(dirs, digest, spec, text, runner, secrets) -> tuple[str, str, str]:
         reason = f"report over {MAX_REPORT_BYTES} bytes"
     else:
         write_new(dirs.outbox / f"{digest}.md", report, 0o644, GateError("report exists"))
-        return "ok", "", report_hash
+        return "ok", "", report_hash, need
     write_new(dirs.quarantine / f"{digest}.md", report, 0o600, GateError("report exists"))
-    return "quarantined", reason, report_hash
+    return "quarantined", reason, report_hash, None
 
 
 def quarantine_spec(dirs: Dirs, path: Path, digest: str, reason: str):

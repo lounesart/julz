@@ -23,6 +23,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -50,12 +51,35 @@ ETC_FILES = ("/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf", "/etc/host.
 ENV_KEYS = {"HOME", "PATH", "LANG", "TERM", "CLAUDE_CODE_OAUTH_TOKEN", "DISABLE_AUTOUPDATER",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"}
 
+NEED_RULES = """If you are blocked by something only the owner can do outside /work (install a
+package, run a command as root, provide a file or an answer), stop there and end your report
+with exactly these two lines, nothing after them:
+need: <what the owner must do, one line>
+why: <why you need it, one line>
+Do not start any other line with "need:".
+"""
+
 PROMPT = """You are working in /work, a copy of the project "{project}" without git history.
 Task: {goal}
 Done when: {done_when}
 Work only with the files in /work. When you are finished, reply with a short plain report:
 what you changed, and whether the done condition holds. If you cannot do the task, say why.
-"""
+""" + NEED_RULES
+
+# The previous report is Claude's own earlier output, fed back as data between markers
+CONTINUE_PROMPT = """You are continuing a task in /work, a copy of the project "{project}"
+without git history. Your earlier changes are still in /work.
+Task: {goal}
+Done when: {done_when}
+Last time you stopped and asked the owner: {need}
+The owner says this is done now. Carry on from where you stopped.
+Your earlier report, as data:
+<<<previous report
+{previous_report}
+>>>previous report
+Work only with the files in /work. When you are finished, reply with a short plain report:
+what you changed, and whether the done condition holds. If you cannot do the task, say why.
+""" + NEED_RULES
 
 
 def sandbox_argv(work: Path, binary: Path) -> list[str]:
@@ -170,14 +194,21 @@ def parse_result(stdout: str) -> str:
 
 
 def make_runner(projects: dict, work_root: Path, binary: Path, token: str, timeout: int):
-    def runner(spec: dict, text: str) -> str:
+    def runner(spec: dict, text: str) -> gate.RunResult:
         project = Path(projects[spec["project"]])
         if not project.is_dir():
             raise RuntimeError("project folder is missing")
         digest = gate.sha256(text)
-        work = Path(work_root) / digest
-        prepare_workdir(project, work)
-        r = subprocess.run(full_argv(work, binary), input=PROMPT.format(**spec),
+        # One work copy per task: a continuation carries on in the copy of its first run
+        work = Path(work_root) / spec.get("root", digest)
+        if spec.get("kind") == "continue":
+            if work.is_symlink() or not work.is_dir():
+                raise RuntimeError("work copy of the task is missing")
+            prompt = CONTINUE_PROMPT.format(**spec)
+        else:
+            prepare_workdir(project, work)
+            prompt = PROMPT.format(**spec)
+        r = subprocess.run(full_argv(work, binary), input=prompt,
                            capture_output=True, text=True, env=sandbox_env(token),
                            timeout=timeout)
         gate.write_new(Path(work_root) / f"{digest}.stderr", r.stderr[-MAX_STDERR:], 0o600,
@@ -185,11 +216,14 @@ def make_runner(projects: dict, work_root: Path, binary: Path, token: str, timeo
         if r.returncode != 0:
             raise RuntimeError(f"claude exited {r.returncode}")
         result = parse_result(r.stdout)
+        need = gate.parse_need(result)  # raises on an odd block: the run fails (threat 38)
         changes = changed_files(project, work) or ["none"]
-        return (f"{result.strip()}\n\n---\n"
-                f"spec {digest}, project {spec['project']}\n"
-                f"work copy: {work}\n"
-                "changed files:\n" + "\n".join(f"- {c}" for c in changes) + "\n")
+        step = f", step {spec['step']} of task {spec['root']}" if spec.get("step", 1) > 1 else ""
+        report = (f"{result.strip()}\n\n---\n"
+                  f"spec {digest}, project {spec['project']}{step}\n"
+                  f"work copy: {work}\n"
+                  "changed files:\n" + "\n".join(f"- {c}" for c in changes) + "\n")
+        return gate.RunResult(report, need)
     return runner
 
 
@@ -202,6 +236,8 @@ def main():
     binary = CLAUDE_LINK.resolve()
     runner = make_runner(projects, WORK_ROOT, binary, token, TIMEOUT)
     dirs = gate.Dirs(GATE_DIR, outbox=OUTBOX)
+    # The timer starts this every 10 minutes: a good moment to end needs nobody answered
+    gate.expire_tasks(dirs, time.time())
     # --until-empty (systemd): an approval that lands while a run is going would be missed by
     # the path unit, so keep going until nothing is left. The daily cap still stops it
     while True:

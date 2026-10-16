@@ -79,6 +79,21 @@ def log_notice(entry: dict) -> Notice | None:
         return Notice("julz: passkey registered",
                       "A new passkey can approve now. If this was not you, run "
                       "julz-approve-web.py --revoke at once.", priority="urgent", tags="warning")
+    if action == "need":
+        return Notice(f"julz: Claude needs you {h}", "A task is blocked on something only you "
+                      "can do. Open the approver to see what, within 24 hours.",
+                      priority="high", tags="raising_hand")
+    if action == "expire":
+        return Notice(f"julz: task expired {h}", "Nobody answered the need in 24 hours. "
+                      "The task ended, nothing more runs.", tags="hourglass")
+    if action == "stop":
+        return Notice(f"julz: task stopped {h}", "Stopped from the phone, nothing more runs.",
+                      tags="stop_sign")
+    if action == "task-end":
+        if status == "done":
+            return None  # the run done notice already said it
+        return Notice(f"julz: task failed {h}", "A task ended without finishing. "
+                      "See runner.log on the laptop.", priority="high", tags="warning")
     if action == "refuse":
         return Notice(f"julz: refused {h}", "An approved spec failed the runner checks. "
                       "See runner.log on the laptop.", priority="high", tags="warning")

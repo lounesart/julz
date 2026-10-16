@@ -447,6 +447,38 @@ Built step 4 (2026-10-16), `julz-notify.py` and `systemd/` user units, 20 notifi
 - Still open: a stop button for a running spec (needs the approver to reach the user systemd
   bus, which its sandbox blocks on purpose).
 
+Built step 3 (2026-10-16), need block and continuation runs. 272 tests; 28 of 28 mutations
+killed after closing the gaps they showed:
+- Claude ends a blocked run with `need:` and `why:` as its last two lines. Parsed from Claude's
+  own result only, lowercase, short, plain; a need line anywhere else fails the run (38).
+- Task state lives on the host in `tasks/<root>.json`, never in the report. One open need per
+  task, at most 3 continuations, 24 h to answer, expiry checked by the runner timer and logged;
+  never approved by timeout (37, 40). A quarantined or failed run never opens a need.
+- I sign `continue: <root>`, `step`, `need_hash` (sha256 of the need I saw), `answer: done`.
+  The server builds that text from task state; a test proves the page cannot choose it. The
+  continuation runs in the same work copy with the root spec from `done/` (hash rechecked)
+  and Claude's previous report as data.
+- Mutation testing showed three test gaps (why line not checked by itself, root spec not
+  tampered in any test, page supplied text not tested) and one check that could never change
+  an outcome, which was removed.
+- Bug found on the phone, not by the tests: in the approver's systemd unit every gate folder is
+  its own bind mount, and linking the approval from `tmp/` into `approved/` failed with EXDEV
+  (OSError on the page). Failed closed: nothing stored, nothing ran. Temp files now sit in the
+  folder they land in (`approved/.tmp/`, `tasks/`). `SandboxLayoutTest` runs the calls under
+  `systemd-run` with separate mounts and fails with the same error on the old layout.
+- Verified with the real phone and real Claude: a spec asking for the kernel version. Claude
+  tried `/proc/sys/kernel/osrelease`, `--restricted` refused it (outside /work), Claude would not
+  guess and opened a need. Task went to step 3 and ended `done`; the project folder stayed
+  untouched.
+- Human gate lesson: I tapped Done 17 s after the push, before the laptop step was done; the
+  continuation correctly reported the file missing and asked again. "Done" is my claim and
+  nothing checks it. The card now shows the host path of `/work` and "Tap Done only after you
+  did it on the laptop".
+- Accepted, information disclosure: the Claude CLI puts the host kernel version in its own
+  context, so it reaches Anthropic. Recon value only.
+- Later: a typed answer from the phone ("paste the output here") would be a new input channel
+  into Claude's prompt and needs its own threat row before it exists.
+
 ## Known issues
 - v0.11.4 title generation crashes (`KeyError: 'model'` in `background_tasks_handler`), which
   breaks the chat UI. Workaround: title, tags and follow-up generation off, task model `julz`.

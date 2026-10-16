@@ -62,7 +62,9 @@ class TemplateTest(Base):
     def test_reason_never_sent(self):
         # refuse reasons quote up to 40 chars of a spec line (julz_gate.log)
         for action, status in (("refuse", "refused"), ("run", "failed"), ("run", "quarantined"),
-                               ("run", "ok"), ("reject", "ok"), ("enroll", "ok")):
+                               ("run", "ok"), ("reject", "ok"), ("enroll", "ok"),
+                               ("need", "ok"), ("expire", "ok"), ("stop", "ok"),
+                               ("task-end", "failed")):
             with self.subTest(action=action, status=status):
                 n = notify.log_notice({"action": action, "status": status, "sha256": H,
                                        "reason": SECRET})
@@ -84,15 +86,18 @@ class TemplateTest(Base):
         for entry in ({"action": "approve-channel", "reason": "phone"}, {"action": "reject"},
                       {"action": "enroll"}, {"action": "refuse"},
                       {"action": "run", "status": "ok"}, {"action": "run", "status": "quarantined"},
-                      {"action": "run", "status": "failed"}):
+                      {"action": "run", "status": "failed"}, {"action": "need"},
+                      {"action": "expire"}, {"action": "stop"},
+                      {"action": "task-end", "status": "failed"}):
             n = notify.log_notice({**entry, "sha256": H})
             (n.title + n.body + n.tags + n.priority).encode("ascii")
         notify.inbox_notice(3).title.encode("ascii")
 
     def test_quiet_lines(self):
         for entry in ({"action": "start"}, {"action": "approve"}, {"action": "unknown"},
+                      {"action": "task-end", "status": "done"},
                       {"action": "approve-channel", "reason": "terminal"}):
-            self.assertIsNone(notify.log_notice({**entry, "status": "ok", "sha256": H}))
+            self.assertIsNone(notify.log_notice({"status": "ok", "sha256": H, **entry}))
 
     def test_security_events_are_loud(self):
         self.assertEqual(notify.log_notice({"action": "enroll", "status": "ok"}).priority,

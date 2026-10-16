@@ -55,6 +55,8 @@ pre {
 .bad { color: var(--bad); }
 
 .row { display: flex; gap: 10px; }
+.need { border-color: var(--bad); }
+.needline { font-weight: 600; }
 
 button {
   font: inherit;

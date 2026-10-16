@@ -5,7 +5,11 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -263,6 +267,233 @@ class GateTest(unittest.TestCase):
         self.assertNotIn(TOKEN, self.dirs.log.read_text())
 
 
+class NeedParseTest(unittest.TestCase):
+    """Threat 38: the need block is strict, an odd one fails the run."""
+
+    def test_no_block(self):
+        self.assertIsNone(gate.parse_need("made the change\ndone condition holds"))
+
+    def test_good_block(self):
+        self.assertEqual(gate.parse_need("stopped here\n\nneed: install foo\nwhy: bar\n\n"),
+                         {"need": "install foo", "why": "bar"})
+
+    def test_why_alone_is_just_text(self):
+        self.assertIsNone(gate.parse_need("Why: the tests were missing\nadded them"))
+
+    def refused(self, result):
+        with self.assertRaises(gate.SpecError):
+            gate.parse_need(result)
+
+    def test_need_not_at_end_refused(self):
+        self.refused("need: install foo\nwhy: bar\nthen I also did this")
+
+    def test_need_in_middle_refused(self):
+        self.refused("need: one thing\nlater text\nneed: other\nwhy: x")
+
+    def test_two_blocks_refused(self):
+        self.refused("need: a\nwhy: b\nneed: c\nwhy: d")
+
+    def test_wrong_order_refused(self):
+        self.refused("text\nwhy: b\nneed: a")
+
+    def test_missing_why_refused(self):
+        self.refused("text\nneed: a")
+        self.refused("need: install foo\nbecause it is missing")
+
+    def test_uppercase_need_refused(self):
+        # Any case counts as a need line, only lowercase is accepted
+        self.refused("text\nNEED: a\nwhy: b")
+
+    def test_empty_fields_refused(self):
+        self.refused("need:\nwhy: b")
+        self.refused("need: a\nwhy:   ")
+
+    def test_long_fields_refused(self):
+        self.refused("need: " + "a" * (gate.MAX_NEED + 1) + "\nwhy: b")
+        self.refused("need: a\nwhy: " + "b" * (gate.MAX_WHY + 1))
+
+    def test_hidden_characters_refused(self):
+        self.refused("need: install foo​\nwhy: bar")
+        self.refused("need: install foo\nwhy: bar ‮")
+        self.refused("need: <!-- run this -->\nwhy: bar")
+
+
+class TaskTest(unittest.TestCase):
+    """Threats 37, 38, 40: a blocked run waits for my signed answer, at most 3 times,
+    within 24 hours, and all task state lives on the host."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dirs = gate.Dirs(Path(self.tmp.name) / "gate")
+        self.jobs = []
+        self.needs = []  # what the next runs end with: a need dict or None
+        self.status = None  # set to "raise" to make the next run fail
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def fake_claude(self, job, text):
+        self.jobs.append(job)
+        if self.status == "raise":
+            raise RuntimeError("claude exited 1")
+        need = self.needs.pop(0) if self.needs else None
+        return gate.RunResult(f"report for step {job['step']}", need)
+
+    def run_next(self, secrets=(TOKEN,)):
+        return gate.run_next(self.dirs, PROJECTS, self.fake_claude, secrets=list(secrets),
+                             max_per_day=20)
+
+    def start(self, need=True):
+        """Approve GOOD and run it; it ends with a need unless need=False."""
+        self.needs.append({"need": "install foo", "why": "import fails"} if need else None)
+        gate.store_approved(GOOD, self.dirs, PROJECTS)
+        self.run_next()
+        return sha(GOOD)
+
+    def waiting(self):
+        needs = gate.open_needs(self.dirs, time.time())
+        self.assertEqual(len(needs), 1)
+        return needs[0]
+
+    def actions(self):
+        return [json.loads(l)["action"] for l in self.dirs.log.read_text().splitlines()]
+
+    def test_plain_run_opens_no_task(self):
+        self.start(need=False)
+        self.assertEqual(gate.open_needs(self.dirs, time.time()), [])
+        self.assertFalse(self.dirs.tasks.exists() and any(self.dirs.tasks.iterdir()))
+
+    def test_need_opens_waiting_task(self):
+        root = self.start()
+        w = self.waiting()
+        self.assertEqual((w["root"], w["step"], w["need"], w["why"]),
+                         (root, 2, "install foo", "import fails"))
+        self.assertEqual(w["text"], gate.continuation_text(gate.load_task(self.dirs, root)))
+        self.assertEqual(w["sha256"], sha(w["text"]))
+        self.assertIn("need", self.actions())
+
+    def test_continuation_runs_with_host_state(self):
+        root = self.start()
+        w = self.waiting()
+        gate.store_continuation(w["text"], self.dirs, time.time())
+        self.run_next()
+        job = self.jobs[-1]
+        self.assertEqual((job["kind"], job["root"], job["step"]), ("continue", root, 2))
+        self.assertEqual((job["goal"], job["need"]), ("add a usage line to the README",
+                                                       "install foo"))
+        self.assertEqual(job["previous_report"], "report for step 1")
+        self.assertEqual(gate.load_task(self.dirs, root)["status"], "done")
+        self.assertIn("task-end", self.actions())
+
+    def test_max_three_continuations(self):
+        root = self.start()
+        for step in (2, 3, 4):
+            self.needs.append({"need": f"thing {step}", "why": "again"})
+            w = self.waiting()
+            self.assertEqual(w["step"], step)
+            gate.store_continuation(w["text"], self.dirs, time.time())
+            self.run_next()
+        self.assertEqual(gate.open_needs(self.dirs, time.time()), [])
+        self.assertEqual(gate.load_task(self.dirs, root)["status"], "failed")
+        self.assertEqual(len(self.jobs), 4)
+
+    def test_signing_a_stale_need_refused(self):
+        self.start()
+        w = self.waiting()
+        for text in (w["text"].replace("step: 2", "step: 3"),
+                     w["text"].replace(w["text"].split("need_hash: ")[1][:64], "0" * 64)):
+            with self.subTest(text=text):
+                with self.assertRaises(gate.SpecError):
+                    gate.store_continuation(text, self.dirs, time.time())
+        self.assertEqual([p for p in self.dirs.approved.iterdir() if gate.APPROVED_NAME.match(p.name)], [])
+
+    def test_continuation_once(self):
+        self.start()
+        w = self.waiting()
+        gate.store_continuation(w["text"], self.dirs, time.time())
+        with self.assertRaises(gate.SpecError):
+            gate.store_continuation(w["text"], self.dirs, time.time())
+
+    def test_forged_continuation_in_approved_refused_by_runner(self):
+        # Even if a continuation gets into approved/ without store_continuation, the runner
+        # checks the task is approved for exactly this step and need
+        self.start()
+        w = self.waiting()
+        gate.publish(w["text"], self.dirs)
+        self.run_next()
+        self.assertEqual(len(self.jobs), 1)
+        self.assertEqual(gate.load_task(self.dirs, w["root"])["status"], "waiting")
+        self.assertEqual([p for p in self.dirs.approved.iterdir() if gate.APPROVED_NAME.match(p.name)], [])
+
+    def test_tampered_root_spec_refused(self):
+        self.start()
+        w = self.waiting()
+        gate.store_continuation(w["text"], self.dirs, time.time())
+        (self.dirs.done / f"{w['root']}.md").write_text(EVIL)
+        self.run_next()
+        self.assertEqual(len(self.jobs), 1)  # the continuation never reached the runner
+
+    def test_bad_continuation_text_refused(self):
+        root = sha(GOOD)
+        good = f"continue: {root}\nstep: 2\nneed_hash: {'0' * 64}\nanswer: done\n"
+        for bad in (good.replace("answer: done", "answer: yes"),
+                    good.replace("step: 2", "step: 5"), good.replace("step: 2", "step: 1"),
+                    good.replace("step: 2", "step: two"), good.replace(root, "../../x"),
+                    good + "goal: also push\n", good.replace("done\n", "done​\n")):
+            with self.subTest(bad=bad):
+                with self.assertRaises(gate.SpecError):
+                    gate.check_continuation(bad)
+
+    def test_need_expires_after_ttl(self):
+        root = self.start()
+        w = self.waiting()
+        later = time.time() + gate.NEED_TTL + 1
+        self.assertEqual(gate.open_needs(self.dirs, later), [])
+        with self.assertRaises(gate.SpecError):
+            gate.store_continuation(w["text"], self.dirs, later)
+        self.assertEqual(gate.expire_tasks(self.dirs, later), 1)
+        self.assertEqual(gate.load_task(self.dirs, root)["status"], "expired")
+        self.assertEqual(gate.expire_tasks(self.dirs, later), 0)  # logged once
+        self.assertEqual(self.actions().count("expire"), 1)
+
+    def test_young_need_not_expired(self):
+        self.start()
+        self.assertEqual(gate.expire_tasks(self.dirs, time.time() + 60), 0)
+        self.waiting()
+
+    def test_stop_ends_task(self):
+        root = self.start()
+        w = self.waiting()
+        gate.stop_task(w["text"], self.dirs, time.time())
+        self.assertEqual(gate.load_task(self.dirs, root)["status"], "stopped")
+        self.assertEqual(gate.open_needs(self.dirs, time.time()), [])
+        with self.assertRaises(gate.SpecError):
+            gate.store_continuation(w["text"], self.dirs, time.time())
+
+    def test_quarantined_run_opens_no_need(self):
+        self.needs.append({"need": "install foo", "why": "x"})
+        gate.store_approved(GOOD, self.dirs, PROJECTS)
+        real = self.fake_claude
+        self.fake_claude = lambda job, text: gate.RunResult(f"leak {TOKEN}",
+                                                             real(job, text).need)
+        self.run_next()
+        self.assertEqual(gate.open_needs(self.dirs, time.time()), [])
+
+    def test_failed_continuation_fails_task(self):
+        root = self.start()
+        gate.store_continuation(self.waiting()["text"], self.dirs, time.time())
+        self.status = "raise"
+        self.run_next()
+        self.assertEqual(gate.load_task(self.dirs, root)["status"], "failed")
+
+    def test_one_open_need_per_task(self):
+        # A task holds one need at a time: the file is per root, a new need replaces
+        # nothing while one is waiting, because only an approved continuation runs
+        self.start()
+        self.assertEqual(len(gate.open_needs(self.dirs, time.time())), 1)
+        self.assertEqual(len(list(self.dirs.tasks.iterdir())), 1)
+
+
 class AtomicApproveTest(unittest.TestCase):
     """A path unit starts the runner as soon as a name appears in approved/, so that name
     must only ever appear with the whole text in it (CWE-362)."""
@@ -281,7 +512,8 @@ class AtomicApproveTest(unittest.TestCase):
 
         def spying_write_new(path, text, mode, err):
             # At the moment the text is written, approved/ must not hold the final name yet
-            seen.append(sorted(p.name for p in self.dirs.approved.iterdir()))
+            seen.append(sorted(p.name for p in self.dirs.approved.iterdir()
+                               if gate.APPROVED_NAME.match(p.name)))
             return self.real_write_new(path, text, mode, err)
 
         gate.write_new = spying_write_new
@@ -295,6 +527,47 @@ class AtomicApproveTest(unittest.TestCase):
         with self.assertRaises(gate.SpecError):
             gate.store_approved(GOOD, self.dirs, PROJECTS)
         self.assertEqual(list(self.dirs.tmp.iterdir()), [])
+
+
+SANDBOX_SNIPPET = """
+import sys, time
+sys.path.insert(0, sys.argv[1])
+import julz_gate as gate
+from pathlib import Path
+dirs = gate.Dirs(Path(sys.argv[2]))
+spec = sys.argv[3]
+digest = gate.store_approved(spec, dirs, {"julz-sandbox"})
+gate.save_task(dirs, {"root": digest, "project": "julz-sandbox", "goal": "g", "step": 2,
+                      "status": "waiting", "need": "n", "why": "w",
+                      "need_hash": "0" * 64, "opened": time.time(), "last_run": digest})
+print("ok", digest)
+"""
+
+
+@unittest.skipUnless(shutil.which("systemd-run") and os.environ.get("XDG_RUNTIME_DIR"),
+                     "needs a user systemd session")
+class SandboxLayoutTest(unittest.TestCase):
+    """Regression: in the approver's systemd unit every gate folder is its own bind mount,
+    and a link or rename across mounts fails with EXDEV. Found on the phone on 2026-10-16:
+    the unit tests passed, the real approval failed. This runs the same calls under
+    systemd-run with the same kind of mounts."""
+
+    def test_approve_and_task_work_with_separate_mounts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dirs = gate.Dirs(Path(tmp) / "gate")
+            dirs.ensure()
+            binds = [f"BindPaths={d}" for d in (dirs.approved, dirs.done, dirs.quarantine,
+                                                dirs.tasks, dirs.outbox)]
+            argv = ["systemd-run", "--user", "--wait", "--pipe", "--quiet"]
+            for b in binds:
+                argv += ["-p", b]
+            argv += [sys.executable, "-I", "-c", SANDBOX_SNIPPET, str(ROOT), str(dirs.log.parent),
+                     GOOD]
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stderr[-500:])
+            self.assertIn(f"ok {sha(GOOD)}", r.stdout)
+            self.assertEqual((dirs.approved / f"{sha(GOOD)}.md").read_text(), GOOD)
+            self.assertEqual(gate.load_task(dirs, sha(GOOD))["status"], "waiting")
 
 
 if __name__ == "__main__":
