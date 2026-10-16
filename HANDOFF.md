@@ -14,9 +14,13 @@ SECURITY.md.
   fingerprint start the run, and a push says when it is done. A blocked run ends with `need:`
   and `why:`. I sign "Done, continue" or "Stop task", and the task carries on in the same work
   copy. The real test was a kernel version spec. It needed me at step 2 and 3 and ended `done`.
+- From the phone I can also stop a running spec (stopped one second after the tap), then
+  Continue it or Delete it. Delete removed the work copy within the same second. The page
+  lists the last 5 runs and reloads itself every 5 seconds while open.
 - The systemd user units in `systemd/` are installed and enabled. They are the approver, the
-  run path and timer, the inbox and log notifiers, and a daily cleaner.
-- 299 tests pass. Every new module was mutation tested, so each check has a test that fails
+  run path and timer, the inbox and log notifiers, and the cleaner (daily, and on every change
+  in `tasks/`).
+- 335 tests pass. Every new module was mutation tested, so each check has a test that fails
   without it.
 - The terminal tool `./julz-approve.py` still works next to the phone.
 
@@ -33,16 +37,19 @@ SECURITY.md.
   has no systemd sandbox because it builds its own with bwrap. The cleaner has no network.
 - No sudo for Claude. I do what a need asks. Phase 2 may add fixed root verbs, each signed.
 - Task state lives on the host in `tasks/`, never in a report. At most 3 continuations, 24 h.
+- Stop goes through a file, because the approver's sandbox blocks the user D-Bus. The runner
+  polls `control/stop-<hash>` once a second and kills bwrap. A stopped run waits like a need.
+- Delete only marks the task. The approver never gets access to `work/`. The sandboxed cleaner
+  removes the copy, started by `julz-clean.path`.
 
 ## In progress
-- A stop button for a running spec is not started. The approver's sandbox blocks the user
-  D-Bus on purpose, so it needs another way to reach `julz-run.service`.
+- Nothing half done. Phase 1 is complete.
 - Still open from session 6. The delegate tool is not yet shared to the phone account, julz
   answers in Polish over the API, and 4B julz drops "waits for your approval".
 
 ## Next steps
-1. Stop button. A signed stop on the phone ends a running spec, the log shows it, a test proves it.
-2. Typed answer from the phone. Write its threat row in SECURITY.md first, then build it.
+1. Typed answer from the phone. Write its threat row in SECURITY.md first, then build it.
+2. Continue a stopped run for real (the Continue button is tested only in code so far).
 3. Phase 2 verbs, one at a time with threat rows. Query verbs and `restart-container` first,
    then `install-package` (official repos only), `fetch-deps`, `new-project`, `publish`, `expose`.
 4. An APK with two isolated tabs for julz and the approver. Notes are in Claude memory
@@ -56,7 +63,10 @@ SECURITY.md.
 - `RuntimeMaxSec` does nothing for `Type=oneshot`. Use `TimeoutStartSec`, which defaults to
   infinity.
 - `tailscale serve` needs sudo. I did not set `--operator=$USER`, on purpose.
-- A green test can pass for the wrong reason. Mutation testing found four of them this session.
+- A green test can pass for the wrong reason. Mutation testing found five of them this
+  session. A test of a limit must measure the limit, not only the result.
+- A stopped run writes no `.stderr` file, so Claude's error output for that run is lost.
+- Five Claude runs a day (UTC). Testing uses them up fast.
 - "Done, continue" is my claim and nothing checks it. Do the laptop step first, then tap.
 - On its first run the notifier starts at the end of `runner.log`, so old lines are not pushed.
 - Older ones. The model id is `julz:latest`. Copy only the final `claude setup-token` token.
@@ -65,7 +75,7 @@ SECURITY.md.
 
 ## How to resume
     cd ~/Projects/products/julz
-    python3 -m unittest discover -s tests          # 299 tests OK
+    python3 -m unittest discover -s tests          # 335 tests OK
     systemctl --user list-units 'julz*'            # approver, paths, timers active
     ./julz-clean.py --dry-run                      # what the cleaner would remove
     tail ~/.local/share/julz/runner.log            # approvals, runs, needs
