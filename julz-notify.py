@@ -94,6 +94,9 @@ def log_notice(entry: dict) -> Notice | None:
             return None  # the run done notice already said it
         return Notice(f"julz: task failed {h}", "A task ended without finishing. "
                       "See runner.log on the laptop.", priority="high", tags="warning")
+    if action == "clean-warn":
+        return Notice(f"julz: work copy {h} goes in 24 h", "Merge anything you want to keep "
+                      "from it before then.", tags="wastebasket")
     if action == "refuse":
         return Notice(f"julz: refused {h}", "An approved spec failed the runner checks. "
                       "See runner.log on the laptop.", priority="high", tags="warning")

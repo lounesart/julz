@@ -1,0 +1,26 @@
+# Removes delegation leftovers (julz-clean.py). SECURITY.md threats 44 to 46.
+# Started only by julz-clean.timer or by hand: nothing julz can reach starts it.
+[Unit]
+Description=julz: remove delegation leftovers
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/Projects/products/julz/julz-clean.py
+UMask=0077
+TimeoutStartSec=10min
+Nice=10
+# Sandbox: an empty read only home, only the folders it cleans bound back. The token, keys,
+# ~/.ssh and my real projects are not even visible, whatever a planted link points at
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateNetwork=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/Projects/products/julz
+BindPaths=%h/.local/share/julz/work %h/.local/share/julz/approved
+BindPaths=%h/.local/share/julz/done %h/.local/share/julz/quarantine
+BindPaths=%h/.local/share/julz/tasks %h/.local/share/julz/runner.log
+BindPaths=%h/Documents/julz-mem/Inbox/claude %h/Documents/julz-mem/Outbox
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

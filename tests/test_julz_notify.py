@@ -64,7 +64,7 @@ class TemplateTest(Base):
         for action, status in (("refuse", "refused"), ("run", "failed"), ("run", "quarantined"),
                                ("run", "ok"), ("reject", "ok"), ("enroll", "ok"),
                                ("need", "ok"), ("expire", "ok"), ("stop", "ok"),
-                               ("task-end", "failed")):
+                               ("task-end", "failed"), ("clean-warn", "ok")):
             with self.subTest(action=action, status=status):
                 n = notify.log_notice({"action": action, "status": status, "sha256": H,
                                        "reason": SECRET})
@@ -88,13 +88,14 @@ class TemplateTest(Base):
                       {"action": "run", "status": "ok"}, {"action": "run", "status": "quarantined"},
                       {"action": "run", "status": "failed"}, {"action": "need"},
                       {"action": "expire"}, {"action": "stop"},
-                      {"action": "task-end", "status": "failed"}):
+                      {"action": "task-end", "status": "failed"}, {"action": "clean-warn"}):
             n = notify.log_notice({**entry, "sha256": H})
             (n.title + n.body + n.tags + n.priority).encode("ascii")
         notify.inbox_notice(3).title.encode("ascii")
 
     def test_quiet_lines(self):
         for entry in ({"action": "start"}, {"action": "approve"}, {"action": "unknown"},
+                      {"action": "clean"},
                       {"action": "task-end", "status": "done"},
                       {"action": "approve-channel", "reason": "terminal"}):
             self.assertIsNone(notify.log_notice({"status": "ok", "sha256": H, **entry}))

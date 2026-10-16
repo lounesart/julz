@@ -1,0 +1,12 @@
+[Unit]
+Description=julz: remove delegation leftovers daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+# Runs at the next start if the laptop was off at midnight
+Persistent=true
+Unit=julz-clean.service
+
+[Install]
+WantedBy=timers.target

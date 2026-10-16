@@ -373,7 +373,7 @@ New trust boundaries:
 | 41 | **Approver hacked, then the token or host** (E, I) | Host | L / H / **Med** | Approver is its own process and systemd unit, never reads `claude-token.env`. Unit hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths` only `approved/` and its state, read only Inbox and Outbox, `PrivateTmp`. Dependency `python-fido2` from Arch `extra`, no pip | `systemd-analyze security` score noted; reading the token file from the unit fails | A05, A06 |
 | 42 | **Lost phone or Google account takeover** (S) | B10 | L / H / **Med** | Passkey in Google Password Manager syncs, so a takeover can put it on another device, but that device still needs my tailnet and the phone only ACL. Phone lock plus UV for each approval. Lost phone: remove device in Tailscale, `julz-approve-web --revoke` in the terminal | Revoke test: after `--revoke`, the old credential is refused | A07 |
 | 43 | **No record of who approved what** (R) | Host | L / M / **Low** | `runner.log` gets one line per web action: time, action, spec hash, credential id, sign counter. Same host only log as 29 | Test: approve, reject, stop, continue each write one line | A09 |
-| 44 | **Cleaner deletes outside its folders.** Claude plants a symlink in a work copy pointing at `~/Projects`, a naive `rm -rf` follows it (T, D) | Host | M / H / **High** | `julz-clean.py` deletes only direct children of its own folders, checks each with `O_NOFOLLOW` and `lstat`, removes trees with `shutil.rmtree` (fd based on Linux, `avoids_symlink_attacks`). Only the host starts it: systemd user timer, after a run, or by hand | Tests: symlink to a temp "project" inside a work copy, symlink as the work copy itself: target untouched; mutation following links fails | CWE-59, CWE-22, A01 |
+| 44 | **Cleaner deletes outside its folders.** Claude plants a symlink in a work copy pointing at `~/Projects`, a naive `rm -rf` follows it (T, D) | Host | M / H / **High** | `julz-clean.py` deletes only direct children of its own folders, checks each with `O_NOFOLLOW` and `lstat`, removes trees with `shutil.rmtree` (fd based on Linux, `avoids_symlink_attacks`). Only the host starts it: a daily systemd user timer or by hand | Tests: symlink to a temp "project" inside a work copy, symlink as the work copy itself: target untouched; mutation following links fails | CWE-59, CWE-22, A01 |
 | 45 | **Cleaner switches off a control or destroys evidence.** Deleting `done/` lets a spent spec run again (22); deleting quarantine hides a token leak (R, E) | Host | M / H / **High** | `done/<hash>.md` names kept forever, only content emptied after 30 days. Quarantine kept 30 days, every new item pushes "rotate the token" at once. `runner.log` rotated, never deleted by the cleaner | Tests: after cleaning, a spent hash is still refused by `store_approved`; quarantine younger than 30 days survives | A09, A08 |
 | 46 | **Leftovers keep secrets or code around** (I) | Host | M / M / **Med** | Retention: work copies 7 days after the run (push 24 h before), unapproved Inbox specs 7 days, approvals never run expire after 24 h into `done/`, Outbox 30 days. Every deletion logged. `--dry-run` shows the plan. Phase 2: only docker objects labelled `julz.task=<hash>`, never `docker system prune` | Tests per rule with fake clock: old item removed, young item kept, log line written | A04, A02 |
 
@@ -478,6 +478,25 @@ killed after closing the gaps they showed:
   context, so it reaches Anthropic. Recon value only.
 - Later: a typed answer from the phone ("paste the output here") would be a new input channel
   into Claude's prompt and needs its own threat row before it exists.
+
+Built step 5 (2026-10-16), `julz-clean.py`, `julz-clean.timer` (daily, catches up after the
+laptop was off). 27 tests, 19 of 19 mutations killed, 299 tests in total:
+- Plan first, then apply; `--dry-run` prints the plan. Rules as in threat 46, plus: finished
+  task files 30 days, interrupted writes (`approved/.tmp`, `tasks/*.tmp`) 1 hour. Work copy age
+  is the task's last run from runner.log (continuations mapped to their root), not folder time.
+- Links (44): top folders checked with lstat and refused if a link; a link anywhere is removed
+  as a link; trees only by `shutil.rmtree` (fd based, checked at run time). Tests plant links to
+  a stand in for ~/Projects inside a work copy, as a work copy, as `work/` itself, in the inbox:
+  the target survives every time. Only known names (hashes) are touched, others are listed.
+- Controls (45): `done/` names kept forever, text emptied after 30 days, a test proves the spent
+  spec still cannot be approved again; runner.log never touched; waiting or approved tasks keep
+  their work copy. An approval not run in 24 hours is marked spent with an empty `done/` marker,
+  never renamed (separate mounts in the sandbox), and its task expires.
+- The unit is the strictest so far: empty read only home, only the folders it cleans,
+  `PrivateNetwork=yes`. A sandbox test runs the cleaner under systemd-run with separate mounts;
+  with a rename instead of the marker every plain test still passes and only that one fails.
+- First run on the laptop: 0 actions (everything from today). runner.log rotation is not built:
+  it grows about 1 KB a day.
 
 ## Known issues
 - v0.11.4 title generation crashes (`KeyError: 'model'` in `background_tasks_handler`), which
