@@ -20,6 +20,7 @@ BindReadOnlyPaths=%h/Projects/products/julz
 BindPaths=%h/.local/share/julz/work %h/.local/share/julz/approved
 BindPaths=%h/.local/share/julz/done %h/.local/share/julz/quarantine
 BindPaths=%h/.local/share/julz/tasks %h/.local/share/julz/runner.log
+BindPaths=%h/.local/share/julz/control
 BindPaths=%h/Documents/julz-mem/Inbox/claude %h/Documents/julz-mem/Outbox
 RestrictAddressFamilies=AF_UNIX
 SystemCallArchitectures=native

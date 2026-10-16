@@ -188,6 +188,13 @@ def plan(dirs: gate.Dirs, inbox: Path, work_root: Path, now: float) -> tuple[lis
                 and age(p, now) > TASK_KEEP:
             actions.append(Action("delete", p, "finished task, 30 days", p.stem))
 
+    # stop requests and interrupted writes in control/; running.json is the runner's own
+    for p in children(dirs.control):
+        known = (p.name.startswith("stop-") and gate.HEX64.match(p.name[5:])) \
+            or (p.name.startswith(".running.") and p.name.endswith(".tmp"))
+        if known and age(p, now) > TMP_KEEP:
+            actions.append(Action("delete", p, "stop request or interrupted write, 1 hour"))
+
     # done/: the names are the run once record, kept forever; only the text goes
     for p in children(dirs.done):
         if gate.APPROVED_NAME.match(p.name) and not p.is_symlink() \

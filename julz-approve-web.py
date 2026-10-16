@@ -191,7 +191,17 @@ class App:
         shown, refused, waiting = self.specs()
         return {"enrolled": wa.load_credential(self.pk.cred_file) is not None,
                 "specs": shown, "refused": refused, "waiting": waiting,
-                "needs": self.needs()}
+                "needs": self.needs(), "running": self.running()}
+
+    def running(self) -> dict | None:
+        """The run going now, with the text to sign to stop it (threat 47)."""
+        run = gate.current_run(self.dirs, self.pk.clock())
+        if run is None:
+            return None
+        text = gate.halt_text(run)
+        return {"sha256": run["sha256"], "project": run.get("project", ""),
+                "goal": run.get("goal", ""), "step": run.get("step", 1),
+                "started": run["started"], "text": text, "text_sha256": gate.sha256(text)}
 
     # ---------- signed actions ----------
 
@@ -206,8 +216,14 @@ class App:
             # The text to sign is built from host task state, never sent by the page
             key = data.get("root")
             match = [n for n in self.needs() if n["root"] == key]
+        elif action == "halt":
+            # Only the run going now, with the text built from running.json
+            run = self.running()
+            key = data.get("run")
+            match = [{"text": run["text"], "sha256": run["text_sha256"]}] \
+                if run and run["sha256"] == key else []
         else:
-            raise HTTPError(400, "action must be approve, reject, continue or stop")
+            raise HTTPError(400, "action must be approve, reject, continue, stop or halt")
         if not match:
             raise HTTPError(404, "not in the list: reload")
         if match[0]["sha256"] != seen:
@@ -233,6 +249,9 @@ class App:
         if action == "stop":
             gate.stop_task(text, self.dirs, self.pk.clock())
             return {"done": "stopped", "sha256": digest}
+        if action == "halt":
+            run = gate.request_halt(text, self.dirs, self.pk.clock())
+            return {"done": "stopping", "sha256": run}
         if action == "approve":
             gate.store_approved(text, self.dirs, gate.load_projects(self.projects_file))
             gate.log(self.dirs, "approve-channel", digest, "ok", "phone")

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -494,6 +495,110 @@ class TaskTest(unittest.TestCase):
         self.assertEqual(len(list(self.dirs.tasks.iterdir())), 1)
 
 
+class HaltTest(unittest.TestCase):
+    """Threats 47 and 48: only the run going now can be stopped, by an exact signed text."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dirs = gate.Dirs(Path(self.tmp.name) / "gate")
+        self.seen_run = None
+        self.stop_now = False
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def fake_claude(self, job, text):
+        # While "Claude" works, the approver can see the run and ask to stop it
+        self.seen_run = gate.current_run(self.dirs, time.time())
+        if self.stop_now:
+            gate.request_halt(gate.halt_text(self.seen_run), self.dirs, time.time())
+            if gate.stop_requested(self.dirs, sha(text)):
+                raise gate.RunStopped("stopped")
+        return gate.RunResult("report", None)
+
+    def run_one(self):
+        gate.store_approved(GOOD, self.dirs, PROJECTS)
+        return gate.run_next(self.dirs, PROJECTS, self.fake_claude, [TOKEN], 20)
+
+    def log_entries(self):
+        return [json.loads(l) for l in self.dirs.log.read_text().splitlines()]
+
+    def test_running_file_during_run_only(self):
+        self.run_one()
+        self.assertEqual(self.seen_run["sha256"], sha(GOOD))
+        self.assertEqual(self.seen_run["goal"], "add a usage line to the README")
+        self.assertFalse(self.dirs.running.exists())
+        self.assertIsNone(gate.current_run(self.dirs, time.time()))
+
+    def test_stopped_run_logged_no_report(self):
+        self.stop_now = True
+        self.run_one()
+        runs = [e for e in self.log_entries() if e["action"] == "run"]
+        self.assertEqual(runs[-1]["status"], "stopped")
+        self.assertIn("halt", [e["action"] for e in self.log_entries()])
+        self.assertFalse((self.dirs.outbox / f"{sha(GOOD)}.md").exists())
+        self.assertFalse(self.dirs.running.exists())
+
+    def write_running(self, started=None, digest=None):
+        self.dirs.ensure()
+        run = {"sha256": digest or sha(GOOD), "root": sha(GOOD), "step": 1,
+               "project": "julz-sandbox", "goal": "g",
+               "started": started or datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        self.dirs.running.write_text(json.dumps(run))
+        return run
+
+    def test_halt_writes_stop_file(self):
+        run = self.write_running()
+        self.assertEqual(gate.request_halt(gate.halt_text(run), self.dirs, time.time()),
+                         sha(GOOD))
+        self.assertTrue(gate.stop_requested(self.dirs, sha(GOOD)))
+
+    def test_halt_for_other_run_refused(self):
+        run = self.write_running()
+        for text in (gate.halt_text({**run, "sha256": "c" * 64}),
+                     gate.halt_text({**run, "started": "2026-01-01T00:00:00+00:00"}),
+                     gate.halt_text(run) + "goal: also push\n",
+                     gate.halt_text(run).replace("halt:", "stop:")):
+            with self.subTest(text=text):
+                with self.assertRaises(gate.SpecError):
+                    gate.request_halt(text, self.dirs, time.time())
+        self.assertFalse(any(self.dirs.control.glob("stop-*")))
+
+    def test_no_run_no_halt(self):
+        self.dirs.ensure()
+        fake = {"sha256": sha(GOOD), "started": "2026-10-16T02:00:00+00:00"}
+        with self.assertRaises(gate.SpecError):
+            gate.request_halt(gate.halt_text(fake), self.dirs, time.time())
+
+    def test_stale_running_file_ignored(self):
+        old = datetime.fromtimestamp(time.time() - gate.RUN_STALE - 60, timezone.utc)
+        run = self.write_running(started=old.isoformat(timespec="seconds"))
+        self.assertIsNone(gate.current_run(self.dirs, time.time()))
+        with self.assertRaises(gate.SpecError):
+            gate.request_halt(gate.halt_text(run), self.dirs, time.time())
+
+    def test_halt_once(self):
+        run = self.write_running()
+        gate.request_halt(gate.halt_text(run), self.dirs, time.time())
+        with self.assertRaises(gate.SpecError):
+            gate.request_halt(gate.halt_text(run), self.dirs, time.time())
+
+    def test_bad_running_file_ignored(self):
+        self.write_running(digest="../../etc")
+        self.assertIsNone(gate.current_run(self.dirs, time.time()))
+
+    def test_stopped_continuation_stops_task(self):
+        root = sha(GOOD)
+        gate.store_approved(GOOD, self.dirs, PROJECTS)
+        need = {"need": "install foo", "why": "x"}
+        gate.run_next(self.dirs, PROJECTS, lambda j, t: gate.RunResult("r", need), [TOKEN], 20)
+        text = gate.open_needs(self.dirs, time.time())[0]["text"]
+        gate.store_continuation(text, self.dirs, time.time())
+        self.stop_now = True
+        gate.run_next(self.dirs, PROJECTS, self.fake_claude, [TOKEN], 20)
+        self.assertEqual(gate.load_task(self.dirs, root)["status"], "stopped")
+
+
 class AtomicApproveTest(unittest.TestCase):
     """A path unit starts the runner as soon as a name appears in approved/, so that name
     must only ever appear with the whole text in it (CWE-362)."""
@@ -533,6 +638,7 @@ SANDBOX_SNIPPET = """
 import sys, time
 sys.path.insert(0, sys.argv[1])
 import julz_gate as gate
+from datetime import datetime, timezone
 from pathlib import Path
 dirs = gate.Dirs(Path(sys.argv[2]))
 spec = sys.argv[3]

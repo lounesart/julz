@@ -54,6 +54,10 @@ class GateBusy(GateError):
     pass
 
 
+class RunStopped(GateError):
+    """Raised by a runner when I stopped the run from the phone (threats 47, 48)."""
+
+
 class Dirs:
     """Where the gate keeps its files. None of these may be mounted into a container,
     except outbox, which julz reads through a read only mount."""
@@ -71,9 +75,14 @@ class Dirs:
         self.outbox = Path(outbox) if outbox else base / "outbox"
         self.log = base / "runner.log"
         self.lockfile = base / "run.lock"
+        # What runs now and my stop requests. The approver may read and write here, the
+        # container never sees it
+        self.control = base / "control"
+        self.running = self.control / "running.json"
 
     def ensure(self):
-        for d in (self.approved, self.done, self.quarantine, self.tmp, self.tasks, self.outbox):
+        for d in (self.approved, self.done, self.quarantine, self.tmp, self.tasks, self.control,
+                  self.outbox):
             d.mkdir(mode=0o700, parents=True, exist_ok=True)
 
 
@@ -403,6 +412,63 @@ def load_job(text: str, dirs: Dirs, projects) -> dict:
             "need": task["need"], "why": task["why"], "previous_report": previous}
 
 
+# ---------- stopping a run from the phone (threats 47, 48) ----------
+
+HALT_FIELDS = ("halt", "started")
+RUN_STALE = 20 * 60  # longer than the runner's timeout: an older running.json is left over
+
+
+def set_running(dirs: Dirs, digest: str, job: dict):
+    dirs.ensure()
+    data = {"sha256": digest, "root": job["root"], "step": job["step"],
+            "project": job["project"], "goal": job["goal"],
+            "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    tmp = dirs.control / f".running.{time.time_ns()}.tmp"
+    write_new(tmp, json.dumps(data), 0o600, GateError("temp file exists"))
+    os.replace(tmp, dirs.running)
+
+
+def clear_running(dirs: Dirs):
+    dirs.running.unlink(missing_ok=True)
+
+
+def current_run(dirs: Dirs, now: float) -> dict | None:
+    """What runs now, for the approver page, or None. A file left by a killed runner is
+    ignored once it is older than any run can be."""
+    try:
+        run = json.loads(read_regular(dirs.running, MAX_CONFIG_BYTES))
+        started = datetime.fromisoformat(run["started"]).timestamp()
+    except (SpecError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(run.get("sha256"), str) or not HEX64.match(run["sha256"]) \
+            or now - started > RUN_STALE:
+        return None
+    return run
+
+
+def halt_text(run: dict) -> str:
+    """What I sign to stop a run: the run's hash and when it started."""
+    return f"halt: {run['sha256']}\nstarted: {run['started']}\n"
+
+
+def request_halt(text: str, dirs: Dirs, now: float) -> str:
+    """I signed a stop for the run in text. Only the run that is going now can be stopped,
+    and only with the exact text built from its running.json. Returns the run's hash."""
+    fields = parse_fields(text, HALT_FIELDS)
+    run = current_run(dirs, now)
+    if run is None or text != halt_text(run) or fields["halt"] != run["sha256"]:
+        raise SpecError("that run is not running any more")
+    write_new(dirs.control / f"stop-{run['sha256']}", text, 0o600,
+              SpecError("stop already requested"))
+    log(dirs, "halt", run["sha256"], "ok", "phone")
+    return run["sha256"]
+
+
+def stop_requested(dirs: Dirs, digest: str) -> bool:
+    """The runner asks this once a second while Claude runs."""
+    return os.path.lexists(dirs.control / f"stop-{digest}")
+
+
 def settle_task(dirs: Dirs, job: dict, digest: str, status: str, need: dict | None):
     """After a run: open a need, end the task, or nothing (a plain run without a need).
     deliver() already dropped the need of a held back or failed run."""
@@ -414,7 +480,7 @@ def settle_task(dirs: Dirs, job: dict, digest: str, status: str, need: dict | No
         task = {"root": job["root"], "project": job["project"], "goal": job["goal"]}
     task["step"] = job["step"]
     if need is None:
-        task["status"] = "done" if status == "ok" else "failed"
+        task["status"] = {"ok": "done", "stopped": "stopped"}.get(status, "failed")
         save_task(dirs, task)
         log(dirs, "task-end", job["root"], task["status"], f"step {job['step']}")
         return
@@ -480,7 +546,12 @@ def _run_next(dirs, projects, runner, secrets, max_per_day):
         os.replace(path, dirs.done / path.name)
         # Logged before the run, so a run that gets killed still leaves a trace (threat 29)
         log(dirs, "start", digest, "ok")
-        status, reason, report_hash, need = deliver(dirs, digest, job, text, runner, secrets)
+        set_running(dirs, digest, job)
+        try:
+            status, reason, report_hash, need = deliver(dirs, digest, job, text, runner,
+                                                        secrets)
+        finally:
+            clear_running(dirs)
         log(dirs, "run", digest, status, reason, report_hash)
         settle_task(dirs, job, digest, status, need)
         return digest
@@ -490,6 +561,8 @@ def _run_next(dirs, projects, runner, secrets, max_per_day):
 def deliver(dirs, digest, job, text, runner, secrets) -> tuple[str, str, str, dict | None]:
     try:
         report = runner(job, text)
+    except RunStopped:
+        return "stopped", "stopped from the phone", "", None
     except Exception as e:
         # Only the exception type: its message could quote the token or the report
         return "failed", type(e).__name__, "", None

@@ -193,7 +193,32 @@ def parse_result(stdout: str) -> str:
     return data["result"]
 
 
-def make_runner(projects: dict, work_root: Path, binary: Path, token: str, timeout: int):
+def run_claude(argv: list[str], prompt: str, env: dict, timeout: int, stop) -> tuple:
+    """Run the sandbox and wait in 1 second steps, so a stop from the phone is seen while
+    Claude works. Killing bwrap ends everything inside: it is pid 1 of the sandbox's own pid
+    namespace and runs with --die-with-parent (threat 48). Returns (code, stdout, stderr)."""
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, env=env)
+    deadline = time.monotonic() + timeout
+    feed = prompt
+    while True:
+        try:
+            out, err = proc.communicate(input=feed, timeout=1)
+            return proc.returncode, out, err
+        except subprocess.TimeoutExpired:
+            feed = None  # the prompt is sent once; later calls keep reading the output
+            if stop():
+                proc.kill()
+                proc.communicate()
+                raise gate.RunStopped("stopped from the phone")
+            if time.monotonic() > deadline:
+                proc.kill()
+                proc.communicate()
+                raise
+
+
+def make_runner(projects: dict, work_root: Path, binary: Path, token: str, timeout: int,
+                stop_check=lambda digest: False):
     def runner(spec: dict, text: str) -> gate.RunResult:
         project = Path(projects[spec["project"]])
         if not project.is_dir():
@@ -208,14 +233,13 @@ def make_runner(projects: dict, work_root: Path, binary: Path, token: str, timeo
         else:
             prepare_workdir(project, work)
             prompt = PROMPT.format(**spec)
-        r = subprocess.run(full_argv(work, binary), input=prompt,
-                           capture_output=True, text=True, env=sandbox_env(token),
-                           timeout=timeout)
-        gate.write_new(Path(work_root) / f"{digest}.stderr", r.stderr[-MAX_STDERR:], 0o600,
+        code, out, err = run_claude(full_argv(work, binary), prompt, sandbox_env(token),
+                                    timeout, lambda: stop_check(digest))
+        gate.write_new(Path(work_root) / f"{digest}.stderr", err[-MAX_STDERR:], 0o600,
                        gate.GateError("stderr file exists"))
-        if r.returncode != 0:
-            raise RuntimeError(f"claude exited {r.returncode}")
-        result = parse_result(r.stdout)
+        if code != 0:
+            raise RuntimeError(f"claude exited {code}")
+        result = parse_result(out)
         need = gate.parse_need(result)  # raises on an odd block: the run fails (threat 38)
         changes = changed_files(project, work) or ["none"]
         step = f", step {spec['step']} of task {spec['root']}" if spec.get("step", 1) > 1 else ""
@@ -234,8 +258,9 @@ def main():
     except gate.GateError as e:
         sys.exit(str(e))
     binary = CLAUDE_LINK.resolve()
-    runner = make_runner(projects, WORK_ROOT, binary, token, TIMEOUT)
     dirs = gate.Dirs(GATE_DIR, outbox=OUTBOX)
+    runner = make_runner(projects, WORK_ROOT, binary, token, TIMEOUT,
+                         lambda digest: gate.stop_requested(dirs, digest))
     # The timer starts this every 10 minutes: a good moment to end needs nobody answered
     gate.expire_tasks(dirs, time.time())
     # --until-empty (systemd): an approval that lands while a run is going would be missed by

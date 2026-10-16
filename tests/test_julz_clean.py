@@ -269,6 +269,21 @@ class GateFilesTest(Base):
         self.assertFalse(t2.exists())
         self.assertTrue(young.exists())
 
+    def test_old_stop_requests_removed(self):
+        old = self.dirs.control / f"stop-{H}"
+        old.write_text("halt")
+        aged(old, 1)
+        young = self.dirs.control / f"stop-{H2}"
+        young.write_text("halt")
+        aged(young, 10 / (24 * 60))
+        running = self.dirs.running
+        running.write_text("{}")
+        aged(running, 5)
+        self.run_clean()
+        self.assertFalse(old.exists())
+        self.assertTrue(young.exists())
+        self.assertTrue(running.exists())  # the runner's own file, never the cleaner's
+
     def test_finished_task_removed_active_kept(self):
         gate.save_task(self.dirs, {"root": H, "status": "done", "step": 2})
         gate.save_task(self.dirs, {"root": H2, "status": "waiting", "step": 2})

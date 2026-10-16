@@ -111,6 +111,22 @@ function needCard(n) {
   return c;
 }
 
+// The run going now. Stop kills Claude's sandbox; the work copy stays for me to look at.
+function runningCard(r) {
+  const c = el("article", undefined, "card need");
+  c.append(el("h2", `Running now, ${r.project}, step ${r.step}`), el("p", r.goal, "muted"),
+           el("p", `started ${r.started}`, "hash"), el("pre", r.text),
+           el("p", `sha256 ${r.text_sha256}`, "hash"));
+  const row = el("div", undefined, "row");
+  const stop = el("button", "Stop run", "reject");
+  stop.type = "button";
+  stop.addEventListener("click",
+    () => act("halt", { run: r.sha256, sha256: r.text_sha256 }, [stop]));
+  row.append(stop);
+  c.append(row);
+  return c;
+}
+
 async function load() {
   let s;
   try {
@@ -123,7 +139,10 @@ async function load() {
   $("queue").hidden = !s.enrolled;
   const list = $("specs");
   list.replaceChildren();
-  if (!s.specs.length && !s.needs.length) list.append(el("p", "Nothing waiting.", "muted"));
+  if (!s.specs.length && !s.needs.length && !s.running) {
+    list.append(el("p", "Nothing waiting.", "muted"));
+  }
+  if (s.running) list.append(runningCard(s.running));
   for (const n of s.needs) list.append(needCard(n));
   for (const spec of s.specs) list.append(card(spec));
   $("waiting").textContent = s.waiting ? `${s.waiting} more waiting, shown after these` : "";

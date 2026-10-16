@@ -31,7 +31,8 @@ CHALLENGE_TTL = 120
 ENROLL_TTL = 600
 ENROLL_TRIES = 5
 MAX_PENDING = 16
-ACTIONS = ("approve", "reject", "stop", "continue")
+# stop ends a waiting task, halt stops the run going now: never the same signature
+ACTIONS = ("approve", "reject", "stop", "continue", "halt")
 USER = {"id": b"julz-owner", "name": "julz", "displayName": "julz owner"}
 UV_REQUIRED = UserVerificationRequirement.REQUIRED
 

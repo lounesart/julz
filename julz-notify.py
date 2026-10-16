@@ -108,6 +108,9 @@ def log_notice(entry: dict) -> Notice | None:
             return Notice(f"julz: QUARANTINE {h}", "The report was held back. If runner.log says "
                           "secret in report, rotate the Claude token.", priority="urgent",
                           tags="rotating_light")
+        if status == "stopped":
+            return Notice(f"julz: run stopped {h}", "Stopped from the phone. The work copy "
+                          "stays for you to look at.", tags="stop_sign")
         return Notice(f"julz: run failed {h}", "See runner.log on the laptop.", priority="high",
                       tags="warning")
     return None

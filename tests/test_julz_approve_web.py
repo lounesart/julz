@@ -8,7 +8,9 @@ import os
 import re
 import sys
 import tempfile
+import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -477,6 +479,85 @@ class NeedWebTest(Base):
                 status, _, _ = self.post("/api/begin", {"action": "continue", "root": root,
                                                         "sha256": "0" * 64})
                 self.assertEqual(status, 404)
+
+
+class HaltWebTest(Base):
+    """Threat 47 on the page: stopping the run going now needs a signed halt."""
+
+    def setUp(self):
+        super().setUp()
+        self.enroll()
+        self.dirs.ensure()
+        self.run = {"sha256": gate.sha256(GOOD), "root": gate.sha256(GOOD), "step": 1,
+                    "project": "julz-sandbox", "goal": "add a usage line to the README",
+                    "started": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        self.dirs.running.write_text(json.dumps(self.run))
+        # current_run compares with the page clock: align it with the real start time
+        self.clock.now = time.time()
+
+    def halt(self, run_id=None, action="halt", sign_action=None):
+        state = self.state()["running"]
+        _, _, data = self.post("/api/begin", {"action": sign_action or action,
+                                              "run": run_id or state["sha256"],
+                                              "sha256": state["text_sha256"]})
+        if "nonce" not in data:
+            return 404, data
+        status, _, reply = self.post("/api/finish", {"action": action, "nonce": data["nonce"],
+                                                     "credential": self.key.sign(data)})
+        return status, reply
+
+    def test_state_shows_running(self):
+        r = self.state()["running"]
+        self.assertEqual((r["sha256"], r["goal"]), (self.run["sha256"], self.run["goal"]))
+        self.assertEqual(r["text"], gate.halt_text(self.run))
+
+    def test_signed_halt_writes_stop(self):
+        status, reply = self.halt()
+        self.assertEqual(status, 200, reply)
+        self.assertTrue(gate.stop_requested(self.dirs, self.run["sha256"]))
+        self.assertIn('"halt"', self.dirs.log.read_text())
+
+    def test_page_cannot_pick_another_run(self):
+        status, _ = self.halt(run_id="c" * 64)
+        self.assertEqual(status, 404)
+        self.assertFalse(any(self.dirs.control.glob("stop-*")))
+
+    def test_other_action_signature_cannot_halt(self):
+        status, _ = self.halt(sign_action="reject", action="halt")
+        self.assertEqual(status, 404)  # reject needs a spec name, there is none
+        state = self.state()["running"]
+        _, _, data = self.post("/api/begin", {"action": "halt", "run": state["sha256"],
+                                              "sha256": state["text_sha256"]})
+        status, _, _ = self.post("/api/finish", {"action": "stop", "nonce": data["nonce"],
+                                                 "credential": self.key.sign(data)})
+        self.assertEqual(status, 403)
+        self.assertFalse(any(self.dirs.control.glob("stop-*")))
+
+    def test_other_key_cannot_halt(self):
+        state = self.state()["running"]
+        _, _, data = self.post("/api/begin", {"action": "halt", "run": state["sha256"],
+                                              "sha256": state["text_sha256"]})
+        status, _, _ = self.post("/api/finish", {"action": "halt", "nonce": data["nonce"],
+                                                 "credential": softkeys.SoftKey().sign(data)})
+        self.assertEqual(status, 403)
+        self.assertFalse(any(self.dirs.control.glob("stop-*")))
+
+    def test_nothing_running_nothing_to_halt(self):
+        self.dirs.running.unlink()
+        self.assertIsNone(self.state()["running"])
+        status, _, _ = self.post("/api/begin", {"action": "halt", "run": self.run["sha256"],
+                                                "sha256": "0" * 64})
+        self.assertEqual(status, 404)
+
+    def test_run_finished_between_view_and_tap(self):
+        state = self.state()["running"]
+        _, _, data = self.post("/api/begin", {"action": "halt", "run": state["sha256"],
+                                              "sha256": state["text_sha256"]})
+        self.dirs.running.unlink()  # the run ended while I touched the sensor
+        status, _, _ = self.post("/api/finish", {"action": "halt", "nonce": data["nonce"],
+                                                 "credential": self.key.sign(data)})
+        self.assertEqual(status, 409)
+        self.assertFalse(any(self.dirs.control.glob("stop-*")))
 
 
 class EnrollWebTest(Base):

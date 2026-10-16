@@ -64,7 +64,8 @@ class TemplateTest(Base):
         for action, status in (("refuse", "refused"), ("run", "failed"), ("run", "quarantined"),
                                ("run", "ok"), ("reject", "ok"), ("enroll", "ok"),
                                ("need", "ok"), ("expire", "ok"), ("stop", "ok"),
-                               ("task-end", "failed"), ("clean-warn", "ok")):
+                               ("task-end", "failed"), ("clean-warn", "ok"),
+                               ("run", "stopped")):
             with self.subTest(action=action, status=status):
                 n = notify.log_notice({"action": action, "status": status, "sha256": H,
                                        "reason": SECRET})
@@ -95,10 +96,15 @@ class TemplateTest(Base):
 
     def test_quiet_lines(self):
         for entry in ({"action": "start"}, {"action": "approve"}, {"action": "unknown"},
-                      {"action": "clean"},
+                      {"action": "clean"}, {"action": "halt"},
                       {"action": "task-end", "status": "done"},
                       {"action": "approve-channel", "reason": "terminal"}):
             self.assertIsNone(notify.log_notice({"status": "ok", "sha256": H, **entry}))
+
+    def test_stopped_run_is_not_a_failure(self):
+        n = notify.log_notice({"action": "run", "status": "stopped", "sha256": H})
+        self.assertIn("stopped", n.title)
+        self.assertNotIn("failed", n.title)
 
     def test_security_events_are_loud(self):
         self.assertEqual(notify.log_notice({"action": "enroll", "status": "ok"}).priority,

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -323,6 +324,35 @@ class SandboxTest(unittest.TestCase):
         self.assertIn("step 2 of task", out.report)
         self.assertEqual(sorted(p.name for p in self.work_root.iterdir() if p.is_dir()),
                          [gate.sha256(GOOD)])
+
+    def test_stop_kills_everything_in_the_sandbox(self):
+        # Threat 48: after a stop nothing may keep working in the copy. The fake ticks into
+        # a file from a background child, which must die with bwrap too
+        self.binary.write_text("#!/bin/sh\ncat > /dev/null\n"
+                               "( while true; do echo t >> /work/ticks; sleep 0.2; done ) &\n"
+                               "while true; do echo t >> /work/ticks; sleep 0.2; done\n")
+        start = time.monotonic()
+        runner = run.make_runner({"julz-sandbox": str(self.project)}, self.work_root,
+                                 self.binary, TOKEN, timeout=30,
+                                 stop_check=lambda d: time.monotonic() - start > 1.5)
+        with self.assertRaises(gate.RunStopped):
+            runner(self.spec, GOOD)
+        self.assertLess(time.monotonic() - start, 10)
+        ticks = (self.work() / "ticks").read_text().count("t")
+        self.assertGreater(ticks, 3)
+        time.sleep(1)
+        self.assertEqual((self.work() / "ticks").read_text().count("t"), ticks)
+
+    def test_stop_asked_for_this_run_only(self):
+        seen = []
+        runner = run.make_runner({"julz-sandbox": str(self.project)}, self.work_root,
+                                 self.binary, TOKEN, timeout=30,
+                                 stop_check=lambda d: seen.append(d) or False)
+        self.binary.write_text("#!/bin/sh\ncat > /dev/null\nsleep 1.5\n"
+                               "printf '{\"is_error\":false,\"result\":\"ok\"}'\n")
+        runner(self.spec, GOOD)
+        self.assertTrue(seen)
+        self.assertEqual(set(seen), {gate.sha256(GOOD)})
 
     def test_continuation_without_work_copy_fails(self):
         with self.assertRaises(RuntimeError):
