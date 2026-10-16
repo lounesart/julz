@@ -9,6 +9,7 @@
 | `julz-notify-inbox.path` and `.service` | Inbox change, then "N specs waiting" (rate limited) |
 | `julz-notify-log.path` and `.service` | New `runner.log` line, then a short notice |
 | `julz-clean.timer` and `.service` | Daily, removes leftovers (julz-clean.py), sandboxed, no network |
+| `julz-clean.path` | A change in `tasks/` runs the cleaner, so Delete on the phone acts within seconds |
 
 To install, copy the units and enable them. They are copies, so a change in the repo does not
 change a running unit by itself.
@@ -17,7 +18,7 @@ change a running unit by itself.
     systemctl --user daemon-reload
     systemctl --user enable --now julz-approver.service julz-run.path julz-run.timer
     systemctl --user enable --now julz-notify-inbox.path julz-notify-log.path
-    systemctl --user enable --now julz-clean.timer
+    systemctl --user enable --now julz-clean.timer julz-clean.path
 
 The phone reaches the approver through tailscale serve. That needs sudo once, outside systemd,
 and tcp 8443 for the phone in the tailnet grant.

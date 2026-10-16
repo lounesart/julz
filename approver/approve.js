@@ -92,20 +92,28 @@ function card(spec) {
 
 // A blocked task: I do what Claude asked on the laptop, then sign "done", or stop the task.
 // The text I sign comes from host task state and names the exact need shown here.
+// A stopped run waits the same way: Continue carries on, Delete removes the work copy.
 function needCard(n) {
   const c = el("article", undefined, "card need");
-  c.append(el("h2", `Claude needs you, ${n.project}, step ${n.step}`), el("p", n.goal, "muted"),
-           el("p", `need: ${n.need}`, "needline"), el("p", `why: ${n.why}`),
-           el("p", `/work on the laptop is ${n.work}`, "hash"),
-           el("p", "Tap Done only after you did it on the laptop.", "bad"),
-           el("pre", n.text), el("p", `sha256 ${n.sha256}`, "hash"));
+  const title = n.stopped ? `Stopped, ${n.project}, next step ${n.step}`
+                          : `Claude needs you, ${n.project}, step ${n.step}`;
+  c.append(el("h2", title), el("p", n.goal, "muted"));
+  if (n.stopped) {
+    c.append(el("p", n.need, "needline"), el("p", n.why),
+             el("p", `work copy on the laptop: ${n.work}`, "hash"));
+  } else {
+    c.append(el("p", `need: ${n.need}`, "needline"), el("p", `why: ${n.why}`),
+             el("p", `/work on the laptop is ${n.work}`, "hash"),
+             el("p", "Tap Done only after you did it on the laptop.", "bad"));
+  }
+  c.append(el("pre", n.text), el("p", `sha256 ${n.sha256}`, "hash"));
   const row = el("div", undefined, "row");
-  const yes = el("button", "Done, continue", "approve");
-  const no = el("button", "Stop task", "reject");
+  const yes = el("button", n.stopped ? "Continue" : "Done, continue", "approve");
+  const no = el("button", n.stopped ? "Delete" : "Stop task", "reject");
   yes.type = no.type = "button";
   const body = { root: n.root, sha256: n.sha256 };
   yes.addEventListener("click", () => act("continue", body, [yes, no]));
-  no.addEventListener("click", () => act("stop", body, [yes, no]));
+  no.addEventListener("click", () => act(n.stopped ? "discard" : "stop", body, [yes, no]));
   row.append(yes, no);
   c.append(row);
   return c;
@@ -127,14 +135,22 @@ function runningCard(r) {
   return c;
 }
 
-async function load() {
+// Auto reload: the page asks for the state every few seconds while it is visible, and draws
+// again only when something changed, so a card never moves under my thumb.
+let busy = false;
+let shown = "";
+
+async function load(force = true) {
   let s;
   try {
     s = await api("/api/state");
   } catch (e) {
-    status(e.message, true);
+    if (force) status(e.message, true);
     return;
   }
+  const key = JSON.stringify(s);
+  if (!force && key === shown) return;
+  shown = key;
   $("enroll").hidden = s.enrolled;
   $("queue").hidden = !s.enrolled;
   const list = $("specs");
@@ -149,11 +165,24 @@ async function load() {
   const refused = $("refused");
   refused.replaceChildren();
   for (const r of s.refused) refused.append(el("p", `refused ${r.name}: ${r.reason}`, "bad"));
+  const recent = $("recent-list");
+  recent.replaceChildren();
+  if (!s.recent.length) recent.append(el("p", "No runs yet.", "muted"));
+  for (const r of s.recent) {
+    const line = el("p", undefined, "recent");
+    line.append(el("span", r.time, "hash"), el("span", ` ${r.status} `, `st-${r.status}`),
+                el("span", r.goal || r.sha256.slice(0, 12)));
+    recent.append(line);
+  }
 }
 
+const LABELS = { approve: "approve", reject: "reject", continue: "continue",
+                 stop: "stop the task", halt: "stop the run", discard: "delete" };
+
 async function act(action, body, buttons) {
+  busy = true;
   buttons.forEach((b) => (b.disabled = true));
-  status(`Touch the sensor to ${action}.`);
+  status(`Touch the sensor to ${LABELS[action] || action}.`);
   try {
     const b = await api("/api/begin", { action, ...body });
     const cred = await navigator.credentials.get({ publicKey: requestOptions(b.publicKey) });
@@ -162,6 +191,7 @@ async function act(action, body, buttons) {
   } catch (e) {
     status(e.message, true);
   }
+  busy = false;
   load();
 }
 
@@ -181,5 +211,11 @@ async function enroll() {
 }
 
 $("reload").addEventListener("click", () => { status(""); load(); });
+setInterval(() => {
+  if (!busy && document.visibilityState === "visible") load(false);
+}, 5000);
+document.addEventListener("visibilitychange", () => {
+  if (!busy && document.visibilityState === "visible") load(false);
+});
 $("enroll-btn").addEventListener("click", enroll);
 load();

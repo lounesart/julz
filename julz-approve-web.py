@@ -44,6 +44,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "approver"
 
 MAX_BODY = 16_000
 MAX_SHOWN = 3
+MAX_RECENT = 5
+LOG_TAIL = 64_000  # the log has no rotation yet: read only its end
 STATIC = {"/": ("index.html", "text/html; charset=utf-8"),
           "/approve.js": ("approve.js", "text/javascript; charset=utf-8"),
           "/approve.css": ("approve.css", "text/css; charset=utf-8")}
@@ -184,14 +186,66 @@ class App:
         # Claude says /work; on the laptop that is the task's work copy. Shown so I do the
         # step in the right place (found on 2026-10-16, see SECURITY.md step 3)
         work = self.dirs.log.parent / "work"
-        return [{**{k: n[k] for k in keys}, "work": str(work / n["root"])}
-                for n in gate.open_needs(self.dirs, self.pk.clock())[:MAX_SHOWN]]
+        out = []
+        for n in gate.open_needs(self.dirs, self.pk.clock())[:MAX_SHOWN]:
+            try:
+                stopped = bool(gate.load_task(self.dirs, n["root"]).get("stopped"))
+            except gate.SpecError:
+                stopped = False
+            out.append({**{k: n[k] for k in keys}, "work": str(work / n["root"]),
+                        "stopped": stopped})
+        return out
+
+    def goal_of(self, digest: str) -> str:
+        """The goal line of a spec in done/, following a continuation to its root."""
+        for _ in range(2):
+            try:
+                text = gate.decode(gate.read_regular(self.dirs.done / f"{digest}.md",
+                                                     gate.MAX_SPEC_BYTES))
+            except gate.SpecError:
+                return ""
+            first = text.split("\n", 1)[0]
+            if first.startswith("continue:"):
+                digest = first[len("continue:"):].strip()
+                if not gate.HEX64.match(digest):
+                    return ""
+                continue
+            for line in text.split("\n"):
+                if line.startswith("goal:"):
+                    return line[5:].strip()
+            return ""
+        return ""
+
+    def recent(self) -> list[dict]:
+        """The last runs and how they ended, newest first. Text only, from runner.log."""
+        try:
+            with open(self.dirs.log, "rb") as f:
+                f.seek(max(0, f.seek(0, 2) - LOG_TAIL))
+                tail = f.read().decode("utf-8", "replace").splitlines()[1:]
+        except OSError:
+            return []
+        runs = []
+        for line in reversed(tail):
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            digest = e.get("sha256", "") if isinstance(e, dict) else ""
+            if e.get("action") != "run" or not isinstance(digest, str) \
+                    or not gate.HEX64.match(digest):
+                continue
+            runs.append({"time": str(e.get("time", ""))[:19].replace("T", " "),
+                         "sha256": digest, "status": str(e.get("status", ""))[:20],
+                         "goal": self.goal_of(digest)[:200]})
+            if len(runs) == MAX_RECENT:
+                break
+        return runs
 
     def state(self) -> dict:
         shown, refused, waiting = self.specs()
         return {"enrolled": wa.load_credential(self.pk.cred_file) is not None,
                 "specs": shown, "refused": refused, "waiting": waiting,
-                "needs": self.needs(), "running": self.running()}
+                "needs": self.needs(), "running": self.running(), "recent": self.recent()}
 
     def running(self) -> dict | None:
         """The run going now, with the text to sign to stop it (threat 47)."""
@@ -212,7 +266,7 @@ class App:
             shown, _, _ = self.specs()
             match = [s for s in shown if s["name"] == self.spec_path(name).name]
             key = name
-        elif action in ("continue", "stop"):
+        elif action in ("continue", "stop", "discard"):
             # The text to sign is built from host task state, never sent by the page
             key = data.get("root")
             match = [n for n in self.needs() if n["root"] == key]
@@ -223,7 +277,7 @@ class App:
             match = [{"text": run["text"], "sha256": run["text_sha256"]}] \
                 if run and run["sha256"] == key else []
         else:
-            raise HTTPError(400, "action must be approve, reject, continue, stop or halt")
+            raise HTTPError(400, "unknown action")
         if not match:
             raise HTTPError(404, "not in the list: reload")
         if match[0]["sha256"] != seen:
@@ -252,6 +306,9 @@ class App:
         if action == "halt":
             run = gate.request_halt(text, self.dirs, self.pk.clock())
             return {"done": "stopping", "sha256": run}
+        if action == "discard":
+            gate.discard_task(text, self.dirs, self.pk.clock())
+            return {"done": "deleted", "sha256": digest}
         if action == "approve":
             gate.store_approved(text, self.dirs, gate.load_projects(self.projects_file))
             gate.log(self.dirs, "approve-channel", digest, "ok", "phone")

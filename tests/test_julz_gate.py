@@ -587,7 +587,47 @@ class HaltTest(unittest.TestCase):
         self.write_running(digest="../../etc")
         self.assertIsNone(gate.current_run(self.dirs, time.time()))
 
-    def test_stopped_continuation_stops_task(self):
+    def stop_first_run(self):
+        self.stop_now = True
+        self.run_one()
+        self.stop_now = False
+        return gate.open_needs(self.dirs, time.time())
+
+    def test_stopped_run_waits_for_continue_or_delete(self):
+        needs = self.stop_first_run()
+        self.assertEqual(len(needs), 1)
+        self.assertEqual((needs[0]["step"], needs[0]["need"]), (2, gate.STOPPED_NEED["need"]))
+        task = gate.load_task(self.dirs, sha(GOOD))
+        self.assertTrue(task["stopped"])
+        # a stopped run already pushed "run stopped": no extra "need" line
+        self.assertNotIn("need", [e["action"] for e in self.log_entries()])
+
+    def test_continue_after_stop_resumes_without_report(self):
+        text = self.stop_first_run()[0]["text"]
+        gate.store_continuation(text, self.dirs, time.time())
+        jobs = []
+        gate.run_next(self.dirs, PROJECTS, lambda j, t: jobs.append(j) or gate.RunResult("r"),
+                      [TOKEN], 20)
+        self.assertTrue(jobs[0]["resume"])
+        self.assertIn("stopped from the phone", jobs[0]["previous_report"])
+        self.assertEqual(gate.load_task(self.dirs, sha(GOOD))["status"], "done")
+
+    def test_delete_after_stop_discards(self):
+        text = self.stop_first_run()[0]["text"]
+        gate.discard_task(text, self.dirs, time.time())
+        self.assertEqual(gate.load_task(self.dirs, sha(GOOD))["status"], "discarded")
+        self.assertEqual(gate.open_needs(self.dirs, time.time()), [])
+        self.assertIn("discard", [e["action"] for e in self.log_entries()])
+        with self.assertRaises(gate.SpecError):
+            gate.store_continuation(text, self.dirs, time.time())
+
+    def test_delete_needs_the_shown_text(self):
+        text = self.stop_first_run()[0]["text"]
+        with self.assertRaises(gate.SpecError):
+            gate.discard_task(text.replace("step: 2", "step: 3"), self.dirs, time.time())
+        self.assertEqual(gate.load_task(self.dirs, sha(GOOD))["status"], "waiting")
+
+    def test_stopped_continuation_waits_again(self):
         root = sha(GOOD)
         gate.store_approved(GOOD, self.dirs, PROJECTS)
         need = {"need": "install foo", "why": "x"}
@@ -596,7 +636,25 @@ class HaltTest(unittest.TestCase):
         gate.store_continuation(text, self.dirs, time.time())
         self.stop_now = True
         gate.run_next(self.dirs, PROJECTS, self.fake_claude, [TOKEN], 20)
+        task = gate.load_task(self.dirs, root)
+        self.assertEqual((task["status"], task["step"], task["stopped"]), ("waiting", 3, True))
+
+    def test_stop_at_last_step_ends_task(self):
+        root = sha(GOOD)
+        gate.store_approved(GOOD, self.dirs, PROJECTS)
+        need = {"need": "install foo", "why": "x"}
+        gate.run_next(self.dirs, PROJECTS, lambda j, t: gate.RunResult("r", need), [TOKEN], 20)
+        for step in (2, 3):
+            text = gate.open_needs(self.dirs, time.time())[0]["text"]
+            gate.store_continuation(text, self.dirs, time.time())
+            gate.run_next(self.dirs, PROJECTS, lambda j, t: gate.RunResult("r", need),
+                          [TOKEN], 20)
+        text = gate.open_needs(self.dirs, time.time())[0]["text"]
+        gate.store_continuation(text, self.dirs, time.time())
+        self.stop_now = True
+        gate.run_next(self.dirs, PROJECTS, self.fake_claude, [TOKEN], 20)
         self.assertEqual(gate.load_task(self.dirs, root)["status"], "stopped")
+        self.assertEqual(gate.open_needs(self.dirs, time.time()), [])
 
 
 class AtomicApproveTest(unittest.TestCase):

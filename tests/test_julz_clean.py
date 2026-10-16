@@ -130,6 +130,21 @@ class WorkTest(Base):
                 self.run_clean()
                 self.assertTrue(w.exists())
 
+    def test_discarded_task_copy_removed_at_once(self):
+        w = self.work_copy(days=0, run_days=0)
+        gate.save_task(self.dirs, {"root": H, "status": "discarded", "step": 2})
+        self.run_clean()
+        self.assertFalse(w.exists())
+        self.assert_outside_intact()
+
+    def test_discarded_copy_link_not_followed(self):
+        w = self.work_copy(days=0, run_days=0)
+        (w / "escape").symlink_to(self.outside)
+        gate.save_task(self.dirs, {"root": H, "status": "discarded", "step": 2})
+        self.run_clean()
+        self.assertFalse(w.exists())
+        self.assert_outside_intact()
+
     def test_stderr_removed_after_7_days(self):
         old = self.work / f"{H}.stderr"
         old.write_text("e")

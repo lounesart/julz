@@ -381,6 +381,7 @@ New trust boundaries:
 | 46 | **Leftovers keep secrets or code around** (I) | Host | M / M / **Med** | Work copies go 7 days after the task's last run, with a push 24 hours before. Unapproved specs go after 7 days. Approvals not run within 24 hours are marked spent. Outbox and quarantine go after 30 days. Every deletion is logged and `--dry-run` shows the plan. In Phase 2 only docker objects labelled `julz.task=<hash>`, never `docker system prune` | Tests per rule with set file ages. Old items go, young ones stay, a log line is written | A04, A02 |
 | 47 | **Forged stop.** The container stops my runs whenever it likes, a denial of service (D) | B10 | M / L / **Med** | Stopping needs a signed `halt`, a separate action from `stop`, so a signature for one never works for the other. The server builds `halt: <hash>` and `started:` from `control/running.json`, which the container cannot see. Only the run going now can be stopped, and only once | A halt for another run, an old start time, extra fields, a used stop, a stop signature and another key are all refused. No stop file is written | A01, A04 |
 | 48 | **Stop that does not stop.** The run is marked stopped but Claude, or a child it started, keeps editing the work copy (T) | Host | L / M / **Low** | The runner waits in 1 second steps and checks for `control/stop-<hash>`. It then kills bwrap, which is pid 1 of the sandbox's own pid namespace and runs with `--die-with-parent`, so every process inside ends. The log says `stopped`, a continuation's task ends `stopped`, the work copy stays for me to read | Real bwrap with a fake Claude whose child writes a tick every 0.2 s. After the stop the count stays the same. Removing the kill makes that test fail | A04 |
+| 49 | **Delete abused or aimed at the wrong thing.** A forged Delete wipes a work copy before I read it, or a planted link makes the cleanup reach my real files (T, D) | B10, Host | L / M / **Low** | Delete is its own signed action (`discard`) on the exact text of a waiting task, so a continue signature never deletes and a delete signature never continues. The approver only marks the task `discarded` and has no access to `work/`. A path unit on `tasks/` starts the sandboxed cleaner, which removes that task's copy with the same link safe code as threat 44 | Signatures swapped between continue and discard are refused. A discarded copy holding a link to a stand in project is removed and the target survives. The cleaner removes a discarded copy at once | A01, CWE-59 |
 
 Concepts in play. Transaction signing, or "what you see is what you sign" (32, 34). Origin
 binding, the phishing defence that sets WebAuthn apart from a one time code (33). Failing
@@ -484,6 +485,19 @@ Stop button (2026-10-16), threats 47 and 48. 20 new tests, 15 of 15 mutations ki
 - Tested from the phone. I approved a spec that writes 40 poems and tapped Stop run 6 seconds
   in. The log shows `halt` and then `run stopped` one second later. Four poems were written,
   nothing after the stop, and no process of the sandbox was left.
+
+Continue, Delete and status on the page (2026-10-16), threat 49. 16 new tests, 15 of 15
+mutations killed.
+- A stopped run now waits like a need, with Continue and Delete. Continue uses the signed
+  continuation, the limits and the 24 hours of threats 37 and 40. The next run is told it was
+  stopped and gets no previous report, because a stopped run writes none.
+- Delete marks the task `discarded`. The approver stays without access to `work/`, and
+  `julz-clean.path` starts the cleaner within seconds.
+- Recent runs shows the last 5 runs from `runner.log`. The approver reads only the last 64 KB,
+  since the log has no rotation. A test counts the bytes read. Goals are untrusted text and
+  only ever set with `textContent`.
+- The page reloads its state every 5 seconds while it is visible and draws again only when
+  something changed. It pauses while a fingerprint action is going.
 
 ## Known issues
 - v0.11.4 title generation crashes (`KeyError: 'model'` in `background_tasks_handler`), which

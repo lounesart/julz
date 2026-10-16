@@ -152,6 +152,9 @@ def plan(dirs: gate.Dirs, inbox: Path, work_root: Path, now: float) -> tuple[lis
             if name in active:
                 notes.append(f"kept {p}: task is {states[name]}")
                 continue
+            if states.get(name) == "discarded":  # I tapped Delete on the phone
+                actions.append(Action("delete", p, "work copy, deleted from the phone", name))
+                continue
             idle = now - runs.get(name, p.lstat().st_mtime)
             if idle > WORK_KEEP:
                 actions.append(Action("delete", p, "work copy, 7 days after its last run", name))

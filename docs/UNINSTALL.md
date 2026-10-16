@@ -11,7 +11,7 @@ marked KEEP OR BACK UP below. Everything else can be recreated.
 
 ```
 systemctl --user disable --now julz-approver.service julz-run.path julz-run.timer
-systemctl --user disable --now julz-notify-inbox.path julz-notify-log.path julz-clean.timer
+systemctl --user disable --now julz-notify-inbox.path julz-notify-log.path julz-clean.timer julz-clean.path
 rm ~/.config/systemd/user/julz-*
 systemctl --user daemon-reload
 sudo docker rm -f open-webui searxng speaches

@@ -560,6 +560,122 @@ class HaltWebTest(Base):
         self.assertFalse(any(self.dirs.control.glob("stop-*")))
 
 
+class StoppedWebTest(Base):
+    """Continue and Delete for a run I stopped, and the recent runs list."""
+
+    def setUp(self):
+        super().setUp()
+        self.enroll()
+        self.root = gate.sha256(GOOD)
+        self.task = {"root": self.root, "project": "julz-sandbox",
+                     "goal": "add a usage line to the README", "step": 2,
+                     "status": "waiting", "need": gate.STOPPED_NEED["need"],
+                     "why": gate.STOPPED_NEED["why"],
+                     "need_hash": gate.need_hash(gate.STOPPED_NEED), "opened": self.clock(),
+                     "last_run": self.root, "stopped": True}
+        gate.save_task(self.dirs, self.task)
+
+    def sign(self, begin_action, finish_action):
+        sha = self.state()["needs"][0]["sha256"]
+        _, _, data = self.post("/api/begin", {"action": begin_action, "root": self.root,
+                                              "sha256": sha})
+        status, _, reply = self.post("/api/finish", {"action": finish_action,
+                                                     "nonce": data["nonce"],
+                                                     "credential": self.key.sign(data)})
+        return status, reply
+
+    def test_stopped_card_is_marked(self):
+        self.assertTrue(self.state()["needs"][0]["stopped"])
+
+    def test_delete_discards_task(self):
+        status, reply = self.sign("discard", "discard")
+        self.assertEqual(status, 200, reply)
+        self.assertEqual(gate.load_task(self.dirs, self.root)["status"], "discarded")
+        self.assertEqual(self.state()["needs"], [])
+        self.assertEqual(self.approved(), [])
+
+    def test_continue_queues_resume(self):
+        status, reply = self.sign("continue", "continue")
+        self.assertEqual(status, 200, reply)
+        self.assertEqual(gate.load_task(self.dirs, self.root)["status"], "approved")
+        self.assertEqual(len(self.approved()), 1)
+
+    def test_continue_signature_cannot_delete(self):
+        status, _ = self.sign("continue", "discard")
+        self.assertEqual(status, 403)
+        self.assertEqual(gate.load_task(self.dirs, self.root)["status"], "waiting")
+
+    def test_delete_signature_cannot_continue(self):
+        status, _ = self.sign("discard", "continue")
+        self.assertEqual(status, 403)
+        self.assertEqual(self.approved(), [])
+
+    def write_log(self, *entries):
+        with open(self.dirs.log, "a") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+    def test_recent_runs_newest_first_with_goal(self):
+        cont = f"continue: {self.root}\nstep: 2\nneed_hash: {'0' * 64}\nanswer: done\n"
+        (self.dirs.done / f"{self.root}.md").write_text(GOOD)
+        (self.dirs.done / f"{gate.sha256(cont)}.md").write_text(cont)
+        self.write_log({"time": "2026-10-16T02:00:00+00:00", "action": "run",
+                        "sha256": self.root, "status": "stopped"},
+                       {"time": "2026-10-16T02:05:00+00:00", "action": "start",
+                        "sha256": gate.sha256(cont), "status": "ok"},
+                       {"time": "2026-10-16T02:06:00+00:00", "action": "run",
+                        "sha256": gate.sha256(cont), "status": "ok"})
+        recent = self.state()["recent"]
+        self.assertEqual([(r["status"], r["goal"]) for r in recent],
+                         [("ok", "add a usage line to the README"),
+                          ("stopped", "add a usage line to the README")])
+        self.assertEqual(recent[0]["time"], "2026-10-16 02:06:00")
+
+    def test_recent_capped_and_garbage_skipped(self):
+        with open(self.dirs.log, "a") as f:
+            f.write("not json\n")
+        for i in range(web.MAX_RECENT + 3):
+            self.write_log({"time": f"2026-10-16T02:{i:02d}:00+00:00", "action": "run",
+                            "sha256": f"{i:064x}", "status": "ok"})
+        self.write_log({"action": "run", "sha256": "../../etc", "status": "ok"})
+        recent = self.state()["recent"]
+        self.assertEqual(len(recent), web.MAX_RECENT)
+        self.assertTrue(all(gate.HEX64.match(r["sha256"]) for r in recent))
+
+    def test_huge_log_read_from_the_end_only(self):
+        with open(self.dirs.log, "a") as f:
+            f.write(("x" * 1000 + "\n") * 200)  # 200 KB of noise before the real line
+        self.write_log({"time": "2026-10-16T03:00:00+00:00", "action": "run",
+                        "sha256": "e" * 64, "status": "failed"})
+        read = []
+        real_open = open
+
+        class Counting:
+            def __init__(self, f):
+                self.f = f
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                self.f.close()
+
+            def seek(self, *a):
+                return self.f.seek(*a)
+
+            def read(self, *a):
+                data = self.f.read(*a)
+                read.append(len(data))
+                return data
+
+        web.open = lambda path, mode="r", *a, **k: Counting(real_open(path, mode, *a, **k))
+        try:
+            self.assertEqual(self.state()["recent"][0]["status"], "failed")
+        finally:
+            del web.open
+        self.assertLessEqual(sum(read), web.LOG_TAIL)
+
+
 class EnrollWebTest(Base):
     """Threat 35 over HTTP."""
 

@@ -81,6 +81,17 @@ Work only with the files in /work. When you are finished, reply with a short pla
 what you changed, and whether the done condition holds. If you cannot do the task, say why.
 """ + NEED_RULES
 
+# After I stopped a run and then chose Continue: no report exists, the copy is half done
+RESUME_PROMPT = """You are continuing a task in /work, a copy of the project "{project}"
+without git history. The owner stopped your last run before it finished, then chose to let
+you carry on. Your changes from that run are still in /work, possibly half done. Look at
+what is there first.
+Task: {goal}
+Done when: {done_when}
+Work only with the files in /work. When you are finished, reply with a short plain report:
+what you changed, and whether the done condition holds. If you cannot do the task, say why.
+""" + NEED_RULES
+
 
 def sandbox_argv(work: Path, binary: Path) -> list[str]:
     argv = ["bwrap", "--unshare-all", "--share-net", "--die-with-parent", "--new-session",
@@ -229,7 +240,7 @@ def make_runner(projects: dict, work_root: Path, binary: Path, token: str, timeo
         if spec.get("kind") == "continue":
             if work.is_symlink() or not work.is_dir():
                 raise RuntimeError("work copy of the task is missing")
-            prompt = CONTINUE_PROMPT.format(**spec)
+            prompt = (RESUME_PROMPT if spec.get("resume") else CONTINUE_PROMPT).format(**spec)
         else:
             prepare_workdir(project, work)
             prompt = PROMPT.format(**spec)

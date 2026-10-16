@@ -84,3 +84,7 @@ input {
 }
 
 footer { margin-top: 24px; font-size: 0.85rem; }
+
+.recent { margin: 4px 0; font-size: 0.9rem; }
+.st-ok { color: var(--ok); font-weight: 600; }
+.st-stopped, .st-failed, .st-quarantined { color: var(--bad); font-weight: 600; }

@@ -354,6 +354,13 @@ class SandboxTest(unittest.TestCase):
         self.assertTrue(seen)
         self.assertEqual(set(seen), {gate.sha256(GOOD)})
 
+    def test_resume_after_stop_says_so(self):
+        self.runner(self.spec, GOOD)
+        self.runner(self.continuation(resume=True, previous_report="(stopped)"), "continue: y")
+        prompt = (self.work() / "prompt.txt").read_text()
+        self.assertIn("The owner stopped your last run before it finished", prompt)
+        self.assertNotIn("The owner says this is done now", prompt)
+
     def test_continuation_without_work_copy_fails(self):
         with self.assertRaises(RuntimeError):
             self.runner(self.continuation(), "continue: x")

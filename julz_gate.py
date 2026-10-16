@@ -368,6 +368,16 @@ def stop_task(text: str, dirs: Dirs, now: float):
     log(dirs, "stop", task["root"], "ok", f"step {task['step']}")
 
 
+def discard_task(text: str, dirs: Dirs, now: float):
+    """Delete from the phone: the task ends as discarded. The approver cannot touch work/,
+    so the cleaner, started by a path unit on tasks/, removes the work copy."""
+    cont = check_continuation(text)
+    task = waiting_task(dirs, cont, now)
+    task["status"] = "discarded"
+    save_task(dirs, task)
+    log(dirs, "discard", task["root"], "ok", f"step {task['step']}")
+
+
 def expire_tasks(dirs: Dirs, now: float) -> int:
     """Needs nobody answered in NEED_TTL end their task. Never approved by timeout (40)."""
     count = 0
@@ -407,9 +417,13 @@ def load_job(text: str, dirs: Dirs, projects) -> dict:
     last = task.get("last_run", "")
     if not isinstance(last, str) or not HEX64.match(last):
         raise SpecError("task has no previous run")
-    previous = decode(read_regular(dirs.outbox / f"{last}.md", MAX_REPORT_BYTES))
+    if task.get("stopped"):
+        previous = "(The run was stopped from the phone before it wrote a report.)"
+    else:
+        previous = decode(read_regular(dirs.outbox / f"{last}.md", MAX_REPORT_BYTES))
     return {**spec, "kind": "continue", "root": cont["root"], "step": cont["step"],
-            "need": task["need"], "why": task["why"], "previous_report": previous}
+            "need": task["need"], "why": task["why"], "previous_report": previous,
+            "resume": bool(task.get("stopped"))}
 
 
 # ---------- stopping a run from the phone (threats 47, 48) ----------
@@ -469,9 +483,17 @@ def stop_requested(dirs: Dirs, digest: str) -> bool:
     return os.path.lexists(dirs.control / f"stop-{digest}")
 
 
+STOPPED_NEED = {"need": "The run was stopped from the phone.",
+                "why": "Continue carries on in the same work copy. Delete removes it."}
+
+
 def settle_task(dirs: Dirs, job: dict, digest: str, status: str, need: dict | None):
     """After a run: open a need, end the task, or nothing (a plain run without a need).
-    deliver() already dropped the need of a held back or failed run."""
+    deliver() already dropped the need of a held back or failed run. A run I stopped waits
+    like a need, so I can continue or delete it from the phone."""
+    stopped = status == "stopped"
+    if stopped:
+        need = STOPPED_NEED
     if job["kind"] == "continue":
         task = load_task(dirs, job["root"])
     elif need is None:
@@ -479,20 +501,22 @@ def settle_task(dirs: Dirs, job: dict, digest: str, status: str, need: dict | No
     else:
         task = {"root": job["root"], "project": job["project"], "goal": job["goal"]}
     task["step"] = job["step"]
+    task["stopped"] = stopped
     if need is None:
-        task["status"] = {"ok": "done", "stopped": "stopped"}.get(status, "failed")
+        task["status"] = "done" if status == "ok" else "failed"
         save_task(dirs, task)
         log(dirs, "task-end", job["root"], task["status"], f"step {job['step']}")
         return
     if job["step"] >= 1 + MAX_CONTINUATIONS:
-        task["status"] = "failed"
+        task["status"] = "stopped" if stopped else "failed"
         save_task(dirs, task)
-        log(dirs, "task-end", job["root"], "failed", "too many continuations")
+        log(dirs, "task-end", job["root"], task["status"], "too many continuations")
         return
     task.update(status="waiting", step=job["step"] + 1, need=need["need"], why=need["why"],
                 need_hash=need_hash(need), opened=time.time(), last_run=digest)
     save_task(dirs, task)
-    log(dirs, "need", job["root"], "ok", f"step {task['step']}")
+    if not stopped:  # a stopped run already got its own push ("run stopped")
+        log(dirs, "need", job["root"], "ok", f"step {task['step']}")
 
 
 # ---------- running ----------
