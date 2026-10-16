@@ -317,6 +317,88 @@ Verified with the real claude (2026-10-15):
 - AppArmor on the laptop allows bwrap user namespaces for my user: yes (2026-10-15, `--unshare-all`
   with tmpfs `/home` runs, `~/.ssh` does not exist inside).
 
+## Phone approval and continuation (threat model 2026-10-16, Phase 1, planned)
+Goal: approve specs from the phone by reading the text, tapping Approve and touching the
+fingerprint sensor. Approval starts the run. Nothing waits: a run that needs something ends
+with a request, I answer it, and a new run continues. Phase 1 adds no new powers: the verb list
+is empty, so every request is "needs you" and I do the work myself at the laptop.
+Base assumption as before: julz is injected. New fact that drives the design: Open WebUI runs
+with `--network host`, so the container can reach anything on 127.0.0.1, including the approver.
+
+```
+ julz (container, maybe injected) -> Inbox/claude/<name>.md
+    |
+ julz-notify (host)  ---- B11: push channel ---->  ntfy.sh -> Google FCM -> phone
+    |                    "1 spec waiting", facts only, no text, no secrets
+    v
+ julz-approve-web (host, 127.0.0.1:<port>, own process, no Claude token)
+    ^   shows spec text (escaped, strict CSP), sha256, Approve / Reject / Stop
+    |   ---- B10: phone to approver ----   tailscale serve https :<port>, ACL phone only
+    |   approve = WebAuthn assertion, UV required, one registered passkey,
+    |             challenge = sha256(spec) || nonce, single use, 2 min
+    |   also reachable by: the container (host network), browsers on the laptop
+    v
+ gate.store_approved -> ~/.local/share/julz/approved/   (same store as the CLI)
+    |
+ systemd --user .path unit -> julz-run.py (unchanged gates: hash, once, lock, limits)
+    |
+ report -> Outbox/  + optional `need:` block  ---- B12: report to continuation ----
+    |
+ julz-approve-web shows the need: "needs you: ..."  -> I do it -> signed "done, continue"
+    |
+ run 2 = approved spec bytes + run 1 report + my answer   (max 3 continuations, 24 h expiry)
+```
+
+Assets added: the approval itself (it now starts Claude with nobody at the laptop), the
+registered passkey and its enrollment, the push topic.
+
+New trust boundaries:
+- B10. Phone to approver. The approver is reachable from the phone, the container and any
+  browser tab on the laptop. Only a valid assertion counts, never the fact that a request arrived
+- B11. Push channel. ntfy.sh and Google see every message. Untrusted in both directions
+- B12. Report to continuation. The `need:` block is written by Claude, shaped by a spec julz wrote
+
+| # | Threat (STRIDE) | Where | L / I / Risk | Mitigation | How to prove it | OWASP |
+|---|---|---|---|---|---|---|
+| 31 | **Container approves by itself.** Host network lets injected tool code POST "approve" to the approver on 127.0.0.1 (S, E) | B10 | H / H / **High** | Approval needs a WebAuthn assertion that verifies against the one registered public key, with the user verified flag set. No cookie, header, token or source address counts as approval. The approver has no other way to write `approved/` | Tests with a software authenticator: POST without assertion, with a second key, with UV=0, with a bad signature: each refused, `approved/` stays empty | A01, A07, LLM06 |
+| 32 | **Assertion reused for another spec or replayed** (T) | B10 | M / H / **High** | Challenge is sha256 of the exact text the page showed plus 32 random bytes, stored server side, single use, 2 min expiry. The approver keeps the bytes it rendered (like threat 22) and stores those, never re-reads the inbox. Sign counter checked when the authenticator sends one | Tests: same assertion twice, assertion for spec A sent for spec B, expired challenge, unknown challenge: all refused | A08, CWE-294, CWE-367 |
+| 33 | **Assertion phished from the Open WebUI origin.** WebAuthn scopes a passkey to the host name, not the port. JS running on `https://<laptop>.ts.net` (port 443, Open WebUI) may ask for the same passkey with its own challenge, and I touch the sensor thinking it is a normal prompt (S, E) | B10, B1 | L / H / **Med** | Server checks `clientDataJSON.origin` equals the approver origin exactly, port included (the browser writes the real origin and the authenticator signs it). `type` must be `webauthn.get`. A fingerprint prompt anywhere but the approver page is an alarm, never touch it | Test: assertion with origin `https://<laptop>.ts.net` (no port) refused; origin check removed, test fails | A07, CWE-346 |
+| 34 | **Page shows one thing, signs another.** Spec text with HTML or script runs in the approver page and swaps the shown text or the challenge (T, E) | B10 | M / H / **High** | Spec passes `check_spec` before display. Text set with `textContent` only, never HTML. CSP `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'`, no inline script, no third party files. Page shows sha256 next to the text | Test: spec goal `<img src=x onerror=alert(1)>` comes back escaped; CSP header present on every response; mutation without escaping fails | A03 (XSS), CWE-79, CWE-1021 |
+| 35 | **Rogue enrollment.** Someone (or the container) registers their own passkey (S, E) | B10 | M / H / **High** | Enrollment only with a one time code printed by `julz-approve-web --enroll` in my terminal, 10 min, single use. At most one credential, stored in `~/.config/julz/passkey.json` (mode 600, not mounted). Replacing it needs the host terminal again | Tests: register without code, with a used code, with an expired code, a second credential: all refused | A07, A01 |
+| 36 | **Approver reachable from more than the phone** (S, I) | B10 | L / H / **Med** | Listens on 127.0.0.1 only. `tailscale serve` on its own HTTPS port, tailnet ACL grants that port to the phone only. Host header and Origin must match the serve name, which also stops DNS rebinding from a laptop browser tab | `ss -tlnp` shows 127.0.0.1 only; LAN curl times out; policy test denies other tailnet devices; request with a wrong Host gets 421 | A05, A01 |
+| 37 | **Approval fatigue.** Julz floods specs or needs until I tap without reading (E, D) | B10, B12 | M / H / **High** | No Approve action in the notification, only on the page with the full text. One spec per approval, never batch. At most 3 pending specs shown, the rest refused. One open need per task, max 3 continuations per task, existing daily run limit (28) | Tests: fourth pending spec refused, fourth continuation refused, second open need on a task refused | LLM06, A04 |
+| 38 | **Poisoned `need:` block.** Claude's report (shaped by julz's spec) asks for something harmful, or uses the block to steer run 2 (T, E) | B12 | M / H / **High** | Strict parser like `check_spec`: fields `need` and `why` only, no hidden characters, `why` max 300 chars; `need` must be a verb from the host list (empty in Phase 1, so it is shown as "needs you"). Unparsable block fails the task, never ignored. Continuation count and expiry live on the host, not in the report. Run 2 gets a new hash and its own log line | Tests: unknown field, hidden char, oversized why, verb not in list, count edited in report: each refused and the task ends | LLM01, LLM06, A08 |
+| 39 | **Push channel spoofed or read** (S, I) | B11 | M / L / **Low** | Topic is 128 random bits in `~/.config/julz/ntfy.env` (mode 600). Messages come from fixed templates: spec name, hash prefix, numbers. Never spec text, paths, links with secrets. A fake push only leads me to the real page. Accepted: ntfy.sh and Google see timing | Unit test: message builder only emits the template fields; a spec text marker never appears in a message | A02, A09 |
+| 40 | **Approval runs Claude with nobody at the laptop** (E) | Host | M / M / **Med** | The `.path` unit only starts `julz-run.py`, which keeps every gate (hash recheck, run once, lock, timeout, daily limit). Stop button (also signed) ends a run. Unanswered needs expire after 24 h and the task ends: fail closed, never approved by timeout | Test: expired need ends the task; runner with a changed approved file still refuses (22) | A04 |
+| 41 | **Approver hacked, then the token or host** (E, I) | Host | L / H / **Med** | Approver is its own process and systemd unit, never reads `claude-token.env`. Unit hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths` only `approved/` and its state, read only Inbox and Outbox, `PrivateTmp`. Dependency `python-fido2` from Arch `extra`, no pip | `systemd-analyze security` score noted; reading the token file from the unit fails | A05, A06 |
+| 42 | **Lost phone or Google account takeover** (S) | B10 | L / H / **Med** | Passkey in Google Password Manager syncs, so a takeover can put it on another device, but that device still needs my tailnet and the phone only ACL. Phone lock plus UV for each approval. Lost phone: remove device in Tailscale, `julz-approve-web --revoke` in the terminal | Revoke test: after `--revoke`, the old credential is refused | A07 |
+| 43 | **No record of who approved what** (R) | Host | L / M / **Low** | `runner.log` gets one line per web action: time, action, spec hash, credential id, sign counter. Same host only log as 29 | Test: approve, reject, stop, continue each write one line | A09 |
+| 44 | **Cleaner deletes outside its folders.** Claude plants a symlink in a work copy pointing at `~/Projects`, a naive `rm -rf` follows it (T, D) | Host | M / H / **High** | `julz-clean.py` deletes only direct children of its own folders, checks each with `O_NOFOLLOW` and `lstat`, removes trees with `shutil.rmtree` (fd based on Linux, `avoids_symlink_attacks`). Only the host starts it: systemd user timer, after a run, or by hand | Tests: symlink to a temp "project" inside a work copy, symlink as the work copy itself: target untouched; mutation following links fails | CWE-59, CWE-22, A01 |
+| 45 | **Cleaner switches off a control or destroys evidence.** Deleting `done/` lets a spent spec run again (22); deleting quarantine hides a token leak (R, E) | Host | M / H / **High** | `done/<hash>.md` names kept forever, only content emptied after 30 days. Quarantine kept 30 days, every new item pushes "rotate the token" at once. `runner.log` rotated, never deleted by the cleaner | Tests: after cleaning, a spent hash is still refused by `store_approved`; quarantine younger than 30 days survives | A09, A08 |
+| 46 | **Leftovers keep secrets or code around** (I) | Host | M / M / **Med** | Retention: work copies 7 days after the run (push 24 h before), unapproved Inbox specs 7 days, approvals never run expire after 24 h into `done/`, Outbox 30 days. Every deletion logged. `--dry-run` shows the plan. Phase 2: only docker objects labelled `julz.task=<hash>`, never `docker system prune` | Tests per rule with fake clock: old item removed, young item kept, log line written | A04, A02 |
+
+Concepts in play: transaction signing ("what you see is what you sign", 32 and 34), origin
+binding as the phishing defence that makes WebAuthn different from a one time code (33), and
+fail secure on timeout (40).
+
+Residual risk: I am still the gate. The authenticator signs a hash it cannot show me, so I trust
+the approver page for the text. That page is host code julz cannot change (34, 41).
+
+Top 3 for this part:
+1. Only an assertion approves: one credential, UV, exact origin (31, 33, 35). Tests first.
+2. Challenge bound to the exact shown bytes, single use (32), and an escaped page with CSP (34).
+3. Strict `need:` parser and continuation limits on the host (37, 38).
+4. Cleaner that never follows links and never deletes what a control reads (44, 45).
+
+Built step 1 (2026-10-16), `julz_webauthn.py`, 39 tests with a software authenticator, 15 of
+15 mutations killed:
+- Found in python-fido2 2.2.1: its default origin check (`verify_rp_id`) compares the host name
+  only and ignores the port, so threat 33 is real with the defaults. We pass an exact match.
+- fido2 does not check the sign counter; we do, allowing 0 forever for synced passkeys.
+- Challenge is `sha256(action \0 text) || 32 random bytes`; the text lives in the approver
+  process and `finish` returns it, so the caller acts on the signed bytes, not a file.
+- Not yet proved: a real phone passkey (needs the page, step 2).
+
 ## Known issues
 - v0.11.4 title generation crashes (`KeyError: 'model'` in `background_tasks_handler`), which
   breaks the chat UI. Workaround: title, tags and follow-up generation off, task model `julz`.
