@@ -18,8 +18,8 @@ sudo docker rm -f open-webui searxng speaches
 sudo tailscale serve reset
 ```
 
-The first four lines stop the phone approver, the auto runner and the notifications, and
-remove their units (listed in `systemd/README.md`). The docker line stops and removes the
+The first four lines stop the phone approver, the auto runner, the notifications and the
+cleaner, and remove their units (listed in `systemd/README.md`). The docker line stops and removes the
 three containers (about 7 MB). The last line stops serving the hub (443) and the approver
 (8443) to the phone over the tailnet.
 
@@ -82,8 +82,8 @@ with `pocket-open.py` first, or they are lost with the private key.
 3. Delete the Julz entries (admin, phone account, pocket password) from KeePassXC.
 4. Delete the GitHub repository if I no longer want it public (`gh repo delete`).
 5. Delete the Claude Code memory folder for this project under `~/.claude/projects/`.
-6. On the phone: delete the julz passkey in Google Password Manager, and unsubscribe from the
-   julz topic in the ntfy app (then uninstall ntfy if nothing else uses it).
+6. On the phone, delete the julz passkey in Google Password Manager and unsubscribe from the
+   julz topic in the ntfy app. Uninstall ntfy if nothing else uses it.
 
 ## 7. System packages (about 0.4 GB), only if nothing else needs them
 

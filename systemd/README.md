@@ -10,7 +10,8 @@
 | `julz-notify-log.path` and `.service` | New `runner.log` line, then a short notice |
 | `julz-clean.timer` and `.service` | Daily, removes leftovers (julz-clean.py), sandboxed, no network |
 
-Install (copies, so a change in the repo does not change a running unit by itself):
+To install, copy the units and enable them. They are copies, so a change in the repo does not
+change a running unit by itself.
 
     cp systemd/julz-* ~/.config/systemd/user/
     systemctl --user daemon-reload
@@ -18,9 +19,11 @@ Install (copies, so a change in the repo does not change a running unit by itsel
     systemctl --user enable --now julz-notify-inbox.path julz-notify-log.path
     systemctl --user enable --now julz-clean.timer
 
-Once, outside systemd (needs sudo): `sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765`
+The phone reaches the approver through tailscale serve. That needs sudo once, outside systemd,
 and tcp 8443 for the phone in the tailnet grant.
 
-Check: `systemctl --user list-units 'julz*'` and `journalctl --user -u julz-run.service`.
-Preview a cleanup: `./julz-clean.py --dry-run`.
-Remove: docs/UNINSTALL.md.
+    sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765
+
+To check them, run `systemctl --user list-units 'julz*'` and
+`journalctl --user -u julz-run.service`. `./julz-clean.py --dry-run` shows what the next
+cleanup would remove. docs/UNINSTALL.md lists how to remove everything.

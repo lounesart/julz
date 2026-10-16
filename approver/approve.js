@@ -134,7 +134,7 @@ async function load() {
 
 async function act(action, body, buttons) {
   buttons.forEach((b) => (b.disabled = true));
-  status(`${action}: touch the sensor`);
+  status(`Touch the sensor to ${action}.`);
   try {
     const b = await api("/api/begin", { action, ...body });
     const cred = await navigator.credentials.get({ publicKey: requestOptions(b.publicKey) });
