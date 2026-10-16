@@ -1,61 +1,67 @@
-# Julz handoff (2026-10-15, end of session 6)
+# Julz handoff (2026-10-16, end of session 7)
 
 ## Goal
 Julz is a private local AI assistant on my laptop: a study mentor that knows my notes, does
-small jobs, and hands bigger tasks to Claude Code behind a human gate. Local first, zero
-budget, every limit enforced in code or by the OS, never by the prompt. Plan: PLAN.md.
-Threats: SECURITY.md. Full story: docs/REPORT.md. Removal list: docs/UNINSTALL.md.
+small jobs, and hands bigger tasks to Claude Code behind a human gate. Local first, zero budget,
+every limit enforced in code or by the OS. Plan: PLAN.md. Threats: SECURITY.md (1 to 46).
 
 ## State (verified)
-- Hub: Open WebUI v0.11.4 by digest, `sudo ./run-webui.sh`, 127.0.0.1:3100. SearXNG :8888,
-  Speaches :8880. Phone over `tailscale serve`, separate non admin account.
-- Delegation works end to end: julz calls `delegate_to_claude`, spec lands in
-  `Inbox/claude/`, I approve with `./julz-approve.py`, `./julz-run.py` runs `claude -p` in
-  bwrap on a copy of the project, report in `Outbox/`, julz summarizes it via `claude_status`.
-- Hostile spec: Claude refused, nothing changed. Unapproved spec: never ran.
-- 131 tests pass, every security check mutation tested (removing it fails a test).
-- Delegate tool switched on in the laptop browser. Phone: needs the tool shared with group
-  `phone` as read only (never write: tool code runs in the server).
+- Hub as before: `sudo ./run-webui.sh` (127.0.0.1:3100), SearXNG, Speaches, phone via tailscale.
+- Phone approval works end to end, tested from the phone 2026-10-16: spec in `Inbox/claude/`,
+  ntfy push, approver page (`https://<laptop>.<tailnet>.ts.net:8443`, serve to 127.0.0.1:8765),
+  Approve + fingerprint, run starts by itself, push "run done". A blocked run ends with
+  `need:`/`why:`; I sign "Done, continue" or "Stop task"; it continues in the same work copy.
+  Real test: kernel version spec, need at step 2 and 3, task `done`, project untouched.
+- systemd user units in `systemd/` (installed, enabled): approver, run path + timer, notify
+  inbox + log, clean timer (daily). `systemctl --user list-units 'julz*'`.
+- 299 tests pass. Each new module mutation tested (every check broken once, a test fails).
+- Terminal approval `./julz-approve.py` still works next to the phone.
 
 ## Decisions
-- Approval is a host CLI that stores the exact bytes under their sha256, outside every
-  container mount. Each spec runs once; it moves to `done/` before the run starts.
-- Sandbox is bwrap (already installed): empty home, no /run, only the work copy writable.
-- Claude gets `--tools Read,Edit,Write,Glob,Grep --restricted --permission-prompts none`.
-  No Bash or fetch, so it has no egress of its own.
-- Separate token from `claude setup-token`, in env only (argv is world readable).
-- Work copy without `.git` (planted hooks would run on my host later). I merge by hand.
-- `claude_status` carries the newest report: Legacy function calling allows one tool call
-  per message. Legacy stays, it keeps built in fetch tools away from julz.
-- Public repo with a fresh history; the full history lives only in local branch
-  `private-history`, never pushed (it holds identifiers).
+- Passkey (WebAuthn, python-fido2 from Arch extra), not a plain button or TOTP: the container
+  runs on the host network and can reach the approver, so only a signature approves.
+- Origin checked exactly, port included: fido2's default ignores the port, Open WebUI shares
+  the host name on 443 (threat 33). Challenge = sha256(action, exact text) + nonce; the server
+  builds the text from its own state, the page cannot choose it.
+- One passkey (Google Password Manager, sends a real sign counter), enrolled with a one time
+  code from the terminal, stored in `~/.config/julz/approver/`.
+- ntfy.sh through the Play app; fixed templates only, never spec text or log reasons.
+- Units are default deny: `TemporaryFileSystem=%h:ro` plus only needed paths. The runner is not
+  systemd sandboxed (it builds bwrap itself). Cleaner has no network.
+- No sudo for Claude. A need is done by me; Phase 2 adds only fixed root verbs, each signed.
+- Task state lives on the host (`tasks/`), never in the report. Max 3 continuations, 24 h.
 
 ## In progress
-- Phone: share Julz delegate with group `phone`, read only, then test from the phone.
-- Julz answers in Polish to English questions over the API. Unknown cause.
-- 4B julz drops "it waits for your approval" from her reply.
+- Stop button for a running spec: not started. The approver's sandbox blocks the user D-Bus
+  on purpose, so it needs another way to reach `julz-run.service`.
+- Still open from session 6: delegate tool shared to the phone account, julz answering in
+  Polish over the API, 4B julz dropping "waits for your approval".
 
 ## Next steps
-1. Phone delegation works: a spec from the phone lands in `Inbox/claude/`.
-2. Hostile spec that looks harmless but needs Bash: log shows the tool denied.
-3. Decide notes as a target: add a `julz-mem` copy to `projects.json`, test one spec.
-4. Voice later (Chrome on phone, recordings cleanup, egress block for cloud AI APIs).
+1. Stop button: a signed stop on the phone ends a running spec, log shows it, test proves it.
+2. Typed answer from the phone: threat row in SECURITY.md first, then build.
+3. Phase 2 verbs, one at a time with threat rows: query verbs, `restart-container`, then
+   `install-package` (official repos only), `fetch-deps`, `new-project`, `publish`, `expose`.
+4. APK with two isolated tabs (julz, approver), notes in Claude memory `phone-app-idea`.
+5. Push the 5 local commits on main (ask first; never push `private-history`).
 
 ## Gotchas
-- Model id over the API is `julz:latest`, not `julz`. Tool ids: `julz_delegate`, `julz_notes`.
-- `claude setup-token`: copy the final `sk-ant-oat01-` token (about 108 chars), not the
-  browser code. `read_token` now refuses anything else before a spec is spent.
-- Tests that load a module twice get two exception classes: use `run.gate`.
-- `script -qc` fakes a terminal: the isatty check in julz-approve is not a control.
-- Launchers need sudo and read paths from `$SUDO_USER`'s home; plain `bash` stops early.
-- Open WebUI keeps an old tool copy: after editing a tool, paste it again and save.
-- Earlier gotchas (audio, title generation, tailscale ACL, AppArmor and docker exec) are in
-  docs/REPORT.md.
+- Unit tests passed, the phone failed: in a systemd sandbox each bound folder is its own mount,
+  a link or rename across them fails (EXDEV). Temp files now sit in the folder they land in
+  (`approved/.tmp/`, `tasks/`). `SandboxLayoutTest` runs code under systemd-run to catch it.
+- `RuntimeMaxSec` does nothing for `Type=oneshot`; use `TimeoutStartSec` (default infinity).
+- `tailscale serve` needs sudo. `--operator=$USER` avoided on purpose.
+- A green test can pass for the wrong reason: mutation testing found 4 such tests this session.
+- "Done, continue" is my claim, nothing checks it. Do the laptop step first, then tap.
+- The notifier starts at the end of runner.log on its first run (no history pushes).
+- Older: model id `julz:latest`; `claude setup-token` final token only; tests loading a module
+  twice need `run.gate`; Open WebUI keeps an old tool copy until pasted again.
 
 ## How to resume
     cd ~/Projects/products/julz
-    python3 -m unittest discover -s tests     # 131 tests OK
+    python3 -m unittest discover -s tests          # 299 tests OK
+    systemctl --user list-units 'julz*'            # approver, paths, timers active
+    ./julz-clean.py --dry-run                      # what the cleaner would remove
+    tail ~/.local/share/julz/runner.log            # approvals, runs, needs
     claude
     > read HANDOFF.md and continue
-Hub: `sudo ./run-webui.sh`, then `sudo ./run-searxng.sh`, `sudo ./run-speaches.sh`.
-Delegation: `./julz-approve.py`, then `./julz-run.py`.
