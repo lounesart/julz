@@ -399,6 +399,19 @@ Built step 1 (2026-10-16), `julz_webauthn.py`, 39 tests with a software authenti
   process and `finish` returns it, so the caller acts on the signed bytes, not a file.
 - Not yet proved: a real phone passkey (needs the page, step 2).
 
+Built step 2 (2026-10-16), `julz-approve-web.py` and `approver/`, 36 tests, 16 of 16
+mutations killed (server and page files):
+- Two holes closed in design: julz swapping the spec between page view and tap (the page
+  sends the sha256 it showed, the server refuses on mismatch, then stores the signed text,
+  never the file), and a request name like `../x.md` passing `load_spec`, which checks only
+  `path.name` (raw name now checked before joining, CWE-22).
+- Mutation testing caught a test that passed for the wrong reason: the origin test hit an
+  endpoint that refused anyway. Now it uses a request that succeeds with the right origin.
+- Server header was `julz ` plus the Python version slot; now exactly `julz`.
+- Smoke run with a scratch HOME: listens on 127.0.0.1 only, CSP and headers on the page,
+  wrong Host 421. Not yet proved: the page in a real phone browser, and which Host header
+  `tailscale serve` passes (both the public name and 127.0.0.1:<port> are accepted).
+
 ## Known issues
 - v0.11.4 title generation crashes (`KeyError: 'model'` in `background_tasks_handler`), which
   breaks the chat UI. Workaround: title, tags and follow-up generation off, task model `julz`.

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>julz approver</title>
+<link rel="stylesheet" href="/approve.css">
+<script src="/approve.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>julz approver</h1>
+  <button id="reload" type="button">Reload</button>
+</header>
+<p id="status" role="status"></p>
+
+<section id="enroll" hidden>
+  <h2>Register this phone</h2>
+  <p>Run <code>./julz-approve-web.py --enroll</code> on the laptop and type the code here.</p>
+  <input id="code" autocomplete="off" autocapitalize="none" spellcheck="false"
+         inputmode="text" maxlength="40" placeholder="code from the terminal">
+  <button id="enroll-btn" type="button">Register passkey</button>
+</section>
+
+<section id="queue" hidden>
+  <div id="specs"></div>
+  <p id="waiting" class="muted"></p>
+  <div id="refused"></div>
+</section>
+
+<footer class="muted">
+  Touch the fingerprint sensor only on this page. A passkey prompt anywhere else is an alarm.
+</footer>
+</body>
+</html>
