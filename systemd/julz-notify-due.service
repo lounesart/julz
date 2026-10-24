@@ -1,0 +1,21 @@
+# "N notes due for review" when 3 or more (julz-notify.py --due). Started by julz-notify-due.timer.
+[Unit]
+Description=julz: daily reminder when notes are due for review
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-notify.py --due
+UMask=0077
+# Sandbox: reads only the count julz-vault wrote (julz-vault has no network), the topic,
+# and posts to my own ntfy. No note and nothing of the vault is visible here
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.config/julz/notify
+BindReadOnlyPaths=%h/.local/share/julz/vault
+# Unix sockets only: posts go to julz-ntfy's socket, seccomp refuses any internet socket (132)
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

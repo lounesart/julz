@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Julz design system</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app page stack g8 gut" style="padding-top: 28px; padding-bottom: 48px; font-family: 'Plus Jakarta Sans', sans-serif; color: #F5F2F4">
+  <header class="stack g2">
+    <h1 class="m0 disp t-tl">System</h1>
+    <p class="m0 t-sec muted">One set of sizes for every screen. Android gets the same numbers: dp for space, sp for text, so the phone's font size scales it all.</p>
+  </header>
+
+  <section class="stack g3">
+    <h2 class="sect">Type · sp</h2>
+    <div class="card list">
+      <sc-for list="{{types}}" as="t" hint-placeholder-count="7">
+        <div class="li" style="align-items: baseline">
+          <span class="grow" style="font-size: {{t.size}}; font-family: {{t.family}}; font-weight: {{t.weight}}; line-height: 1.2">{{t.sample}}</span>
+          <span class="mono t-cap muted">{{t.name}} {{t.px}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <p class="m0 t-sec muted" style="padding: 0 4px">Nothing below 14. Body 17. Text never truncates in a card; lists wrap to two lines.</p>
+  </section>
+
+  <section class="stack g3">
+    <h2 class="sect">Space · dp, steps of 4</h2>
+    <div class="card list">
+      <sc-for list="{{spaces}}" as="s" hint-placeholder-count="8">
+        <div class="li" style="min-height: 48px; padding: 6px 0">
+          <span class="mono t-sec" style="width: 40px">{{s.v}}</span>
+          <span style="height: 16px; width: {{s.w}}; border-radius: 4px; background: var(--acc)"></span>
+          <span class="t-sec muted grow" style="text-align: right">{{s.use}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="stack g3">
+    <h2 class="sect">Touch · the box you can hit</h2>
+    <div class="card" style="padding: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+      <sc-for list="{{targets}}" as="t" hint-placeholder-count="4">
+        <div class="stack g2" style="align-items: flex-start">
+          <span style="min-width: {{t.w}}; height: {{t.h}}; border: 2px dashed #FFFFFF55; border-radius: 12px; display: flex; align-items: center; justify-content: center">
+            <span style="width: {{t.vw}}; height: {{t.vh}}; border-radius: {{t.vr}}; background: {{t.fill}}"></span>
+          </span>
+          <span class="t-sec sb">{{t.name}}</span>
+          <span class="t-cap muted">{{t.use}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <p class="m0 t-sec muted" style="padding: 0 4px">Dashed: the tap area. Filled: what you see. A small switch still gets a 48 box.</p>
+  </section>
+
+  <section class="stack g3">
+    <h2 class="sect">Corners</h2>
+    <div class="rowx g3" style="flex-wrap: wrap">
+      <sc-for list="{{radii}}" as="r" hint-placeholder-count="4">
+        <div class="stack g2" style="align-items: center">
+          <span style="width: 68px; height: 68px; border-radius: {{r.r}}; background: var(--raise); border: 1px solid var(--line)"></span>
+          <span class="mono t-cap muted">{{r.name}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="stack g3">
+    <h2 class="sect">Adaptive rules</h2>
+    <div class="card list">
+      <sc-for list="{{rules}}" as="r" hint-placeholder-count="5">
+        <div class="li"><span class="t-sec grow">{{r}}</span></div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const D = 'Tektur, sans-serif', B = "'Plus Jakarta Sans', sans-serif";
+    const types = [
+      ['Hero', 40, D, 500, '12 done'], ['Title L', 32, D, 500, 'Setup'], ['Title M', 24, D, 500, 'Approve'],
+      ['Title S', 20, B, 600, 'Make your own'], ['Body', 17, B, 400, 'Live from the laptop'],
+      ['Secondary', 15, B, 400, 'Waits for your passkey'], ['Caption', 14, B, 400, 'needs you · 14:32']
+    ].map(([name, px, family, weight, sample]) => ({ name, px, size: px + 'px', family, weight, sample }));
+    const spaces = [[4, 'icon to text'], [8, 'inside a group'], [12, 'between cards'], [16, 'row content'], [20, 'card padding'], [24, 'big gaps, gutter max'], [32, 'between sections'], [40, 'page top']]
+      .map(([v, use]) => ({ v, use, w: (v * 3) + 'px' }));
+    const targets = [
+      { name: '48 · minimum', use: 'any tap: icons, chips, switches', w: '48px', h: '48px', vw: '34px', vh: '20px', vr: '10px', fill: '#E3197A' },
+      { name: '56 · main button', use: 'one per screen', w: '120px', h: '56px', vw: '112px', vh: '56px', vr: '28px', fill: '#F5F2F4' },
+      { name: '64 · list row', use: 'settings, messages', w: '140px', h: '64px', vw: '136px', vh: '60px', vr: '10px', fill: '#221E26' },
+      { name: '64 · tab', use: 'bottom bar', w: '64px', h: '64px', vw: '26px', vh: '26px', vr: '6px', fill: '#7E777F' }
+    ];
+    const radii = [['12 small', '12px'], ['20 row', '20px'], ['28 card', '28px'], ['round', '34px']].map(([name, r]) => ({ name, r }));
+    const rules = [
+      'Widths 360 to 430 dp: gutter grows from 16 to 24.',
+      'Bento tiles are at least 150 dp times text size, so they drop to one column when space runs out.',
+      'Text at 160% or more: tab names show under icons.',
+      'Landscape: more tiles per row, bottom bar stays.',
+      'Text contrast at least 4.5 to 1; no state by colour alone.'
+    ];
+    return { types, spaces, targets, radii, rules };
+  }
+}
+</script>
+</body>
+</html>

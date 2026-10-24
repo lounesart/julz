@@ -1,0 +1,40 @@
+# Phone approver on 127.0.0.1:8765, published to the phone by `tailscale serve` on 8443.
+# SECURITY.md threats 31 to 37 and 41. Install: see systemd/README.md
+[Unit]
+Description=julz phone approver
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-approve-web.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Sandbox (threat 41): an empty read only home, and only what the approver needs mounted
+# back. A secret we forgot to list stays invisible: default deny, not a deny list
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.config/julz/approver.json %h/.config/julz/projects.json
+BindReadOnlyPaths=%h/Documents/julz-mem/Outbox
+BindReadOnlyPaths=%h/.local/share/julz/done %h/.local/share/julz/quarantine
+# Keep cards come from manifests only: no work copy, no vault (threat 60)
+BindReadOnlyPaths=%h/.local/share/julz/manifests
+BindPaths=%h/.local/share/julz/keep
+BindPaths=%h/.config/julz/approver
+BindPaths=%h/Documents/julz-mem/Inbox/claude
+BindPaths=%h/.local/share/julz/approved
+BindPaths=%h/.local/share/julz/webauthn %h/.local/share/julz/log
+BindPaths=%h/.local/share/julz/tasks %h/.local/share/julz/control
+# Ticks from the app (threat 113): the todo snapshot read only, and the notes requests folder,
+# which the container writes anyway; julz-vault checks every request there again
+BindReadOnlyPaths=%h/.local/share/julz/vault
+BindPaths=%h/Documents/julz-mem/Inbox/.requests
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

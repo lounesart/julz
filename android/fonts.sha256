@@ -1,0 +1,9 @@
+# Fonts in the APK (threat 95): google/fonts at commit 47d54ca1ebb14fd864695f1d39dc734f39017c33,
+# files ofl/tektur, ofl/plusjakartasans, ofl/jetbrainsmono, SIL Open Font License. Check:
+#   cd android/app/src/main && sha256sum -c ../../../fonts.sha256
+48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda  res/font/jetbrains_mono.ttf
+89b3fb38aa0d275d7a731d0d817a4f1622b316b4d7fbdedcf02ee9099ff68bc8  res/font/plus_jakarta_sans.ttf
+a4c451e5336874811267c2a514efa09bca7bc8cabf32a310f0b44e111eacb933  res/font/tektur.ttf
+b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d  assets/licenses/jetbrainsmono-OFL.txt
+995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99  assets/licenses/plusjakartasans-OFL.txt
+ff4bb37f716836feb5038e1bf5c47e5a1946717fcfabb175086ed49f85ea47fd  assets/licenses/tektur-OFL.txt

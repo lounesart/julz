@@ -1,0 +1,13 @@
+# A request from julz's notes tool starts julz-vault.service. The tool writes a hidden temp
+# file and renames it, so the service never reads half of one (CWE-362).
+[Unit]
+Description=julz: apply note requests
+
+[Path]
+PathChanged=%h/Documents/julz-mem/Inbox/.requests
+MakeDirectory=yes
+DirectoryMode=0700
+Unit=julz-vault.service
+
+[Install]
+WantedBy=default.target

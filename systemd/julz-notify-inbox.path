@@ -1,0 +1,11 @@
+# A change in the delegation inbox rings the phone ("N specs waiting"), rate limited in
+# julz-notify.py because julz can write this folder. SECURITY.md threat 39
+[Unit]
+Description=julz: notify about specs waiting for approval
+
+[Path]
+PathChanged=%h/Documents/julz-mem/Inbox/claude
+Unit=julz-notify-inbox.service
+
+[Install]
+WantedBy=default.target

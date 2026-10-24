@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app page stack g8 gut" style="--k: {{k}}; --tap: {{tap}}; --row: {{row}}; --text: {{text}}; --muted: {{muted}}; --line: {{line}}; --surface: {{surface}}; --glass: {{glass}}; background: {{pageBg}}; padding-top: 24px; padding-bottom: 48px; font-family: 'Plus Jakarta Sans', sans-serif; color: {{text}}; font-weight: {{weight}}">
+
+  <header class="win rowx g3">
+    <a class="rbtn press" href="Settings.dc.html" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+    </a>
+    <h1 class="m0 disp t-tl grow">Accessibility</h1>
+  </header>
+
+  <section class="card win stack g4" style="animation-delay: 60ms; padding: 20px">
+    <label class="stack g2">
+      <span class="rowx g3" style="justify-content: space-between">
+        <span class="t-ts">Text size</span>
+        <span class="mono t-sec muted">{{scaleLabel}}</span>
+      </span>
+      <span class="t-sec muted">On top of Android's font size. This whole screen follows it.</span>
+      <input type="range" min="85" max="200" step="5" value="{{scale}}" onInput="{{setScale}}">
+    </label>
+    <div class="rowx" style="justify-content: space-between; color: var(--muted)"><span style="font-size: 14px">A</span><span style="font-size: 28px">A</span></div>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 120ms">
+    <h2 class="sect">Seeing</h2>
+    <div class="card list" style="border: {{cardBorder}}">
+      <sc-for list="{{seeing}}" as="t" hint-placeholder-count="4">
+        <div class="li">
+          <span class="stack g1 grow">
+            <span class="t-body sb">{{t.label}}</span>
+            <span class="t-sec muted">{{t.hint}}</span>
+          </span>
+          <button class="{{t.cls}}" onClick="{{t.toggle}}" aria-pressed="{{t.on}}" aria-label="{{t.label}}"><span><span></span></span></button>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 180ms">
+    <h2 class="sect">Moving and touching</h2>
+    <div class="card list" style="border: {{cardBorder}}">
+      <sc-for list="{{moving}}" as="t" hint-placeholder-count="3">
+        <div class="li">
+          <span class="stack g1 grow">
+            <span class="t-body sb">{{t.label}}</span>
+            <span class="t-sec muted">{{t.hint}}</span>
+          </span>
+          <button class="{{t.cls}}" onClick="{{t.toggle}}" aria-pressed="{{t.on}}" aria-label="{{t.label}}"><span><span></span></span></button>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 240ms">
+    <h2 class="sect">Hearing</h2>
+    <div class="card list" style="border: {{cardBorder}}">
+      <sc-for list="{{hearing}}" as="t" hint-placeholder-count="1">
+        <div class="li">
+          <span class="stack g1 grow">
+            <span class="t-body sb">{{t.label}}</span>
+            <span class="t-sec muted">{{t.hint}}</span>
+          </span>
+          <button class="{{t.cls}}" onClick="{{t.toggle}}" aria-pressed="{{t.on}}" aria-label="{{t.label}}"><span><span></span></span></button>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <p class="m0 t-sec muted" style="padding: 0 4px">Julz follows Android first: font size, Remove animations, TalkBack. These apply to Julz only. Every icon has a spoken name.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1420}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { scale: 100, on: { bold: false, contrast: false, solid: false, labels: true, cvd: false, motion: false, targets: false, haptics: true, speak: false } };
+  }
+  renderVals() {
+    const st = this.state, on = st.on;
+    const mk = (defs) => defs.map(([id, label, hint]) => ({ label, hint, on: !!on[id], cls: on[id] ? 'switch on press' : 'switch press',
+      toggle: () => this.setState({ on: { ...on, [id]: !on[id] } }) }));
+    const hc = on.contrast;
+    return {
+      k: st.scale / 100, scale: st.scale, scaleLabel: st.scale + '%',
+      setScale: (e) => this.setState({ scale: Number(e.target.value) }),
+      tap: on.targets ? '56px' : '48px', row: on.targets ? '72px' : '64px',
+      text: hc ? '#FFFFFF' : '#F5F2F4', muted: hc ? '#E6E6E6' : '#ABA4AC', line: hc ? '#FFFFFF66' : '#FFFFFF14',
+      cardBorder: hc ? '2px solid #FFFFFF' : '1px solid #FFFFFF14',
+      weight: on.bold ? 600 : 400,
+      surface: on.solid ? '#1C1820' : '#FFFFFF0A', glass: on.solid ? 'none' : 'blur(14px) saturate(140%)',
+      pageBg: on.solid ? '#09070A' : 'radial-gradient(90% 45% at 100% 0%,#E3197A33 0%,#E3197A00 70%),radial-gradient(70% 40% at 0% 70%,#7FE3F014 0%,#7FE3F000 70%),#09070A',
+      seeing: mk([['bold', 'Bold text', 'Heavier letters everywhere'], ['contrast', 'High contrast', 'Brighter text, strong borders'], ['solid', 'Reduce transparency', 'Solid cards instead of glass'],
+        ['labels', 'Tab names', 'Words under the bottom bar icons'], ['cvd', 'Colour-blind safe', 'Shapes on every kind of notice']]),
+      moving: mk([['motion', 'Reduce motion', 'No sliding, pulsing or glowing'], ['targets', 'Bigger touch targets', 'Every button 56, rows 72'],
+        ['haptics', 'Haptics', 'A short buzz on open and approve']]),
+      hearing: mk([['speak', 'Read notices aloud', 'On the phone, never sent anywhere']])
+    };
+  }
+}
+</script>
+</body>
+</html>

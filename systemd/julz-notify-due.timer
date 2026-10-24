@@ -1,0 +1,11 @@
+# Daily at 19:00. Persistent: if the laptop was off then, the reminder comes after boot.
+[Unit]
+Description=julz: daily reminder when notes are due for review
+
+[Timer]
+OnCalendar=*-*-* 19:00:00
+Persistent=true
+Unit=julz-notify-due.service
+
+[Install]
+WantedBy=timers.target

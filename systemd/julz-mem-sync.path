@@ -1,0 +1,11 @@
+# A stamp in ~/.local/state/julz-memsync/pending asks for a sync now (BACKLOG 210: a menu
+# action of hers later). The stamp carries nothing: it only starts the same diff sync.
+[Unit]
+Description=julz: sync my notes when asked
+
+[Path]
+PathChanged=%h/.local/state/julz-memsync/pending
+Unit=julz-mem-sync.service
+
+[Install]
+WantedBy=default.target

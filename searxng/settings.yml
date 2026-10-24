@@ -1,0 +1,23 @@
+# SearXNG for Julz. Mounted read only at /etc/searxng by run-searxng.sh.
+# The secret key is not here: it comes from SEARXNG_SECRET in ~/.config/julz/searxng.env.
+use_default_settings: true
+
+general:
+  instance_name: julz-search
+
+server:
+  # Local only, one user: no rate limiter (it would need Valkey), no public mode
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: GET
+
+search:
+  safe_search: 0
+  # Open WebUI reads results as JSON; the default config only serves HTML
+  formats:
+    - html
+    - json
+
+valkey:
+  url: false

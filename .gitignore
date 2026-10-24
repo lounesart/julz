@@ -1,0 +1,26 @@
+__pycache__/
+*.env
+
+# Local Claude Code files (settings, permissions, personal memory)
+.claude/
+CLAUDE.local.md
+
+# Secrets and logs never enter git
+*.pem
+*.key
+*.log
+
+# Session handoffs stay on this laptop
+/HANDOFF.md
+
+# Plans and session notes live in private/, its own local repo; the root names are links to it
+/private/
+/CLAUDE.md
+/BACKLOG.md
+/BACKLOG-archive.md
+/SECURITY.md
+/PLAN.md
+/PLAN-keep.md
+/HANDOFF-side-*.md
+/docs/modules
+/docs/REPORT.md

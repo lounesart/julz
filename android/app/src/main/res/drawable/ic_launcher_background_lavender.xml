@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Julz icon in the lavender accent (135), made from ic_launcher_background.xml with
+     E3197A swapped for C9B8F0. Julz icon background: the mockups' near black, magenta glow top right, cyan bottom left,
+     and a soft magenta halo in the middle, the app's button glow -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#09070A" android:pathData="M0,0h108v108h-108z" />
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="94" android:centerY="12"
+                android:gradientRadius="78" android:startColor="#73C9B8F0" android:endColor="#00C9B8F0" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="10" android:centerY="96"
+                android:gradientRadius="60" android:startColor="#247FE3F0" android:endColor="#007FE3F0" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="radial" android:centerX="54" android:centerY="54"
+                android:gradientRadius="26" android:startColor="#59C9B8F0" android:endColor="#00C9B8F0" />
+        </aapt:attr>
+    </path>
+</vector>

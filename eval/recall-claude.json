@@ -1,0 +1,14 @@
+[
+  {"q": "In the DHCP lab guide, which UDP ports do the DHCP client and the server use?",
+   "expect": ["67", "68"], "source": "Claude__network-plus__ac7ec2c4__labs__05-dhcp.md"},
+  {"q": "In the spanning tree lab, how is the root bridge chosen?",
+   "expect": ["lowest"], "source": "Claude__network-plus__ac7ec2c4__labs__07-stp.md"},
+  {"q": "According to the ACL lab guide, what does every ACL end with?",
+   "expect": ["deny"], "source": "Claude__network-plus__ac7ec2c4__labs__10-acls.md"},
+  {"q": "In the NAT lab, what other name is used for PAT?",
+   "expect": ["overload"], "source": "Claude__network-plus__ac7ec2c4__labs__09-nat.md"},
+  {"q": "Which handshake does WPA3 use, according to the Wi-Fi security lab?",
+   "expect": ["SAE"], "source": "Claude__network-plus__ac7ec2c4__labs__11-wifi-security.md"},
+  {"q": "In the DNS lab guide, which record type maps a name to an IPv6 address?",
+   "expect": ["AAAA"], "source": "Claude__network-plus__ac7ec2c4__labs__04-dns.md"}
+]

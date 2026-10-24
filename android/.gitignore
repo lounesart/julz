@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+# Signing keys never enter git (threat 96)
+*.jks
+*.keystore
+*.p12
+keystore.properties
+*.apk

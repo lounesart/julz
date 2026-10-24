@@ -1,0 +1,27 @@
+# Proxy in front of Open WebUI against one click messages from ?q= links, SECURITY.md 101.
+# Listens on 127.0.0.1:3101 and passes to Open WebUI on 127.0.0.1:3100. tailscale serve 443
+# points here. It needs no files and no secrets, only the release code.
+[Unit]
+Description=Julz proxy in front of Open WebUI
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-webproxy.py
+Restart=always
+RestartSec=2
+UMask=0077
+
+# Sandbox: an empty read only home with only the release bound back
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

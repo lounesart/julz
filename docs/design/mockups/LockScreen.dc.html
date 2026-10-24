@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lock screen notices</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app gut" style="background: radial-gradient(120% 70% at 50% 0%, #2A0717 0%, #09070A 60%); padding-top: 96px; padding-bottom: 32px; gap: 40px; font-family: 'Plus Jakarta Sans', sans-serif; color: #F5F2F4">
+  <div class="stack g2" style="align-items: center">
+    <span class="disp" style="font-size: 88px; line-height: 1; font-weight: 400">14:33</span>
+    <span class="t-body" style="color: #D2CBD3">Friday, 16 October</span>
+  </div>
+  <div class="stack g2">
+    <sc-for list="{{cards}}" as="c" hint-placeholder-count="3">
+      <div class="drop rowx g3" style="animation-delay: {{c.delay}}; min-height: 76px; border-radius: 24px; background: #1F1B23EB; border: 1px solid #FFFFFF14; padding: 14px 16px">
+        <span class="ico" style="background: {{c.tint}}; color: {{c.fg}}">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.icon}}"></path></svg>
+        </span>
+        <span class="stack g1 grow">
+          <span class="rowx t-cap" style="justify-content: space-between; color: #D2CBD3"><span>{{c.app}}</span><span>{{c.when}}</span></span>
+          <span class="t-body b">{{c.text}}</span>
+        </span>
+      </div>
+    </sc-for>
+    <div class="drop rowx g3 t-sec" style="animation-delay: 740ms; min-height: 48px; border-radius: 20px; background: #1F1B23B3; padding: 0 16px; color: #D2CBD3">
+      <span class="pulse" style="width: 8px; height: 8px; border-radius: 4px; background: #B8FF3C; color: #B8FF3C"></span>
+      Julz is listening
+    </div>
+  </div>
+  <div style="flex: 1"></div>
+  <span class="t-sec" style="text-align: center; color: #D2CBD3">Unlock to see titles</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const cards = [
+      { app: 'Julz · Approvals', when: 'now', text: '1 new approval', tint: '#E3197A', fg: '#FFFFFF', icon: 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z' },
+      { app: 'Julz · Todos', when: '20 min', text: 'Contents hidden', tint: '#F7D58B', fg: '#120A10', icon: 'M4 6h2 M4 12h2 M4 18h2 M9 6h11 M9 12h11 M9 18h7' },
+      { app: 'Julz · Runs', when: '1 h', text: 'Contents hidden', tint: '#7FE3F0', fg: '#120A10', icon: 'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h3' }
+    ].map((c, i) => ({ ...c, delay: (200 + i * 180) + 'ms' }));
+    return { cards };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# Sunday nudge: "N notes in Inbox" (julz-notify.py --weekly). Started by julz-notify-weekly.timer.
+[Unit]
+Description=julz: weekly reminder to empty the Inbox
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-notify.py --weekly
+UMask=0077
+# Sandbox: counts file names in Inbox (never reads a note), reads the topic, posts to my own ntfy.
+# Nothing in the vault is writable
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.config/julz/notify
+BindReadOnlyPaths=%h/Documents/julz-mem/Inbox
+# Unix sockets only: posts go to julz-ntfy's socket, seccomp refuses any internet socket (132)
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

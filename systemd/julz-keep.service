@@ -1,0 +1,29 @@
+# Uses signed Keeps (julz-keep.py): copies Claude's checked notes into julz-mem/Claude.
+# SECURITY.md threats 54 to 63. Started only by julz-keep.path and julz-keep.timer.
+[Unit]
+Description=julz: copy kept Claude notes into the vault
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-keep.py
+UMask=0077
+TimeoutStartSec=5min
+Nice=10
+# Sandbox: no network, no token or API key, an empty read only home. Work copies and
+# manifests are read only, Claude/ is the only writable place in the vault (threat 60)
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateNetwork=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.local/share/julz/work %h/.local/share/julz/manifests
+BindPaths=%h/.local/share/julz/keep %h/.local/share/julz/tasks %h/.local/share/julz/log
+# Only to stamp sync/pending: the sync itself runs in julz-keep-sync, which has the key
+BindPaths=%h/.local/share/julz/sync
+# The gate lock: a Keep never runs while Claude works in a work copy. flock works through a bind
+BindPaths=%h/.local/share/julz/run.lock
+BindPaths=%h/Documents/julz-mem/Claude
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

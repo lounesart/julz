@@ -1,0 +1,17 @@
+# Runs every approved spec once, in bwrap (julz-run.py). Started by julz-run.path and, as a
+# fallback for an approval that lands mid run, by julz-run.timer. All gates stay in the
+# runner: hash recheck, run once, lock, 15 minute timeout per spec, daily cap.
+# Not sandboxed by systemd: the runner builds its own bwrap sandbox for Claude, and systemd
+# namespaces around it would only get in bwrap's way.
+[Unit]
+Description=julz: run approved Claude Code specs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-run.py --until-empty
+NoNewPrivileges=yes
+UMask=0077
+Nice=10
+# 5 specs a day at most 15 minutes each, plus margin. For a oneshot the start timeout is
+# the run limit (RuntimeMaxSec is ignored), and it defaults to infinity
+TimeoutStartSec=90min

@@ -1,0 +1,11 @@
+# Commits my own edits in the vault every 15 minutes, and picks up requests left over when
+# more than 20 came at once. Nothing changed means no commit.
+[Unit]
+Description=julz: commit the vault every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Unit=julz-vault.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+# Posts my open tasks to my own push server when julz-vault rewrites todos.json (threat 100).
+[Unit]
+Description=julz: open tasks changed
+
+[Path]
+PathChanged=%h/.local/share/julz/vault/todos.json
+
+[Install]
+WantedBy=default.target

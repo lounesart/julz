@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Look and feel</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app page stack g8 gut" style="--acc: {{p.accent}}; padding-top: 24px; padding-bottom: 48px; font-family: 'Plus Jakarta Sans', sans-serif; color: #F5F2F4">
+
+  <header class="win rowx g3">
+    <a class="rbtn press" href="Settings.dc.html" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+    </a>
+    <h1 class="m0 disp t-tl grow">Look &amp; feel</h1>
+  </header>
+
+  <section class="win stack g3" aria-label="Preview" style="animation-delay: 60ms; border-radius: var(--r-l); background: {{p.bg}}; border: 1px solid #FFFFFF1F; padding: 16px; transition: background .45s var(--ease)">
+    <span class="mono t-cap" style="color: {{p.muted}}">preview</span>
+    <div class="rowx g3" style="border-radius: {{p.radius}}; background: linear-gradient(160deg, {{p.accent}} 0%, {{p.deep}} 75%); color: {{p.onAccent}}; padding: 16px; justify-content: space-between; align-items: flex-end; min-height: 100px; transition: all .45s var(--ease)">
+      <span style="font: 500 var(--t-ts)/1.2 {{p.display}}; text-transform: uppercase">Approve:<br>rename notes</span>
+      <span class="t-cap b" style="flex: none; min-height: 40px; padding: 0 14px; border-radius: 20px; background: #09070A; color: #FFFFFF; display: flex; align-items: center">Review</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <div style="border-radius: {{p.radius}}; background: {{p.card}}; border: 1px solid {{p.cardLine}}; box-shadow: {{p.shadow}}; padding: 16px; color: {{p.text}}; transition: all .45s var(--ease)">
+        <span style="display: block; font: 500 var(--t-tl)/1 {{p.display}}">3</span>
+        <span class="t-sec" style="color: {{p.muted}}">todos open</span>
+      </div>
+      <div style="border-radius: {{p.radius}}; background: {{p.card}}; border: 1px solid {{p.cardLine}}; box-shadow: {{p.shadow}}; padding: 16px; color: {{p.text}}; transition: all .45s var(--ease)">
+        <span style="display: block; font: 500 var(--t-tl)/1 {{p.display}}">12</span>
+        <span class="t-sec" style="color: {{p.muted}}">done this week</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 120ms">
+    <h2 class="sect">Themes</h2>
+    <div class="bento">
+      <sc-for list="{{themes}}" as="t" hint-placeholder-count="4">
+        <button class="press stack g3" onClick="{{t.pick}}" aria-pressed="{{t.on}}" style="border-radius: 24px; border: 3px solid {{t.ring}}; background: {{t.bg}}; padding: 12px; cursor: pointer; text-align: left; transition: border-color .3s">
+          <span style="height: 72px; border-radius: 14px; background: linear-gradient(160deg, {{t.accent}} 0%, {{t.deep}} 85%)"></span>
+          <span class="stack" style="padding: 0 4px 4px">
+            <span class="t-body b" style="color: {{t.text}}">{{t.name}}</span>
+            <span class="t-cap" style="color: {{t.muted}}">{{t.note}}</span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="card stack g6 win" style="animation-delay: 180ms; padding: 20px">
+    <div class="rowx g3" style="justify-content: space-between; flex-wrap: wrap">
+      <h2 class="m0 disp t-ts">Make your own</h2>
+      <span class="t-cap muted">based on {{baseName}}</span>
+    </div>
+    <div class="stack g2">
+      <span class="t-sec muted">Accent</span>
+      <div class="rowx g2" style="flex-wrap: wrap">
+        <sc-for list="{{accents}}" as="a" hint-placeholder-count="7">
+          <button class="press" onClick="{{a.pick}}" aria-label="{{a.name}}" aria-pressed="{{a.on}}" style="width: 48px; height: 48px; border-radius: 24px; border: 3px solid {{a.ring}}; background: {{a.color}}; cursor: pointer; padding: 0"></button>
+        </sc-for>
+      </div>
+    </div>
+    <sc-for list="{{segs}}" as="s" hint-placeholder-count="4">
+      <div class="stack g2">
+        <span class="t-sec muted">{{s.label}}</span>
+        <div class="seg" style="flex-wrap: wrap">
+          <sc-for list="{{s.opts}}" as="o" hint-placeholder-count="4">
+            <button class="{{o.cls}}" onClick="{{o.pick}}" aria-pressed="{{o.on}}">{{o.label}}</button>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+    <label class="stack g1">
+      <span class="rowx" style="justify-content: space-between"><span class="t-sec muted">Corners</span><span class="mono t-sec">{{radiusLabel}}</span></span>
+      <input type="range" min="8" max="36" step="2" value="{{radius}}" onInput="{{setRadius}}">
+    </label>
+    <button class="btn press" onClick="{{save}}">{{saveLabel}}</button>
+  </section>
+
+  <section class="card stack g4 win" style="animation-delay: 240ms; padding: 20px">
+    <h2 class="m0 disp t-ts">Home layout</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <sc-for list="{{layouts}}" as="l" hint-placeholder-count="3">
+        <button class="press stack g2" onClick="{{l.pick}}" aria-pressed="{{l.on}}" style="border-radius: 18px; border: 3px solid {{l.ring}}; background: #FFFFFF08; padding: 12px 8px; align-items: center; cursor: pointer; color: #F5F2F4; transition: border-color .3s">
+          <span style="width: 56px; height: 76px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 3px">
+            <sc-for list="{{l.cells}}" as="cell" hint-placeholder-count="4">
+              <span style="grid-column: span {{cell.span}}; border-radius: 4px; background: {{cell.color}}"></span>
+            </sc-for>
+          </span>
+          <span class="t-sec sb">{{l.name}}</span>
+        </button>
+      </sc-for>
+    </div>
+    <span class="t-sec muted">Home tiles. Drag to reorder.</span>
+    <div class="list" style="padding: 0">
+      <sc-for list="{{tiles}}" as="t" hint-placeholder-count="5">
+        <div class="li">
+          <span style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: var(--faint)" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 6h.01 M15 6h.01 M9 12h.01 M15 12h.01 M9 18h.01 M15 18h.01"></path></svg>
+          </span>
+          <span class="t-body grow">{{t.name}}</span>
+          <sc-if value="{{t.locked}}" hint-placeholder-val="{{ false }}">
+            <span class="t-cap muted">always first</span>
+          </sc-if>
+          <sc-if value="{{t.free}}" hint-placeholder-val="{{ true }}">
+            <button class="rbtn press" onClick="{{t.toggle}}" aria-pressed="{{t.shown}}" aria-label="{{t.aria}}" style="background: transparent; border: 0; color: {{t.eye}}">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"></path></svg>
+            </button>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <p class="m0 t-sec muted" style="padding: 0 4px">Themes live on this phone. A theme is colours, corners and a font from the app, never code or web addresses, so a shared theme cannot run anything.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { theme: 'magenta', accent: null, bg: 'Black', style: 'Glass', font: 'Tektur', motion: 'Full', radius: 28, layout: 'Bento', hidden: {}, saved: false };
+  }
+  renderVals() {
+    const T = {
+      magenta: { name: 'Magenta poster', note: 'default', accent: '#E3197A', deep: '#3A0A26', bg: '#09070A', text: '#F5F2F4', muted: '#ABA4AC' },
+      redstone: { name: 'Red Stone', note: 'from HyDE', accent: '#B41211', deep: '#21010A', bg: '#060101', text: '#F7EEF0', muted: '#B89CA2' },
+      acid: { name: 'Acid', note: 'green night', accent: '#B8FF3C', deep: '#1E3300', bg: '#080A06', text: '#F2F7EA', muted: '#A3AD97' },
+      paper: { name: 'Paper', note: 'light', accent: '#E3197A', deep: '#FF9CC6', bg: '#F4F1EC', text: '#120A10', muted: '#5E5560' }
+    };
+    const st = this.state;
+    const base = T[st.theme];
+    const accent = st.accent || base.accent;
+    const BG = { Black: base.bg, Plum: '#150711', Navy: '#0A1020', Paper: '#F4F1EC' };
+    const bg = st.theme === 'paper' ? '#F4F1EC' : BG[st.bg];
+    const light = bg === '#F4F1EC';
+    const lightAccent = ['#B8FF3C', '#7FE3F0', '#F7D58B'].includes(accent);
+    const STY = {
+      Glass: { card: light ? '#FFFFFFB3' : '#FFFFFF12', line: light ? '#00000014' : '#FFFFFF1F', shadow: 'none' },
+      Flat: { card: light ? '#EAE5DE' : '#17141A', line: 'transparent', shadow: 'none' },
+      Outline: { card: 'transparent', line: light ? '#120A1055' : '#FFFFFF55', shadow: 'none' },
+      Glow: { card: light ? '#FFFFFF' : '#141116', line: accent + '77', shadow: '0 0 24px ' + accent + '33' }
+    };
+    const s = STY[st.style];
+    const FONTS = { Tektur: 'Tektur, sans-serif', Grotesk: "'Plus Jakarta Sans', sans-serif", Mono: "'JetBrains Mono', monospace" };
+    const p = { bg, accent, deep: base.deep, onAccent: lightAccent ? '#09070A' : '#FFFFFF', text: light ? '#120A10' : '#F5F2F4',
+      muted: light ? '#5E5560' : '#ABA4AC', card: s.card, cardLine: s.line, shadow: s.shadow, radius: st.radius + 'px', display: FONTS[st.font] };
+    const themes = Object.keys(T).map((id) => ({ ...T[id], on: st.theme === id, ring: st.theme === id ? accent : '#FFFFFF14',
+      pick: () => this.setState({ theme: id, accent: null, saved: false }) }));
+    const accents = [['Magenta', '#E3197A'], ['Red Stone', '#B41211'], ['Acid', '#B8FF3C'], ['Cyan', '#7FE3F0'], ['Sand', '#F7D58B'], ['Lavender', '#C9B8F0'], ['Orange', '#FF7A3D']]
+      .map(([name, color]) => ({ name, color, on: accent === color, ring: accent === color ? '#F5F2F4' : 'transparent',
+        pick: () => this.setState({ accent: color, saved: false }) }));
+    const seg = (label, key, opts) => ({ label, opts: opts.map((o) => ({ label: o, on: st[key] === o, cls: st[key] === o ? 'on' : '',
+      pick: () => this.setState({ [key]: o, saved: false }) })) });
+    const segs = [seg('Background', 'bg', ['Black', 'Plum', 'Navy', 'Paper']), seg('Cards', 'style', ['Glass', 'Flat', 'Outline', 'Glow']),
+      seg('Display font', 'font', ['Tektur', 'Grotesk', 'Mono']), seg('Motion', 'motion', ['Full', 'Calm', 'Off'])];
+    const W = '#F5F2F4', G = '#FFFFFF2E', A = accent;
+    const L = { Bento: [[2, A], [1, G], [1, G], [2, G], [2, G]], List: [[2, A], [2, G], [2, G], [2, G], [2, G]], Timeline: [[2, A], [1, W], [1, G], [1, W], [1, G]] };
+    const layouts = Object.keys(L).map((name) => ({ name, on: st.layout === name, ring: st.layout === name ? accent : '#FFFFFF14',
+      cells: L[name].map(([span, color]) => ({ span, color })), pick: () => this.setState({ layout: name }) }));
+    const eyeOn = 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z M12 15a3 3 0 100-6 3 3 0 000 6z';
+    const eyeOff = 'M3 3l18 18 M10.6 5.1A10 10 0 0112 5c6 0 10 7 10 7a17 17 0 01-3.2 3.9 M6.6 6.6C3.9 8.3 2 12 2 12s4 7 10 7a9.6 9.6 0 004.4-1';
+    const tiles = ['Needs you', 'Todos', 'This week', 'Inbox', 'Latest'].map((name) => {
+      const locked = name === 'Needs you';
+      const shown = !st.hidden[name];
+      return { name, locked, free: !locked, shown, aria: (shown ? 'Hide ' : 'Show ') + name, eye: shown ? '#F5F2F4' : '#7E777F', icon: shown ? eyeOn : eyeOff,
+        toggle: () => this.setState({ hidden: { ...st.hidden, [name]: shown } }) };
+    });
+    return {
+      p, themes, accents, segs, layouts, tiles, baseName: base.name, radius: st.radius, radiusLabel: st.radius + ' px',
+      setRadius: (e) => this.setState({ radius: Number(e.target.value), saved: false }),
+      saveLabel: st.saved ? 'Saved as My theme' : 'Save as my theme', save: () => this.setState({ saved: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

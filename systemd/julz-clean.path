@@ -1,0 +1,11 @@
+# A change in tasks/ starts the cleaner, so Delete on the phone removes the work copy within
+# seconds. The approver itself has no access to work/ (threat 49).
+[Unit]
+Description=julz: clean up when a task changes
+
+[Path]
+PathChanged=%h/.local/share/julz/tasks
+Unit=julz-clean.service
+
+[Install]
+WantedBy=default.target

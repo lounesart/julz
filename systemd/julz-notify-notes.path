@@ -1,0 +1,11 @@
+# A new note in Inbox/ or daily/ puts a card in the Feed (209, threat 142). julz-vault rewrites
+# notes.json after every refresh and run; julz-notify.py --notes sends only when a name is new.
+[Unit]
+Description=julz: new notes card
+
+[Path]
+PathChanged=%h/.local/share/julz/vault/notes.json
+Unit=julz-notify-notes.service
+
+[Install]
+WantedBy=default.target

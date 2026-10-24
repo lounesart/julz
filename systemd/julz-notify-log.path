@@ -1,0 +1,11 @@
+# Each new line in runner.log (approve, reject, enroll, run result) may ring the phone.
+# SECURITY.md threats 39 and 43
+[Unit]
+Description=julz: notify about approvals and run results
+
+[Path]
+PathModified=%h/.local/share/julz/log/runner.log
+Unit=julz-notify-log.service
+
+[Install]
+WantedBy=default.target

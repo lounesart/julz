@@ -1,0 +1,28 @@
+# Rebuilds only the snapshots the phone reads (julz-vault.py --refresh, threat 142): no commit,
+# no request, the vault read only. Started by julz-vault-refresh.path.
+[Unit]
+Description=julz: refresh the phone's notes
+# julz-vault.py --refresh waits 3 s first (never an ExecStartPre: it loses PrivateNetwork),
+# so one start per 3 s at most, well under this limit, so typing in Obsidian
+# (a save every few seconds) never trips it
+StartLimitIntervalSec=60
+StartLimitBurst=30
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-vault.py --refresh
+UMask=0022
+# Waits for a full run's lock (at most its own 5 min)
+TimeoutStartSec=6min
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateNetwork=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/Documents/julz-mem
+BindPaths=%h/.local/share/julz/vault
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

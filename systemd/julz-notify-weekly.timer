@@ -1,0 +1,11 @@
+# Sundays at 18:00. Persistent: if the laptop was off then, the reminder comes after boot.
+[Unit]
+Description=julz: weekly reminder to empty the Inbox
+
+[Timer]
+OnCalendar=Sun *-*-* 18:00:00
+Persistent=true
+Unit=julz-notify-weekly.service
+
+[Install]
+WantedBy=timers.target

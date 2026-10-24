@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed icon: the same J in one colour -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M39 66.68V55.13H48.51V65.21H59.49V42.45H40.81V34.19H69V66.68L61.87 73.81H46.13Z" />
+</vector>

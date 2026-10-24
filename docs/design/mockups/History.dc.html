@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Julz feed, history</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" style="--k: {{k}}; font-family: 'Plus Jakarta Sans', sans-serif; color: #F5F2F4">
+
+  <div class="glass" style="border-radius: 0 0 40px 40px; border: 1px solid var(--line); border-top: 0; padding-bottom: 20px; flex: none">
+    <header class="win rowx g3 gut" style="padding-top: 24px; padding-bottom: 16px">
+      <h1 class="m0 disp t-tl grow">Julz</h1>
+      <a class="rbtn press" href="Look.dc.html" aria-label="Look and feel">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9 M17 7h3 M4 17h3 M11 17h9 M15 5v4 M9 15v4"></path></svg>
+      </a>
+    </header>
+    <nav class="gut win" aria-label="Feed views" style="animation-delay: 60ms; padding-bottom: 16px">
+      <div class="seg">
+        <a href="Main.dc.html">Now</a>
+        <a href="Messages.dc.html">Messages</a>
+        <a class="on" href="History.dc.html" aria-current="page">History</a>
+      </div>
+    </nav>
+    <button class="win press rowx g2" style="animation-delay: 100ms; margin: 0 auto 12px; min-height: 48px; padding: 0 16px; border: 0; background: transparent; color: var(--text); font: 500 var(--t-ts) Tektur, sans-serif; cursor: pointer" aria-label="Pick a month, October 2026">
+      October 2026
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E3197A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+    </button>
+    <div class="win rowx g2" style="animation-delay: 140ms; justify-content: center; overflow-x: auto; padding: 0 12px">
+      <sc-for list="{{days}}" as="d" hint-placeholder-count="5">
+        <button class="press" onClick="{{d.pick}}" aria-pressed="{{d.on}}" aria-label="{{d.aria}}" style="flex: none; width: 64px; height: {{d.h}}; border-radius: 32px; border: 0; background: {{d.bg}}; color: {{d.fg}}; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; transition: all .35s var(--ease)">
+          <span class="disp t-ts">{{d.num}}</span>
+          <span class="t-cap" style="opacity: .9">{{d.name}}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+
+  <main class="scroll" style="padding: 20px var(--gutter) 112px 0">
+    <sc-for list="{{items}}" as="it" hint-placeholder-count="5">
+      <div class="win" style="animation-delay: {{it.delay}}; display: grid; grid-template-columns: calc(64px * var(--k)) minmax(0, 1fr); padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px dashed #FFFFFF24">
+        <div class="stack g2" style="align-items: center; padding-top: 36px">
+          <span class="disp t-sec">{{it.time}}</span>
+          <span style="flex: 1; min-height: 40px; border-left: 2px dashed #FFFFFF2E"></span>
+        </div>
+        <div class="stack">
+          <div class="rowx g3" style="align-items: flex-end">
+            <span class="t-cap b" style="padding: 8px 16px 6px; border-radius: 18px 18px 0 0; background: {{it.fill}}; color: #120A10">{{it.status}}</span>
+            <sc-if value="{{it.hasPct}}" hint-placeholder-val="{{ false }}">
+              <span class="rowx g2 grow" style="justify-content: flex-end; padding-bottom: 8px">
+                <span style="width: 64px; height: 6px; border-radius: 3px; background: #FFFFFF1F; overflow: hidden; display: block">
+                  <span class="fill" style="display: block; height: 6px; width: {{it.pct}}; border-radius: 3px; background: {{it.fill}}"></span>
+                </span>
+                <span class="mono t-cap" style="color: {{it.fill}}">{{it.pct}}</span>
+              </span>
+            </sc-if>
+          </div>
+          <a class="press rowx g3" href="Notice.dc.html" style="min-height: 80px; border-radius: 0 24px 24px 24px; background: {{it.fill}}; color: #120A10; padding: 16px 8px 16px 14px; text-decoration: none">
+            <span style="flex: none; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center">
+              <span style="width: 38px; height: 38px; border-radius: 10px; background: #120A10; transform: rotate(45deg); display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{it.fill}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate(-45deg)"><path d="{{it.icon}}"></path></svg>
+              </span>
+            </span>
+            <span class="stack g1 grow">
+              <span class="t-body b">{{it.title}}</span>
+              <span class="t-sec" style="opacity: .8">{{it.sub}}</span>
+            </span>
+            <span aria-hidden="true" style="flex: none; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#120A10" aria-hidden="true"><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
+            </span>
+          </a>
+        </div>
+      </div>
+    </sc-for>
+  </main>
+
+  <nav class="tabbar" aria-label="Main">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+      <a class="tab press" href="{{t.href}}" aria-label="{{t.label}}" style="color: {{t.color}}">
+        <span style="position: relative; display: flex">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"></path></svg>
+          <sc-if value="{{t.badge}}" hint-placeholder-val="{{ false }}"><span class="badge">1</span></sc-if>
+        </span>
+        <span style="width: 5px; height: 5px; border-radius: 3px; background: {{t.dot}}"></span>
+      </a>
+    </sc-for>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"textScale":{"editor":"enum","options":["1","1.3","1.6","2"],"default":"1"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { day: 16 };
+  }
+  renderVals() {
+    const k = Number(this.props.textScale ?? 1) || 1;
+    const days = [[13, 'Tue'], [14, 'Wed'], [15, 'Thu'], [16, 'Fri'], [17, 'Sat']].map(([num, name]) => {
+      const on = this.state.day === num;
+      return { num, name, on, aria: name + ' ' + num, bg: on ? '#E3197A' : '#221E26', fg: on ? '#FFFFFF' : '#ABA4AC', h: on ? '92px' : '76px',
+        pick: () => this.setState({ day: num }) };
+    });
+    const K = {
+      approval: { fill: '#FF7AB6', icon: 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z' },
+      todo: { fill: '#F7D58B', icon: 'M4 6h2 M4 12h2 M4 18h2 M9 6h11 M9 12h11 M9 18h7' },
+      run: { fill: '#7FE3F0', icon: 'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h3' },
+      inbox: { fill: '#C9B8F0', icon: 'M4 13l2-8h12l2 8 M4 13v6h16v-6 M4 13h5l1 2h4l1-2h5' },
+      done: { fill: '#C4F07A', icon: 'M5 12l5 5L19 7' }
+    };
+    const byDay = {
+      16: [
+        { kind: 'approval', time: '14:32', status: 'Waiting', title: 'Rename dhcp notes', sub: 'Approve on the approver' },
+        { kind: 'todo', time: '14:10', status: 'Running', title: 'physio list', sub: 'Next: review session notes', pct: '67%' },
+        { kind: 'run', time: '13:05', status: 'Done', title: 'nmap lesson summary', sub: 'Report in Outbox', pct: '100%' },
+        { kind: 'inbox', time: '11:20', status: 'New', title: '2 drafts in Inbox', sub: 'Julz wrote them' },
+        { kind: 'done', time: '08:15', status: 'Solved', title: 'Answers too long', sub: 'Feedback moved to done' }
+      ],
+      15: [
+        { kind: 'done', time: '19:00', status: 'Reviewed', title: 'DHCP, OSI, ACLs', sub: '3 notes reviewed' },
+        { kind: 'todo', time: '10:30', status: 'Done', title: 'Call the clinic', sub: 'physio list', pct: '100%' }
+      ]
+    };
+    const items = (byDay[this.state.day] || []).map((x, i) => ({ ...x, ...K[x.kind], hasPct: !!x.pct, delay: (200 + i * 80) + 'ms' }));
+    const tabs = [
+      { label: 'Feed', href: 'Main.dc.html', on: true, icon: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z' },
+      { label: 'Chat', href: '#chat', icon: 'M4 5h16v11H9l-5 4z' },
+      { label: 'Approve', href: 'Approve.dc.html', badge: true, icon: 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z M9 12l2 2 4-4' },
+      { label: 'Links', href: 'Integrations.dc.html', icon: 'M8 3v5 M16 3v5 M6 8h12v4a6 6 0 01-12 0z M12 18v3' },
+      { label: 'Setup', href: 'Settings.dc.html', icon: 'M12 15a3 3 0 100-6 3 3 0 000 6z M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 000 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z' }
+    ].map((t) => ({ ...t, badge: !!t.badge, color: t.on ? '#F5F2F4' : '#7E777F', dot: t.on ? '#E3197A' : 'transparent' }));
+    return { k, days, items, tabs };
+  }
+}
+</script>
+</body>
+</html>

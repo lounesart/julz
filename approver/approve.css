@@ -1,0 +1,143 @@
+/* Julz approver: the app's look (docs/design/tokens.css) with system fonts, so the strict CSP
+   (no fonts, nothing from outside) stays as it is. */
+:root {
+  --bg: #09070A;
+  --surface: #FFFFFF0A;
+  --raise: #FFFFFF14;
+  --line: #FFFFFF1A;
+  --text: #F5F2F4;
+  --muted: #ABA4AC;
+  --faint: #6F6870;
+  --acc: #E3197A;
+  --acc-deep: #7A0C3F;
+  --ok: #C4F07A;
+  --bad: #FF8F80;
+  --on-pastel: #120A10;
+  --r-s: 12px;
+  --r-m: 20px;
+  --r-l: 28px;
+  --tap: 48px;
+  --tap-l: 56px;
+  --gutter: clamp(16px, 5vw, 24px);
+  --ease: cubic-bezier(.05, .9, .1, 1.05);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  max-width: 40rem;
+  min-height: 100vh;
+  padding: 24px var(--gutter) 40px;
+  background: radial-gradient(90% 45% at 100% 0%, #E3197A33 0%, #E3197A00 70%),
+              radial-gradient(70% 40% at 0% 70%, #7FE3F014 0%, #7FE3F000 70%), var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font: 400 17px/1.4 system-ui, sans-serif;
+}
+
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+h1 { font-size: 32px; line-height: 1.15; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 20px; line-height: 1.3; font-weight: 600; margin: 0 0 4px; }
+#status { min-height: 1.4em; margin: 12px 4px; color: var(--muted); }
+
+/* glass cards, 20 padding, 12 apart */
+.card {
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: 20px;
+  margin: 12px 0;
+}
+
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 15px/1.45 ui-monospace, monospace;
+  margin: 12px 0;
+  padding: 16px;
+  border-radius: var(--r-m);
+  background: #FFFFFF08;
+  border: 1px solid var(--line);
+}
+
+.hash { font: 14px ui-monospace, monospace; overflow-wrap: anywhere; color: var(--faint); }
+.muted { color: var(--muted); }
+.bad { color: var(--bad); }
+
+.row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.need { border-color: #FF8F8066; }
+.needline { font-weight: 600; }
+
+button {
+  font: 700 17px system-ui, sans-serif;
+  min-height: var(--tap);
+  padding: 0 20px;
+  border-radius: var(--tap-l);
+  border: 1px solid #FFFFFF33;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.row button { flex: 1; min-height: var(--tap-l); }
+#reload { width: var(--tap); padding: 0; font-size: 0; background: var(--raise); }
+#reload::before { content: "\21BB"; font-size: 22px; }
+button.reject { color: var(--bad); border-color: #FF8F8066; }
+button:disabled { opacity: 0.5; }
+
+/* the one glowing action on a card: approve with the passkey */
+@property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+button.approve {
+  flex: 1 1 100%;
+  min-height: 64px;
+  color: #FFFFFF;
+  border: 2px solid transparent;
+  background: linear-gradient(#0B080D, #0B080D) padding-box,
+              conic-gradient(from var(--a), var(--acc), #FFB3D6, var(--acc-deep), var(--acc)) border-box;
+  animation: spin 4s linear infinite, halo 2.6s ease-in-out infinite;
+}
+@keyframes spin { to { --a: 360deg; } }
+@keyframes halo {
+  0%, 100% { box-shadow: 0 0 14px #E3197A55; }
+  50% { box-shadow: 0 0 30px #E3197AAA, 0 0 0 4px #E3197A26; }
+}
+@media (prefers-reduced-motion: reduce) {
+  button.approve { animation: none; box-shadow: 0 0 18px #E3197A77; }
+}
+
+/* text boxes: the note, an answer to a need, the Keep topic, the enroll code */
+input {
+  width: 100%;
+  min-height: var(--tap-l);
+  font: 400 17px/1.4 system-ui, sans-serif;
+  padding: 0 16px;
+  margin: 8px 0;
+  border-radius: var(--r-m);
+  border: 1px solid #FFFFFF26;
+  background: #FFFFFF08;
+  color: var(--text);
+  outline: none;
+}
+input::placeholder { color: var(--faint); }
+input:focus { border-color: var(--acc); box-shadow: 0 0 0 4px #E3197A33; }
+#code { font-family: ui-monospace, monospace; font-size: 18px; }
+.note-label { display: block; margin-top: 16px; font-size: 15px; font-weight: 600; color: var(--muted); }
+.note-label span { font-weight: 400; color: var(--faint); }
+.note-help { margin: 0; font-size: 14px; color: var(--faint); }
+
+/* Keep card: one row per file, a box big enough for a thumb */
+label.pick { display: flex; align-items: center; gap: 12px; min-height: var(--tap); margin: 4px 0; }
+input[type="checkbox"] { width: 24px; height: 24px; min-height: 0; margin: 0; flex: none; accent-color: var(--acc); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+button.chip { min-height: var(--tap); padding: 0 16px; font-weight: 600; font-size: 15px; background: var(--raise); }
+
+h2 + .muted { margin: 0; font-size: 15px; }
+
+footer { margin-top: 32px; font-size: 14px; color: var(--muted); }
+
+.recent { margin: 8px 0; font-size: 15px; }
+.st-ok { color: var(--ok); font-weight: 600; }
+.st-stopped, .st-failed, .st-quarantined { color: var(--bad); font-weight: 600; }

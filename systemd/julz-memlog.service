@@ -1,0 +1,23 @@
+# Logs RAM per group (julz-memlog.py). SECURITY.md threat 112.
+# Started only by julz-memlog.timer or by hand. Reads /proc, writes only its state folder.
+[Unit]
+Description=julz: log RAM per group
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-memlog.py
+UMask=0077
+TimeoutStartSec=1min
+Nice=10
+# The log: ~/.local/state/julz-memlog/rss.csv, made by systemd and bound into the sandbox
+StateDirectory=julz-memlog
+# Sandbox: an empty read only home, only the release and the state folder. No network
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateNetwork=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

@@ -1,0 +1,11 @@
+# Fallback for julz-keep.path: a Keep signed while a run holds the gate lock finds it busy and
+# waits for this tick. Nothing signed means julz-keep exits at once.
+[Unit]
+Description=julz: retry signed Keeps every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+Unit=julz-keep.service
+
+[Install]
+WantedBy=timers.target

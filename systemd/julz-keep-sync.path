@@ -1,0 +1,10 @@
+# A Keep that copied notes stamps sync/pending, which starts julz-keep-sync.service.
+[Unit]
+Description=julz: sync kept notes after a Keep
+
+[Path]
+PathChanged=%h/.local/share/julz/sync
+Unit=julz-keep-sync.service
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,33 @@
+# Gives my notes to julz (julz-mem-sync.py): a diff sync of the julz-mem collection in
+# Open WebUI, adds before removes. SECURITY.md threats 58, 64 and 143. Started only by
+# julz-mem-sync.timer and julz-mem-sync.path.
+[Unit]
+Description=julz: sync my notes into Open WebUI
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-mem-sync.py
+UMask=0077
+TimeoutStartSec=20min
+Nice=10
+# Its state (stamp, fingerprint, failed) in ~/.local/state/julz-memsync. Never sync/:
+# julz-keep-sync.path watches that folder and the two would start each other
+StateDirectory=julz-memsync
+# Sandbox: the Open WebUI key and the vault read only, the log. The folders the sync skips are
+# hidden here too, so the code's skip list is not the only wall (58, 143).
+# Network: IPAddressDeny is ignored in user units (tested 2026-10-16), so it is not set here
+# as if it worked. This unit can reach the network over IPv4. SECURITY.md threat 64
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.config/julz/api.env
+BindReadOnlyPaths=%h/Documents/julz-mem
+InaccessiblePaths=-%h/Documents/julz-mem/Inbox -%h/Documents/julz-mem/Outbox
+InaccessiblePaths=-%h/Documents/julz-mem/Claude -%h/Documents/julz-mem/Templates
+InaccessiblePaths=-%h/Documents/julz-mem/feedback -%h/Documents/julz-mem/.git
+BindPaths=%h/.local/share/julz/log
+RestrictAddressFamilies=AF_INET AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

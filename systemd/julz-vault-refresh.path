@@ -1,0 +1,13 @@
+# A save in Inbox/ or daily/ refreshes the phone's snapshots within seconds (209, threat 142).
+# Its own unit, never julz-vault.service: a burst that fails this one cannot stop signed
+# requests. inotify is not recursive, so daily/ subfolders wait for julz-vault.timer.
+[Unit]
+Description=julz: refresh the phone's notes after a save
+
+[Path]
+PathChanged=%h/Documents/julz-mem/Inbox
+PathChanged=%h/Documents/julz-mem/daily
+Unit=julz-vault-refresh.service
+
+[Install]
+WantedBy=default.target

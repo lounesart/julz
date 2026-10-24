@@ -1,0 +1,29 @@
+# Native chat gateway on 127.0.0.1:8766, published to the phone by `tailscale serve` on 8445.
+# SECURITY.md threats 136 and 137. Install: see systemd/README.md
+[Unit]
+Description=Julz native chat gateway
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-chat.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Sandbox: an empty read only home with the code, its config, user@'s key and the phone's
+# token mounted back, nothing writable. It needs no file of mine: chats live in Open WebUI
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.config/julz/chat.json %h/.config/julz/chat.env
+BindReadOnlyPaths=%h/.config/julz/ntfy/phone-token
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target

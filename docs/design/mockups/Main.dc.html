@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Julz feed, now</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" style="--k: {{k}}; --acc: {{accent}}; --acc-deep: {{accentDeep}}; --on-acc: {{onAccent}}; font-family: 'Plus Jakarta Sans', sans-serif; color: #F5F2F4">
+
+  <header class="win rowx g3 gut" style="padding-top: 24px; padding-bottom: 16px">
+    <div class="stack g1 grow">
+      <h1 class="m0 disp t-tl">Julz</h1>
+      <span class="rowx g2 mono t-cap muted">
+        <span class="pulse dot" style="width: 8px; height: 8px; background: #B8FF3C; color: #B8FF3C"></span>
+        live · laptop
+      </span>
+    </div>
+    <a class="rbtn press" href="Look.dc.html" aria-label="Look and feel">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9 M17 7h3 M4 17h3 M11 17h9 M15 5v4 M9 15v4"></path></svg>
+    </a>
+    <a class="rbtn press" href="Accessibility.dc.html" aria-label="Accessibility">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M5 8l7 1.5L19 8 M12 9.5V14 M9 21l3-7 3 7"></path></svg>
+    </a>
+  </header>
+
+  <nav class="gut win" aria-label="Feed views" style="animation-delay: 60ms; padding-bottom: 16px">
+    <div class="seg">
+      <a class="on" href="Main.dc.html" aria-current="page">Now</a>
+      <a href="Messages.dc.html">Messages <span class="mono" style="min-width: 22px; height: 22px; border-radius: 11px; background: var(--acc); color: #FFFFFF; font-size: 12px; line-height: 22px; text-align: center; padding: 0 5px">3</span></a>
+      <a href="History.dc.html">History</a>
+    </div>
+  </nav>
+
+  <main class="scroll gut stack g3" style="padding-bottom: 112px">
+    <section class="hero win stack g4" style="animation-delay: 120ms; padding: 20px">
+      <div class="rowx g3" style="justify-content: space-between; align-items: flex-start">
+        <span class="stack g1">
+          <span class="mono t-cap" style="opacity: .9">needs you · since 14:32</span>
+          <span class="rowx g2 mono t-cap" style="opacity: .9">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21a9 9 0 100-18 9 9 0 000 18z M12 7v5l3 2"></path></svg>
+            expires in 34 min
+          </span>
+        </span>
+        <span class="disp t-tl" style="font-weight: 400; line-height: 1">00<span class="tick">:</span>26</span>
+      </div>
+      <h2 class="m0 disp t-tm" style="text-transform: uppercase">Approve:<br>rename dhcp notes</h2>
+      <a class="glowbtn simple press" href="Approve.dc.html">
+        Review and approve
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14 M13 6l6 6-6 6"></path></svg>
+      </a>
+    </section>
+
+    <div class="bento">
+      <a class="card win press stack" href="Todos.dc.html" style="animation-delay: 180ms; padding: 20px; gap: 16px; justify-content: space-between; min-height: calc(170px * var(--k)); text-decoration: none; color: var(--text)">
+        <span style="position: relative; width: 64px; height: 64px">
+          <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="#FFFFFF1F" stroke-width="5"></circle><circle class="draw" cx="32" cy="32" r="28" fill="none" stroke="#F7D58B" stroke-width="5" stroke-linecap="round" stroke-dasharray="176" stroke-dashoffset="58" transform="rotate(-90 32 32)"></circle></svg>
+          <span class="disp t-ts" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center">3</span>
+        </span>
+        <span class="stack g1">
+          <span class="t-body b">Todos open</span>
+          <span class="t-sec muted">physio 2/3 · week 3/5</span>
+        </span>
+      </a>
+      <a class="card win press stack" href="History.dc.html" style="animation-delay: 240ms; padding: 20px; gap: 16px; justify-content: space-between; min-height: calc(170px * var(--k)); text-decoration: none; color: var(--text)">
+        <span class="disp t-hero">12</span>
+        <span class="stack g1">
+          <span class="t-body b">Done this week</span>
+          <span class="t-sec muted">tasks, runs, reviews</span>
+        </span>
+      </a>
+    </div>
+
+    <a class="card win press stack g4" href="History.dc.html" style="animation-delay: 300ms; padding: 20px; text-decoration: none; color: var(--text)">
+      <span style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; justify-items: center">
+        <sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+          <span class="stack g2" style="align-items: center">
+            <span class="mono t-cap" style="color: {{d.labelColor}}">{{d.name}}</span>
+            <sc-for list="{{d.dots}}" as="dot" hint-placeholder-count="3">
+              <span class="popin" style="animation-delay: {{dot.delay}}; width: 9px; height: 9px; border-radius: 5px; background: {{dot.color}}"></span>
+            </sc-for>
+          </span>
+        </sc-for>
+      </span>
+      <span class="rowx g3" style="justify-content: space-between">
+        <span class="t-body sb">Your week, a dot per thing done</span>
+        <span class="t-sec muted">History ›</span>
+      </span>
+    </a>
+
+    <a class="card win press rowx g4" href="Messages.dc.html" style="animation-delay: 360ms; padding: 20px; text-decoration: none; color: var(--text)">
+      <span class="stack g1 grow">
+        <span class="t-body b">Inbox drafts</span>
+        <span class="t-sec muted">Julz wrote them, waiting for you</span>
+      </span>
+      <span style="width: 1px; align-self: stretch; background: var(--line)"></span>
+      <span class="disp t-tl">2</span>
+    </a>
+  </main>
+
+  <nav class="tabbar" aria-label="Main">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+      <a class="tab press" href="{{t.href}}" aria-label="{{t.label}}" style="color: {{t.color}}">
+        <span style="position: relative; display: flex">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"></path></svg>
+          <sc-if value="{{t.badge}}" hint-placeholder-val="{{ false }}"><span class="badge popin">1</span></sc-if>
+        </span>
+        <sc-if value="{{showLabels}}" hint-placeholder-val="{{ false }}"><span>{{t.label}}</span></sc-if>
+        <sc-if value="{{noLabels}}" hint-placeholder-val="{{ true }}"><span style="width: 5px; height: 5px; border-radius: 3px; background: {{t.dot}}"></span></sc-if>
+      </a>
+    </sc-for>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"textScale":{"editor":"enum","options":["1","1.3","1.6","2"],"default":"1"},"accent":{"editor":"color","options":["#E3197A","#B41211","#B8FF3C","#7FE3F0"],"default":"#E3197A"},"tabLabels":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const k = Number(this.props.textScale ?? 1) || 1;
+    const accent = this.props.accent ?? '#E3197A';
+    const deep = { '#E3197A': '#7A0C3F', '#B41211': '#522929', '#B8FF3C': '#3E6B00', '#7FE3F0': '#14606B' }[accent] || '#3A0A26';
+    const light = ['#B8FF3C', '#7FE3F0'].includes(accent);
+    const labels = !!this.props.tabLabels || k >= 1.6;
+    const tabs = [
+      { label: 'Feed', href: 'Main.dc.html', on: true, icon: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z' },
+      { label: 'Chat', href: '#chat', icon: 'M4 5h16v11H9l-5 4z' },
+      { label: 'Approve', href: 'Approve.dc.html', badge: true, icon: 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z M9 12l2 2 4-4' },
+      { label: 'Links', href: 'Integrations.dc.html', icon: 'M8 3v5 M16 3v5 M6 8h12v4a6 6 0 01-12 0z M12 18v3' },
+      { label: 'Setup', href: 'Settings.dc.html', icon: 'M12 15a3 3 0 100-6 3 3 0 000 6z M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 000 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z' }
+    ].map((t) => ({ ...t, badge: !!t.badge, color: t.on ? '#F5F2F4' : '#7E777F', dot: t.on ? accent : 'transparent' }));
+    const counts = [2, 1, 3, 0, 2, 3, 1];
+    let n = 0;
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((name, i) => ({
+      name, labelColor: i === 4 ? '#F5F2F4' : '#7E777F',
+      dots: [0, 1, 2].map((j) => { n += 1; return { color: j < counts[i] ? (i === 4 ? accent : '#F5F2F4') : '#FFFFFF1A', delay: (300 + n * 25) + 'ms' }; })
+    }));
+    return { k, accent, accentDeep: deep, onAccent: light ? '#09070A' : '#FFFFFF', tabs, days, showLabels: labels, noLabels: !labels };
+  }
+}
+</script>
+</body>
+</html>

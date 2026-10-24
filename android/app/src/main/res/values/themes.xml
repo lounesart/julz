@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window before Julz draws its first frame (22g): the app's near black instead of the
+         stock grey. The splash shows the launcher icon of the alias that opened Julz, so it is
+         in the accent I picked (135); no splash library, Android 12 and up does this itself -->
+    <style name="Theme.Julz" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/julz_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/julz_bg</item>
+    </style>
+
+    <color name="julz_bg">#FF09070A</color>
+</resources>

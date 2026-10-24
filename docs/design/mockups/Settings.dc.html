@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Julz setup</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/3de22ea2fad70720ead6040f5ee388e9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tektur:wght@400;500;700&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app page stack g8 gut" style="--k: {{k}}; padding-top: 24px; padding-bottom: 48px; font-family: 'Plus Jakarta Sans', sans-serif; color: #F5F2F4">
+
+  <header class="win rowx g3">
+    <a class="rbtn press" href="Main.dc.html" aria-label="Back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
+    </a>
+    <h1 class="m0 disp t-tl">Setup</h1>
+  </header>
+
+  <div class="bento">
+    <a class="hero win press stack" href="Look.dc.html" style="animation-delay: 60ms; padding: 20px; gap: 24px; justify-content: space-between; min-height: calc(160px * var(--k)); text-decoration: none; border-radius: var(--r-l)">
+      <span class="ico" style="width: 48px; height: 48px; background: #09070A; color: #F5F2F4">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a10 10 0 110-20c5.5 0 10 4 10 9a5 5 0 01-5 5h-2a2 2 0 00-1 3.7A1.6 1.6 0 0112 22z M7.5 11h.01 M10.5 7h.01 M15.5 8h.01"></path></svg>
+      </span>
+      <span class="stack g1">
+        <span class="disp t-ts">Look &amp; feel</span>
+        <span class="t-sec" style="opacity: .9">themes, layouts, tweaks</span>
+      </span>
+    </a>
+    <a class="card win press stack" href="Accessibility.dc.html" style="animation-delay: 120ms; padding: 20px; gap: 24px; justify-content: space-between; min-height: calc(160px * var(--k)); text-decoration: none; color: var(--text)">
+      <span class="ico" style="width: 48px; height: 48px; background: var(--raise)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M5 8l7 1.5L19 8 M12 9.5V14 M9 21l3-7 3 7"></path></svg>
+      </span>
+      <span class="stack g1">
+        <span class="disp t-ts">Accessibility</span>
+        <span class="t-sec muted">text size, contrast, motion</span>
+      </span>
+    </a>
+  </div>
+
+  <section class="stack g3 win" style="animation-delay: 160ms">
+    <h2 class="sect">Connection</h2>
+    <div class="card list">
+      <div class="li">
+        <span class="pulse dot" style="background: #B8FF3C; color: #B8FF3C"></span>
+        <span class="t-body sb grow">Live from the laptop</span>
+        <span class="mono t-cap muted">14:32</span>
+      </div>
+      <div class="li" style="flex-direction: column; align-items: flex-start; gap: 4px">
+        <span class="t-sec muted">Server, over Tailscale only</span>
+        <span class="mono t-sec" style="overflow-wrap: anywhere">https://[LAPTOP].[TAILNET].ts.net:8444</span>
+      </div>
+      <div class="li">
+        <span class="stack g1 grow">
+          <span class="t-body sb">Access token</span>
+          <span class="t-sec muted">Locked in the Android Keystore</span>
+        </span>
+        <button class="btn ghost small press">Replace</button>
+      </div>
+    </div>
+    <button class="btn press" onClick="{{sendTest}}" style="background: {{testBg}}">{{testLabel}}</button>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 200ms">
+    <h2 class="sect">Stay awake on HyperOS</h2>
+    <div class="card list">
+      <sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+        <div class="li">
+          <span class="ico popin" style="background: {{c.badge}}; color: #120A10">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.mark}}"></path></svg>
+          </span>
+          <span class="stack g1 grow">
+            <span class="t-body sb">{{c.label}}</span>
+            <span class="t-sec muted">{{c.state}}</span>
+          </span>
+          <sc-if value="{{c.needsFix}}" hint-placeholder-val="{{ false }}">
+            <button class="btn small press" onClick="{{c.fix}}" style="background: #F7D58B; color: #120A10">Fix</button>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 240ms">
+    <h2 class="sect">Channels</h2>
+    <div class="card list">
+      <sc-for list="{{channels}}" as="ch" hint-placeholder-count="7">
+        <div class="li">
+          <span class="ico" style="background: {{ch.tint}}; color: #120A10">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ch.icon}}"></path></svg>
+          </span>
+          <span class="stack g1 grow">
+            <span class="t-body sb">{{ch.label}}</span>
+            <span class="t-sec muted">{{ch.how}}</span>
+          </span>
+          <button class="{{ch.cls}}" onClick="{{ch.toggle}}" aria-pressed="{{ch.on}}" aria-label="{{ch.aria}}"><span><span></span></span></button>
+        </div>
+      </sc-for>
+    </div>
+    <p class="m0 t-sec muted" style="padding: 0 4px">On the lock screen every channel shows its name only. Titles after unlock.</p>
+  </section>
+
+  <section class="stack g3 win" style="animation-delay: 280ms">
+    <h2 class="sect">On this phone</h2>
+    <div class="card list">
+      <div class="li"><span class="t-body grow">Keep notices</span><span class="t-body muted">30 days</span></div>
+      <div class="li"><span class="t-body grow">Stored</span><span class="t-body muted">142 notices</span></div>
+      <div class="li">
+        <span class="stack g1 grow">
+          <span class="t-body sb">Lock Julz with fingerprint</span>
+          <span class="t-sec muted">Off by default. Asks before the feed shows.</span>
+        </span>
+        <button class="{{lockCls}}" onClick="{{toggleLock}}" aria-pressed="{{lockOn}}" aria-label="Lock Julz with fingerprint"><span><span></span></span></button>
+      </div>
+    </div>
+    <button class="btn danger press">Wipe feed and sign out</button>
+  </section>
+
+  <p class="m0 mono t-cap muted" style="text-align: center">Julz 0.1.0 · built and signed on the laptop</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"textScale":{"editor":"enum","options":["1","1.3","1.6","2"],"default":"1"},"$preview":{"width":390,"height":1560}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { battery: false, test: false, on: { approval: true, todo: true, inbox: true, run: true, review: true, change: false, warning: true } };
+  }
+  renderVals() {
+    const k = Number(this.props.textScale ?? 1) || 1;
+    const st = this.state;
+    const rows = [['Notifications allowed', true], ['Autostart', true], ['Battery: No restrictions', st.battery], ['Tailscale always on', true]];
+    const checks = rows.map(([label, done]) => ({ label, needsFix: !done,
+      state: done ? 'Set' : 'HyperOS may stop Julz in the background',
+      mark: done ? 'M5 12l5 5L19 7' : 'M12 7v6 M12 17h.01', badge: done ? '#C4F07A' : '#F7D58B',
+      fix: () => this.setState({ battery: true }) }));
+    const defs = [
+      ['approval', 'Approvals', 'Sound and vibration', '#FF7AB6', 'M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z'],
+      ['todo', 'Todos', 'Silent', '#F7D58B', 'M4 6h2 M4 12h2 M4 18h2 M9 6h11 M9 12h11 M9 18h7'],
+      ['inbox', 'Inbox', 'Silent', '#C9B8F0', 'M4 13l2-8h12l2 8 M4 13v6h16v-6 M4 13h5l1 2h4l1-2h5'],
+      ['run', 'Runs', 'Sound', '#7FE3F0', 'M4 5h16v14H4z M8 10l3 2-3 2 M13 15h3'],
+      ['review', 'Review', 'Silent', '#C4F07A', 'M12 21a9 9 0 100-18 9 9 0 000 18z M12 7v5l3 2'],
+      ['change', 'Changes', 'Feed only', '#B9B2BA', 'M3 7h6l2 2h10v10H3z M10 14h6 M14 12l2 2-2 2'],
+      ['warning', 'Warnings', 'Sound, always on', '#FF8F80', 'M12 4l9 16H3z M12 10v4 M12 17h.01']
+    ];
+    const on = st.on;
+    const channels = defs.map(([id, label, how, tint, icon]) => ({ label, how, tint, icon, on: !!on[id], aria: label + ' notifications',
+      cls: on[id] ? 'switch on' : 'switch', toggle: () => this.setState({ on: { ...on, [id]: !on[id] } }) }));
+    return {
+      k, checks, channels,
+      lockOn: !!st.lock, lockCls: st.lock ? 'switch on' : 'switch', toggleLock: () => this.setState({ lock: !st.lock }),
+      testLabel: st.test ? 'Sent. Watch the top of the screen' : 'Send a test notice',
+      testBg: st.test ? '#C4F07A' : '#F5F2F4',
+      sendTest: () => this.setState({ test: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

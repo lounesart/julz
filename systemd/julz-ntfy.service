@@ -1,0 +1,33 @@
+# Push server for the Julz phone app, ntfy on 127.0.0.1:8090, published to the phone by
+# `tailscale serve` on 8444. SECURITY.md threats 86 and 87. The wrapper checks the binary's
+# hash and builds the flags; users and tokens come from auth.env through the environment.
+[Unit]
+Description=Julz push server (ntfy)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-ntfy.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Sandbox: an empty read only home with only what it needs bound back. No vault, no Claude
+# token, no passkey state, no approver files
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz %h/.local/lib/julz-ntfy
+BindReadOnlyPaths=%h/.config/julz/ntfy/auth.env %h/.config/julz/notify/ntfy.env
+BindPaths=%h/.local/share/julz-ntfy
+# The socket the notify units post to (132), in its own folder, gone when the server stops
+RuntimeDirectory=julz-push
+RuntimeDirectoryMode=0700
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

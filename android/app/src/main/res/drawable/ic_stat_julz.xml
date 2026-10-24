@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status bar: the Tektur J, white on transparent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFF" android:pathData="M5 17.92V12.53H9.44V17.23H14.56V6.61H5.85V2.75H19V17.92L15.67 21.25H8.33Z" />
+</vector>

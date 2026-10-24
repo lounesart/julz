@@ -1,0 +1,11 @@
+# Keeps julz-mem the same as the vault: a run with nothing new exits before it reads the key.
+# Two minutes after julz-vault.timer, so a note it just committed is in the next sync.
+[Unit]
+Description=julz: sync my notes every 15 minutes
+
+[Timer]
+OnCalendar=*:2/15
+Unit=julz-mem-sync.service
+
+[Install]
+WantedBy=timers.target

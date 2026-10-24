@@ -1,0 +1,11 @@
+# Fallback for julz-keep-sync.path: a sync that failed (Open WebUI not running) keeps its stamp
+# and is tried again here. Without a stamp the service exits at once and never reads the key.
+[Unit]
+Description=julz: retry the sync of kept notes every 10 minutes
+
+[Timer]
+OnCalendar=*:5/10
+Unit=julz-keep-sync.service
+
+[Install]
+WantedBy=timers.target

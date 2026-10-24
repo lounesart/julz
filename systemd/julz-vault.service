@@ -1,0 +1,26 @@
+# Applies julz's note requests and commits the vault (julz-vault.py). SECURITY.md 65 to 70.
+# Started by julz-vault.path (a request) and julz-vault.timer (my own edits, leftovers).
+[Unit]
+Description=julz: apply note requests and commit the vault
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-vault.py
+UMask=0022
+TimeoutStartSec=5min
+Nice=10
+# Sandbox: no network, no key or token, an empty read only home. The vault is the only
+# writable place besides the log and its own state (B16)
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateNetwork=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+# git needs my identity and the global gitleaks hook, both read only (threat 69)
+BindReadOnlyPaths=%h/.gitconfig %h/.config/git
+BindPaths=%h/Documents/julz-mem
+BindPaths=%h/.local/share/julz/log %h/.local/share/julz/vault
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes
