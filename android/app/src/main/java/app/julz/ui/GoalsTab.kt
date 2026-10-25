@@ -41,7 +41,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import app.julz.approve.ApproverApi
-import app.julz.approve.Begun
 import app.julz.feed.GoalItem
 import app.julz.feed.GoalPick
 import app.julz.feed.GoalsData
@@ -51,7 +50,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** What the Goals tab and the Todos screen's bottom bar share: the picks, the signing and the
+/** What the Goals tab and the Todos screen's bottom bar share: the picks, the busy state and the
  *  result, so Apply sits at the bottom as on Todos and Inbox (asked 2026-10-18). */
 class GoalsUi {
     var snap by mutableStateOf<GoalsSnapshot?>(null)
@@ -59,16 +58,15 @@ class GoalsUi {
     var reloads by mutableIntStateOf(0)
     val picks = mutableStateListOf<GoalPick>()
     val drafts = mutableStateMapOf<String, String>()
-    var signing by mutableStateOf<Begun?>(null)
     var busy by mutableStateOf(false)
     var status by mutableStateOf<String?>(null)
     var open by mutableStateOf<String?>(null)       // the goal shown whole, by period and text
     val targets = mutableStateMapOf<String, String>()  // target numbers being typed, by goal
     var addTo by mutableStateOf<String?>(null)      // the period the one Add form adds to (126b)
-    val active get() = status != null || signing != null || picks.isNotEmpty()
+    val active get() = status != null || picks.isNotEmpty()
 }
 
-/** The Goals tab's part of the pinned bar: the result, the exact text while signing, Apply. */
+/** The Goals tab's part of the pinned bar: the result and Apply; the text I sign is in the sign panel (219). */
 @Composable
 fun GoalsBar(origins: Origins, ui: GoalsUi) {
     val context = LocalContext.current
@@ -76,7 +74,7 @@ fun GoalsBar(origins: Origins, ui: GoalsUi) {
     fun apply() {
         val body = ui.snap?.let { GoalsData.body(it.id, ui.picks.toList()) } ?: return
         ui.busy = true; ui.status = null
-        signWithDevice(context, scope, origins, "goal", body, "Change goals", { ui.signing = it }) { word, why ->
+        signWithDevice(context, scope, origins, "goal", body, "Change goals") { word, why ->
             ui.busy = false
             if (word != null) {
                 ui.picks.clear()
@@ -86,12 +84,6 @@ fun GoalsBar(origins: Origins, ui: GoalsUi) {
         }
     }
     ui.status?.let { Text(it, style = J.sec.copy(color = J.text)) }
-    ui.signing?.let {
-        Column(Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-            Text(it.text.trimEnd(), style = J.sec.copy(fontFamily = J.mono, color = J.text))
-            Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
-        }
-    }
     if (ui.picks.isNotEmpty()) GlowButton(if (ui.busy) "Waiting for your fingerprint" else
         if (ui.picks.size == 1) "Apply 1 change with fingerprint" else "Apply ${ui.picks.size} changes with fingerprint") { if (!ui.busy) apply() }
 }

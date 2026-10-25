@@ -38,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import app.julz.approve.ApproverApi
-import app.julz.approve.Begun
 import app.julz.feed.DoneDay
 import app.julz.feed.DoneWeek
 import app.julz.feed.Kind
@@ -61,7 +60,6 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
     val snap = notices.firstOrNull { it.kind == Kind.TODO }
     val lists = snap?.let { TodoSnapshot.parse(it.message) }
     val id = snap?.let { TodoSnapshot.id(it.message) }
-    var signing by remember { mutableStateOf<Begun?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     // Ticked and signed, waiting for the laptop's next snapshot: shown as Sent until it comes, so
@@ -105,7 +103,7 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
         busy = true; status = null
         val verb = if (starting) "Start" else "Tick"
         signWithDevice(context, scope, origins, action, body,
-            if (pairs.size == 1) "$verb 1 task" else "$verb ${pairs.size} tasks", { signing = it }) { word, problem ->
+            if (pairs.size == 1) "$verb 1 task" else "$verb ${pairs.size} tasks") { word, problem ->
             busy = false
             if (word != null) {
                 sent = live to (id ?: "")
@@ -195,20 +193,13 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
     }
     }
     }
-    // Pinned above the tab bar: what happened, the exact text while signing, and the button, all
-    // in view wherever the list is scrolled (found 2026-10-18 on the phone)
+    // Pinned above the tab bar: what happened and the button, in view wherever the list is
+    // scrolled (found 2026-10-18 on the phone). The text I sign is in the sign panel (219)
     if (tab == 2 && goals.active) Column(Modifier.fillMaxWidth().padding(horizontal = J.gutter, vertical = J.sp3),
         verticalArrangement = Arrangement.spacedBy(J.sp3)) { GoalsBar(origins, goals) }
-    if (tab == 0 && (status != null || signing != null || live.isNotEmpty())) Column(Modifier.fillMaxWidth()
+    if (tab == 0 && (status != null || live.isNotEmpty())) Column(Modifier.fillMaxWidth()
         .padding(horizontal = J.gutter, vertical = J.sp3), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
         status?.let { Text(it, style = J.sec.copy(color = J.text)) }
-        signing?.let {
-            // Plain text only (34): the exact text the laptop built for this nonce (109)
-            Column(Modifier.fillMaxWidth().glass().padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-                Text(it.text, style = J.sec.copy(fontFamily = J.mono, color = J.text))
-                Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
-            }
-        }
         if (live.isNotEmpty()) GlowButton(when {
             busy -> "Waiting for your fingerprint"
             live.size == 1 -> "${if (starting) "Start" else "Tick"} 1 task with fingerprint"

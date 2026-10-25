@@ -58,7 +58,7 @@ class ScreenshotTest {
 
     @Composable
     private fun inbox(picked: List<String>) = shell(Screen.INBOX) {
-        InboxContent(inbox, null, mapOf("study" to 12, "daily" to 30), picked, {}, null, false, null,
+        InboxContent(inbox, null, mapOf("study" to 12, "daily" to 30), picked, {}, false, null,
             reload = {}, apply = {}, browse = {}, back = {})
     }
 
@@ -88,6 +88,36 @@ class ScreenshotTest {
     fun inboxPicked() = paparazzi.snapshot {
         inbox(listOf(app.julz.feed.InboxPick("Inbox/subnetting.md", "move", "study/network-plus").key,
                      app.julz.feed.InboxPick("Inbox/ideas.md", "delete").key))
+    }
+
+    // While I sign, the text sits at the top, above where the system's fingerprint sheet comes up
+    // over the bottom half (219): here over the picked Inbox, whose Apply bar it must not need
+    @Test
+    fun signTopOverInbox() = paparazzi.snapshot {
+        androidx.compose.foundation.layout.Box {
+            inbox(listOf(app.julz.feed.InboxPick("Inbox/subnetting.md", "move", "study/network-plus").key,
+                         app.julz.feed.InboxPick("Inbox/ideas.md", "delete").key))
+            androidx.compose.foundation.layout.BoxWithConstraints {
+                SignTop("inbox: change 2 notes\nmove Inbox/subnetting.md to study/network-plus/\ndelete Inbox/ideas.md\n" +
+                    "snapshot ${"d".repeat(12)}", maxHeight * SignPanel.ABOVE, androidx.compose.foundation.rememberScrollState())
+            }
+        }
+    }
+
+    // After reading a long text, the top view keeps its cap: the sheet must not cover its end (219)
+    @Test
+    fun signTopCapped() = paparazzi.snapshot {
+        androidx.compose.foundation.layout.BoxWithConstraints(androidx.compose.ui.Modifier.fillMaxSize().background(J.page)) {
+            SignTop((1..40).joinToString("\n") { "Line $it of a long spec" }, maxHeight * SignPanel.ABOVE,
+                androidx.compose.foundation.rememberScrollState())
+        }
+    }
+
+    // Too long for the top: read whole first, Sign and Cancel at the bottom by the thumb (219)
+    @Test
+    fun signReadFirst() = paparazzi.snapshot {
+        SignRead(SignPanel.Ask("Save to notes", "save: Inbox/subnetting answer.md\n\n" +
+            (1..60).joinToString("\n") { "Line $it of the answer: a /26 gives 64 addresses, 62 hosts." }, {}, {}), {}, {})
     }
 
     // Learning mode's chip in both composer layouts (135): left of send when roomy, above the box

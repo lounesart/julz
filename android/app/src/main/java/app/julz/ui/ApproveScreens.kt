@@ -1,8 +1,5 @@
 package app.julz.ui
 
-import android.hardware.biometrics.BiometricManager
-import android.hardware.biometrics.BiometricPrompt
-import android.os.CancellationSignal
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,7 +64,6 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
     var loaded by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    val signing = remember { mutableStateMapOf<String, Begun>() }
     val local = remember { localFingerprint() }
     // Each load also sets the Approve badge, so it drops the moment a card is done (9b)
     fun reload() = scope.launch { loadState(origins).let { (s, w) -> state = s; work = w; seen(s) }; loaded = true }
@@ -105,53 +100,38 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
                 busy = false; status = "The text to sign does not carry your note. Nothing was signed."
                 return@launch
             }
-            signing[spec.name] = begun  // the exact text is on screen now, above the prompt (109)
             val signer = try { DeviceKey.signer() } catch (e: KeyPermanentlyInvalidatedException) {
-                busy = false; signing.remove(spec.name)
+                busy = false
                 status = "A fingerprint was added to this phone, so its key is gone. Enroll again."
                 return@launch
             } catch (e: Exception) {
-                busy = false; signing.remove(spec.name); status = "This phone has no approval key. Enroll it in Settings."
+                busy = false; status = "This phone has no approval key. Enroll it in Settings."
                 return@launch
             }
-            val executor = context.mainExecutor
-            val prompt = BiometricPrompt.Builder(context)
-                .setTitle(if (action == "approve") "Approve with Julz" else "Deny with Julz")
-                .setSubtitle(spec.project)
-                .setDescription("Signs the text shown on the screen")
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                .setNegativeButton("Cancel", executor) { _, _ -> busy = false; signing.remove(spec.name) }
-                .build()
-            prompt.authenticate(BiometricPrompt.CryptoObject(signer), CancellationSignal(), executor,
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        // The signer passed in, unlocked by this fingerprint for one signature
-                        val sig = signer.run {
-                            update(DevicePayload.build(begun.action, begun.text, begun.nonce)); sign()
-                        }
-                        scope.launch {
-                            val reply = withContext(Dispatchers.IO) {
-                                try {
-                                    ApproverApi.call(origins, ApproverApi.FINISH, JSONObject().put("action", action)
-                                        .put("nonce", begun.nonce).put("signature", Base64.getEncoder().encodeToString(sig)))
-                                } catch (e: Exception) { 0 to "" }
-                            }
-                            status = if (reply.first == 200) {
-                                val done = runCatching { JSONObject(reply.second).optString("done") }.getOrDefault("done")
-                                AppLog.add("approve: $done with the device key")
-                                setNote(spec.name, null)
-                                done.replaceFirstChar { it.uppercase() } + ". " + spec.project
-                            } else errorOf(reply.second, reply.first)
-                            signing.remove(spec.name); busy = false
-                            fastUntil = System.currentTimeMillis() + 60_000; reload()
-                        }
+            // The exact text goes up in the sign panel, above the prompt (109, 219)
+            askFingerprint(context, signer, if (action == "approve") "Approve with Julz" else "Deny with Julz",
+                spec.project, begun.text, succeeded = {
+                    // The signer passed in, unlocked by this fingerprint for one signature
+                    val sig = signer.run {
+                        update(DevicePayload.build(begun.action, begun.text, begun.nonce)); sign()
                     }
-
-                    override fun onAuthenticationError(code: Int, message: CharSequence) {
-                        busy = false; signing.remove(spec.name)
-                        if (code != BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED) status = message.toString()
+                    scope.launch {
+                        val reply = withContext(Dispatchers.IO) {
+                            try {
+                                ApproverApi.call(origins, ApproverApi.FINISH, JSONObject().put("action", action)
+                                    .put("nonce", begun.nonce).put("signature", Base64.getEncoder().encodeToString(sig)))
+                            } catch (e: Exception) { 0 to "" }
+                        }
+                        status = if (reply.first == 200) {
+                            val done = runCatching { JSONObject(reply.second).optString("done") }.getOrDefault("done")
+                            AppLog.add("approve: $done with the device key")
+                            setNote(spec.name, null)
+                            done.replaceFirstChar { it.uppercase() } + ". " + spec.project
+                        } else errorOf(reply.second, reply.first)
+                        busy = false
+                        fastUntil = System.currentTimeMillis() + 60_000; reload()
                     }
-                })
+                }) { why -> busy = false; if (why != null) status = why }
         }
     }
 
@@ -178,7 +158,7 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
             else -> {
                 if (s.specs.isEmpty() && s.elsewhere == 0) Text("Nothing waiting for you.", style = J.bodyText.copy(color = J.muted))
                 for (spec in s.specs) SpecCard(spec, notes[spec.name].orEmpty(), { setNote(spec.name, it) },
-                    signing[spec.name], busy, approve = { sign(spec, "approve") }, deny = { sign(spec, "reject") })
+                    busy, approve = { sign(spec, "approve") }, deny = { sign(spec, "reject") })
                 // Claude's questions, the running job, queued runs and Keep, here in the app (121);
                 // the approver page stays as the fallback
                 work?.let { w -> WorkCards(origins, w, busy, { busy = it }, { status = it }) { fastUntil = System.currentTimeMillis() + 60_000; reload() } }
@@ -193,12 +173,11 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
     }
 }
 
-/** One action signed with the device key (SECURITY.md 107, 109): begin with `body`, hand the
- *  exact text the server built to `shown` so it is on screen above the prompt, one fingerprint,
- *  finish. `done` gets the server's "done" word, or null and what went wrong. */
+/** One action signed with the device key (SECURITY.md 107, 109): begin with `body`, the exact
+ *  text the server built goes up in the sign panel above the prompt (219), one fingerprint,
+ *  finish. `done` gets the server's "done" word, or null and what went wrong (both null: cancelled). */
 internal fun signWithDevice(context: android.content.Context, scope: kotlinx.coroutines.CoroutineScope, origins: Origins,
-                            action: String, body: JSONObject, title: String, shown: (Begun?) -> Unit,
-                            done: (String?, String?) -> Unit) {
+                            action: String, body: JSONObject, title: String, done: (String?, String?) -> Unit) {
     scope.launch {
         var problem: String? = null
         val begun = withContext(Dispatchers.IO) {
@@ -213,39 +192,22 @@ internal fun signWithDevice(context: android.content.Context, scope: kotlinx.cor
         } catch (e: Exception) {
             done(null, "This phone has no approval key. Enroll it in Settings."); return@launch
         }
-        shown(begun)  // the exact text is on screen now, above the prompt (109)
-        val executor = context.mainExecutor
-        val prompt = BiometricPrompt.Builder(context)
-            .setTitle(title)
-            .setDescription("Signs the text shown on the screen")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            .setNegativeButton("Cancel", executor) { _, _ -> shown(null); done(null, null) }
-            .build()
-        prompt.authenticate(BiometricPrompt.CryptoObject(signer), CancellationSignal(), executor,
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    val sig = signer.run { update(DevicePayload.build(begun.action, begun.text, begun.nonce)); sign() }
-                    scope.launch {
-                        val reply = withContext(Dispatchers.IO) {
-                            try {
-                                ApproverApi.call(origins, ApproverApi.FINISH, JSONObject().put("action", action)
-                                    .put("nonce", begun.nonce).put("signature", Base64.getEncoder().encodeToString(sig)))
-                            } catch (e: Exception) { 0 to "" }
-                        }
-                        shown(null)
-                        if (reply.first == 200) {
-                            val word = runCatching { JSONObject(reply.second).optString("done") }.getOrDefault("done")
-                            AppLog.add("approve: $word with the device key")
-                            done(word, null)
-                        } else done(null, errorOf(reply.second, reply.first))
-                    }
+        askFingerprint(context, signer, title, null, begun.text, succeeded = {
+            val sig = signer.run { update(DevicePayload.build(begun.action, begun.text, begun.nonce)); sign() }
+            scope.launch {
+                val reply = withContext(Dispatchers.IO) {
+                    try {
+                        ApproverApi.call(origins, ApproverApi.FINISH, JSONObject().put("action", action)
+                            .put("nonce", begun.nonce).put("signature", Base64.getEncoder().encodeToString(sig)))
+                    } catch (e: Exception) { 0 to "" }
                 }
-
-                override fun onAuthenticationError(code: Int, message: CharSequence) {
-                    shown(null)
-                    done(null, if (code == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED) null else message.toString())
-                }
-            })
+                if (reply.first == 200) {
+                    val word = runCatching { JSONObject(reply.second).optString("done") }.getOrDefault("done")
+                    AppLog.add("approve: $word with the device key")
+                    done(word, null)
+                } else done(null, errorOf(reply.second, reply.first))
+            }
+        }) { why -> done(null, why) }
     }
 }
 
@@ -254,16 +216,15 @@ private fun errorOf(raw: String, code: Int): String =
         ?.let { "The approver said: $it" } ?: "The approver answered $code"
 
 @Composable
-private fun SpecCard(spec: SpecItem, note: String, setNote: (String) -> Unit, begun: Begun?, busy: Boolean,
+private fun SpecCard(spec: SpecItem, note: String, setNote: (String) -> Unit, busy: Boolean,
                      approve: () -> Unit, deny: () -> Unit) {
     val colors = fieldColors()
     Column(Modifier.fillMaxWidth().assemble(key = "spec-${spec.sha256}").glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
         Text("Runs in ${spec.project}", style = J.ts)
         Code("spec", spec.shortId)
-        // Plain text only (34): while signing, the exact text the server built, note included (109)
-        Text(begun?.text ?: spec.text, style = J.sec.copy(fontFamily = J.mono, color = J.text),
+        // Plain text only (34); while signing, the server's exact text is in the sign panel (109, 219)
+        Text(spec.text, style = J.sec.copy(fontFamily = J.mono, color = J.text),
             modifier = Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4))
-        if (begun != null) Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
         OutlinedTextField(note, { if (it.length <= Note.MAX) setNote(it) }, Modifier.fillMaxWidth(),
             label = { Text("Note for Claude · optional") }, singleLine = true, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText,
             enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = true),

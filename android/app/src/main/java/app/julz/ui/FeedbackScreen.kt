@@ -32,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import app.julz.approve.ApproverApi
-import app.julz.approve.Begun
 import app.julz.feed.FeedbackItem
 import app.julz.feed.FeedbackList
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +50,6 @@ fun FeedbackScreen(origins: Origins, draft: String, setDraft: (String) -> Unit, 
     var items by remember { mutableStateOf<List<FeedbackItem>?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var reloads by remember { mutableIntStateOf(0) }
-    var signing by remember { mutableStateOf<Begun?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(reloads) {
@@ -66,7 +64,7 @@ fun FeedbackScreen(origins: Origins, draft: String, setDraft: (String) -> Unit, 
     fun send() {
         val body = FeedbackList.body(FeedbackList.KINDS[kind], draft.trim()) ?: run { status = "Write a few plain words first"; return }
         busy = true; status = null
-        signWithDevice(context, scope, origins, "feedback", body, "Send feedback", { signing = it }) { word, why ->
+        signWithDevice(context, scope, origins, "feedback", body, "Send feedback") { word, why ->
             busy = false
             if (word != null) {
                 setDraft("")
@@ -88,13 +86,6 @@ fun FeedbackScreen(origins: Origins, draft: String, setDraft: (String) -> Unit, 
                 label = { Text("What should change?") }, minLines = 3, maxLines = 10, colors = colors, shape = fieldShape(oneLine = false), textStyle = J.bodyText,
                 enabled = !busy, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 supportingText = { Text("Plain words, no links · ${draft.length} / ${FeedbackList.MAX_TEXT}") })
-            signing?.let {
-                // Plain text only (34): the exact note the laptop built for this nonce (109)
-                Column(Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-                    Text(it.text.trimEnd(), style = J.sec.copy(fontFamily = J.mono, color = J.text))
-                    Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
-                }
-            }
             status?.let { Text(it, style = J.sec.copy(color = J.text)) }
             GlowButton(if (busy) "Waiting for your fingerprint" else "Send with fingerprint") { if (!busy) send() }
         }

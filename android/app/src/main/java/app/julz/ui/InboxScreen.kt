@@ -33,7 +33,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.julz.approve.ApproverApi
-import app.julz.approve.Begun
 import app.julz.feed.InboxNote
 import app.julz.feed.InboxPick
 import app.julz.feed.InboxSnapshot
@@ -55,7 +54,6 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
     var snap by remember { mutableStateOf<InboxSnapshotData?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var reloads by remember { mutableIntStateOf(0) }
-    var signing by remember { mutableStateOf<Begun?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var counts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
@@ -82,7 +80,7 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
         val body = s?.let { InboxSnapshot.body(it.id, picks) } ?: run { status = "Reload: no Inbox to act on"; return }
         busy = true; status = null
         signWithDevice(context, scope, origins, "inbox", body,
-            if (picks.size == 1) "Change 1 note" else "Change ${picks.size} notes", { signing = it }) { word, why ->
+            if (picks.size == 1) "Change 1 note" else "Change ${picks.size} notes") { word, why ->
             busy = false
             if (word != null) {
                 setPicked(emptyList())
@@ -92,7 +90,7 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
         }
     }
 
-    InboxContent(snap, problem, counts, picked, setPicked, signing, busy, status,
+    InboxContent(snap, problem, counts, picked, setPicked, busy, status,
         reload = { status = null; reloads++ }, apply = ::apply, browse = browse, back = back)
 }
 
@@ -100,7 +98,7 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
  *  a screenshot test draws it from fixed data (184). */
 @Composable
 internal fun InboxContent(s: InboxSnapshotData?, problem: String?, counts: Map<String, Int>, picked: List<String>,
-                          setPicked: (List<String>) -> Unit, signing: Begun?, busy: Boolean, status: String?,
+                          setPicked: (List<String>) -> Unit, busy: Boolean, status: String?,
                           reload: () -> Unit, apply: (List<InboxPick>) -> Unit, browse: (String?) -> Unit,
                           back: () -> Unit) {
     var open by remember { mutableStateOf<String?>(null) }   // the note shown whole
@@ -171,17 +169,11 @@ internal fun InboxContent(s: InboxSnapshotData?, problem: String?, counts: Map<S
     }
     FadeBottom()
     }
-    // Pinned above the tab bar, as on Todos: what happened, the exact text while signing, the button
-    if (status != null || signing != null || picks.isNotEmpty()) Column(Modifier.fillMaxWidth()
+    // Pinned above the tab bar, as on Todos: what happened and the button. The text I sign is in
+    // the sign panel at the top, where the fingerprint sheet does not cover it (219)
+    if (status != null || picks.isNotEmpty()) Column(Modifier.fillMaxWidth()
         .padding(horizontal = J.gutter, vertical = J.sp3), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
         status?.let { Text(it, style = J.sec.copy(color = J.text)) }
-        signing?.let {
-            // Plain text only (34): the exact text the laptop built for this nonce (109)
-            Column(Modifier.fillMaxWidth().glass().padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-                Text(it.text, style = J.sec.copy(fontFamily = J.mono, color = J.text))
-                Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
-            }
-        }
         if (picks.isNotEmpty()) GlowButton(when {
             busy -> "Waiting for your fingerprint"
             picks.size == 1 -> "Apply 1 change with fingerprint"

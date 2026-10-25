@@ -32,7 +32,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import app.julz.approve.Begun
 import app.julz.approve.KeepItem
 import app.julz.approve.NeedItem
 import app.julz.approve.QueuedItem
@@ -50,25 +49,23 @@ fun WorkCards(origins: Origins, w: WorkState, busy: Boolean, setBusy: (Boolean) 
               reload: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var signing by remember { mutableStateOf<Pair<String, Begun>?>(null) }  // card key and the text I sign
-    fun sign(key: String, action: String, body: JSONObject?, title: String) {
+    fun sign(action: String, body: JSONObject?, title: String) {
         if (body == null || busy) return
         setBusy(true); say(null)
-        signWithDevice(context, scope, origins, action, body, title, { b -> signing = b?.let { key to it } }) { word, why ->
+        signWithDevice(context, scope, origins, action, body, title) { word, why ->
             setBusy(false)
             say(word?.let { it.replaceFirstChar { c -> c.uppercase() } + "." } ?: why)
             if (word != null) reload()
         }
     }
-    fun shown(key: String, fallback: String) = signing?.takeIf { it.first == key }?.second?.text ?: fallback
 
     w.running?.let { r ->
         SectionTitle("Running now")
         Card {
             Text("${r.project}, step ${r.step}", style = J.ts)
             Text(r.goal, style = J.sec)  // plain text (121)
-            Signed(shown("run", r.text), signing?.first == "run")
-            Button("Stop the run", J.warn) { sign("run", "halt", WorkBodies.halt(r), "Stop the run") }
+            Signed(r.text)
+            Button("Stop the run", J.warn) { sign("halt", WorkBodies.halt(r), "Stop the run") }
         }
     }
     if (w.queued.isNotEmpty()) {
@@ -77,23 +74,23 @@ fun WorkCards(origins: Origins, w: WorkState, busy: Boolean, setBusy: (Boolean) 
             Text(q.goal, style = J.bodyText)
             Text(if (q.overridden) "step ${q.step}, run now signed" else "step ${q.step}, in line", style = J.monoCap)
             if (!q.overridden && q.overrideSha != null) {
-                Signed(shown("q" + q.sha256, q.overrideText ?: ""), signing?.first == "q" + q.sha256)
-                Button("Run now, past the cap", J.acc) { sign("q" + q.sha256, "override", WorkBodies.override(q), "Run now") }
+                Signed(q.overrideText ?: "")
+                Button("Run now, past the cap", J.acc) { sign("override", WorkBodies.override(q), "Run now") }
             }
         }
     }
     if (w.needs.isNotEmpty()) {
         SectionTitle("Claude needs you")
-        for (n in w.needs) NeedCard(n, busy, shown("n" + n.root, n.text), signing?.first == "n" + n.root,
+        for (n in w.needs) NeedCard(n, busy, n.text,
             go = { a -> WorkBodies.need(n, a).also { if (it == null) say("Answer: plain words, at most ${WorkBodies.MAX_ANSWER}, no links or secrets") }
-                ?.let { sign("n" + n.root, it.getString("action"), it, if (a.isBlank()) "Continue" else "Send answer") } },
-            stop = { sign("n" + n.root, WorkBodies.stop(n).getString("action"), WorkBodies.stop(n), if (n.stopped) "Delete the work copy" else "Stop the task") })
+                ?.let { sign(it.getString("action"), it, if (a.isBlank()) "Continue" else "Send answer") } },
+            stop = { sign(WorkBodies.stop(n).getString("action"), WorkBodies.stop(n), if (n.stopped) "Delete the work copy" else "Stop the task") })
     }
     if (w.keeps.isNotEmpty()) {
         SectionTitle("Keep notes from a run")
-        for (k in w.keeps) KeepCard(k, w.topics, busy, signing?.takeIf { it.first == "k" + k.root }?.second?.text) { topic, picked ->
+        for (k in w.keeps) KeepCard(k, w.topics, busy) { topic, picked ->
             WorkBodies.keep(k, topic, picked).also { if (it == null) say("Pick at least one file and a topic like network-plus") }
-                ?.let { sign("k" + k.root, "keep", it, "Keep notes") }
+                ?.let { sign("keep", it, "Keep notes") }
         }
     }
 }
@@ -103,12 +100,11 @@ private fun Card(content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().assemble().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) { content() }
 }
 
-/** The text the action signs: plain, mono, whole; marked while the fingerprint prompt is up. */
+/** The text the action signs: plain, mono, whole. While I sign, the server's text is in the sign panel (219). */
 @Composable
-private fun Signed(text: String, now: Boolean) {
+private fun Signed(text: String) {
     if (text.isBlank()) return
     Text(text.trimEnd(), style = J.sec.copy(fontFamily = J.mono, color = J.text), modifier = Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4))
-    if (now) Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
 }
 
 /** An action button: outlined in its colour. The one glowing button stays with the specs. */
@@ -117,7 +113,7 @@ private fun Button(label: String, color: Color, onClick: () -> Unit) =
     PlainButton(label, color = color, border = color.copy(alpha = 0.5f), onClick = onClick)
 
 @Composable
-private fun NeedCard(n: NeedItem, busy: Boolean, text: String, now: Boolean, go: (String) -> Unit, stop: () -> Unit) {
+private fun NeedCard(n: NeedItem, busy: Boolean, text: String, go: (String) -> Unit, stop: () -> Unit) {
     var answer by remember(n.root) { mutableStateOf("") }
     Card {
         Text(if (n.stopped) "Stopped, ${n.project}, next step ${n.step}" else "${n.project}, step ${n.step}", style = J.ts)
@@ -128,7 +124,7 @@ private fun NeedCard(n: NeedItem, busy: Boolean, text: String, now: Boolean, go:
         Text("/work on the laptop is ${n.work}", style = J.monoCap)
         if (!n.stopped) Text("Continue tells Claude it is done. If you cannot do it, answer, or stop the task: "
             + "the same question again ends it.", style = J.sec.copy(color = J.warn))
-        Signed(text, now)
+        Signed(text)
         val colors = fieldColors()
         OutlinedTextField(answer, { if (it.length <= WorkBodies.MAX_ANSWER) answer = it }, Modifier.fillMaxWidth(),
             label = { Text(if (n.stopped) "Tell Claude something, or leave empty" else "Answer, or leave empty for Continue") },
@@ -141,7 +137,7 @@ private fun NeedCard(n: NeedItem, busy: Boolean, text: String, now: Boolean, go:
 }
 
 @Composable
-private fun KeepCard(k: KeepItem, topics: List<String>, busy: Boolean, signingText: String?, keep: (String, List<String>) -> Unit) {
+private fun KeepCard(k: KeepItem, topics: List<String>, busy: Boolean, keep: (String, List<String>) -> Unit) {
     val ticked = remember(k.root) { mutableStateMapOf<String, Boolean>().apply { k.files.forEach { put(it.path, true) } } }
     var topic by remember(k.root) { mutableStateOf("") }
     val picked = k.files.map { it.path }.filter { ticked[it] == true }
@@ -179,7 +175,6 @@ private fun KeepCard(k: KeepItem, topics: List<String>, busy: Boolean, signingTe
             singleLine = true, enabled = !busy, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText.copy(fontFamily = J.mono),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false),
             supportingText = { Text("Files go to julz-mem/Claude/${topic.ifBlank { "<topic>" }}/${k.root.take(8)}/. One Keep per task.") })
-        signingText?.let { Signed(it, true) }
         Button("Keep ${picked.size} of ${k.files.size}", J.acc) { keep(topic, picked) }
     }
 }

@@ -63,7 +63,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import app.julz.approve.Begun
 import app.julz.chat.ChatApi
 import app.julz.chat.ChatLogic
 import app.julz.chat.ChatMessage
@@ -171,7 +170,6 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     var menu by remember { mutableStateOf<ChatMessage?>(null) }
     // Edit: my last message's words in the box; send then replaces it (26b, 136)
     var editing by remember { mutableStateOf<ChatMessage?>(null) }
-    var signing by remember { mutableStateOf<Begun?>(null) }
     var sending by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -310,10 +308,10 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         }
     }
 
-    /** Into Inbox through the approver, signed (139): the exact text shows, then my fingerprint */
+    /** Into Inbox through the approver, signed (139): the exact text shows in the sign panel, then my fingerprint */
     fun save(m: ChatMessage) {
         val body = SaveToNotes.body(m.text) ?: return
-        signWithDevice(context, scope, origins, "save", body, "Save to notes", { signing = it }) { word, why ->
+        signWithDevice(context, scope, origins, "save", body, "Save to notes") { word, why ->
             note = if (word != null) "Saved to Inbox. Sort it there when you have read it." else why
         }
     }
@@ -322,7 +320,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     fun keep(v: ChatView, m: ChatMessage) {
         val q = ChatLogic.questionFor(v, m) ?: return
         val body = KeepCase.body(q, m.text, ChatLogic.modeFor(v, m)) ?: return
-        signWithDevice(context, scope, origins, "case", body, "Keep as a bad answer", { signing = it }) { word, why ->
+        signWithDevice(context, scope, origins, "case", body, "Keep as a bad answer") { word, why ->
             note = if (word != null) "Kept as a test case. It waits on the laptop for you." else why
         }
     }
@@ -475,17 +473,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     // to null, and a `sheet!!` there closed the app (found 18 Oct on the phone, a crash)
     val held = menu
     val v = view
-    val signed = signing
     val mode = sheet
     when {
-        signed != null -> JulzSheet(onDismiss = {}) {
-            SheetTitle(if (signed.action == "case") "Keep as a bad answer" else "Save to notes",
-                "Your fingerprint signs the text below, nothing else.")
-            Column(Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-                Text(signed.text.trimEnd(), style = J.sec.copy(fontFamily = J.mono, color = J.text))
-                Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
-            }
-        }
         held != null && v != null -> JulzSheet(onDismiss = { menu = null }) {
             SheetTitle(if (held.user) "Your message" else "Julz's answer")
             Column(Modifier.fillMaxWidth().glass().padding(horizontal = J.inset)) {

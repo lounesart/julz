@@ -262,6 +262,7 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
                 }
         }
         SheetLayer(sheets)
+        SignLayer()
     }
 }
 }
