@@ -9,10 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -75,8 +76,13 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
         }
     }
     BackHandler { up() }
+    // A scroll state per view (211): back finds the list where I left it, a note opens at its top
+    val places = remember { NotesScroll() }
+    val place = NotesScroll.key(folder, note?.id)
+    val scroll = remember(place) { ScrollState(places.at(place)) }
+    DisposableEffect(place) { onDispose { places.keep(place, scroll.value) } }
     val f = all?.firstOrNull { it.folder == folder }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = J.gutter)
         .padding(bottom = J.end), verticalArrangement = Arrangement.spacedBy(J.gap)) {
         ScreenHeader(note?.name ?: folder?.substringAfterLast('/') ?: "Notes",
             note?.let { "${it.note} · ${it.modified}" } ?: folder ?: "your vault, read only", ::up,
@@ -136,6 +142,28 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Where each list view of the notes browser was scrolled to (211). A note is not kept, so it
+ *  always opens at its top; at most MAX folders are kept, the oldest goes first. */
+class NotesScroll {
+    private val kept = LinkedHashMap<String, Int>()
+    val size get() = kept.size
+    fun at(key: String) = kept[key] ?: 0
+    fun keep(key: String, value: Int) {
+        if (key.startsWith("n:")) return
+        kept.remove(key)
+        kept[key] = value
+        while (kept.size > MAX) kept.remove(kept.keys.first())
+    }
+    companion object {
+        const val MAX = 64
+        fun key(folder: String?, note: String?) = when {
+            note != null -> "n:$note"
+            folder != null -> "f:$folder"
+            else -> "o"
         }
     }
 }
