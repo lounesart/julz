@@ -1,5 +1,15 @@
 package app.julz.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -148,30 +158,51 @@ internal fun GoalCards(s: GoalsSnapshot, view: String, pickView: (String) -> Uni
     }
 }
 
-/** A period's goals and, at its end, its own Add: a quiet line that opens one field in this card
- *  only, so the card is where the goal goes and no "For" choice is needed (223b, was one form, 126b). */
+/** A period's goals and, at its end, its own Add: a ghost row that opens one field in this card
+ *  only, so the card is where the goal goes and no "For" choice is needed (223b, 223c; was one
+ *  form, 126b). With a switcher the body moves on a shared X axis on a switch (Material, for tabs),
+ *  and the card's height follows its content, so opening a field or a goal does not jump. */
 @Composable
 private fun PeriodCard(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app.julz.feed.TodoList>, toggle: (GoalPick) -> Unit,
                        switcher: (@Composable () -> Unit)? = null) {
-    val busy = ui.busy
-    Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
-        if (switcher != null) {
-            switcher()
-            Text(p.key, style = J.monoCap)
-        } else Row(verticalAlignment = Alignment.CenterVertically) {
+    val still = stillMotion()
+    Column(Modifier.fillMaxWidth().glass().then(if (still) Modifier else Modifier.animateContentSize(tween(220, easing = J.ease)))
+        .padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+        if (switcher == null) Row(verticalAlignment = Alignment.CenterVertically) {
             Text(p.label, style = J.ts, modifier = Modifier.weight(1f))
             if (GoalsData.keyShown(p)) Text(p.key, style = J.monoCap)
+        } else {
+            switcher()
+            // Material's shared X axis for peer views behind tabs: the body moves the way the light
+            // does, week to month leftward, and fades; 300 ms, as long as the light's glide
+            val shift = with(androidx.compose.ui.platform.LocalDensity.current) { 30.dp.roundToPx() }
+            AnimatedContent(p, contentKey = { it.key }, label = "period", transitionSpec = {
+                val dir = if (GoalsData.kindOf(targetState.key) == "month") 1 else -1
+                if (still) EnterTransition.None togetherWith ExitTransition.None
+                else (slideInHorizontally(tween(300, easing = J.ease)) { dir * shift } + fadeIn(tween(240, delayMillis = 60, easing = androidx.compose.animation.core.LinearOutSlowInEasing))) togetherWith
+                    (slideOutHorizontally(tween(300, easing = J.ease)) { -dir * shift } + fadeOut(tween(90)))
+            }) { q -> Column(verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+                Text(q.key, style = J.monoCap)
+                PeriodBody(q, ui, todos, toggle)
+            } }
+            return@Column
         }
-        if (p.goals.isEmpty()) Text("No goals yet.", style = J.sec)
-        for (g in p.goals) GoalRow(p.key, g, ui, todos, toggle)
-        for (a in ui.picks.filter { it.action == "add" && it.period == p.key }) Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Will add: ${a.value}", style = J.sec.copy(color = J.accText), modifier = Modifier.weight(1f))
-            Pill("Undo", false, !busy) { ui.picks.remove(a) }
-        }
-        val draft = "new:${p.key}"
-        androidx.compose.runtime.key(p.key) {  // the week and month cards share a place: one field each
-            InlineAdd("Add a goal", ui.drafts[draft].orEmpty(), { ui.drafts[draft] = it }, !busy) { toggle(GoalPick("add", p.key, it)) }
-        }
+        PeriodBody(p, ui, todos, toggle)
+    }
+}
+
+/** A period's goals, the goals it will add, and its ghost row. */
+@Composable
+private fun PeriodBody(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app.julz.feed.TodoList>, toggle: (GoalPick) -> Unit) {
+    for (g in p.goals) GoalRow(p.key, g, ui, todos, toggle)
+    for (a in ui.picks.filter { it.action == "add" && it.period == p.key }) Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Will add: ${a.value}", style = J.sec.copy(color = J.accText), modifier = Modifier.weight(1f))
+        Pill("Undo", false, !ui.busy) { ui.picks.remove(a) }
+    }
+    // The ghost row is the empty state too: no "No goals yet." line above it saying the same (223c)
+    val draft = "new:${p.key}"
+    androidx.compose.runtime.key(p.key) {  // the week and month cards share a place: one field each
+        InlineAdd("Add a goal", ui.drafts[draft].orEmpty(), { ui.drafts[draft] = it }, !ui.busy) { toggle(GoalPick("add", p.key, it)) }
     }
 }
 

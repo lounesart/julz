@@ -182,7 +182,8 @@ fun IconButton(icon: ImageVector, description: String?, fill: Color, tint: Color
 }
 
 /** Tabs in a pill. With [position] (a pager's page plus its offset) the light slides along with a
- *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. */
+ *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. Without one it
+ *  glides to a tapped option as the tab bar does (320 ms, J.ease), and jumps with animations off. */
 @Composable
 fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = null, modifier: Modifier = Modifier,
               onSelect: (Int) -> Unit) {
@@ -190,15 +191,18 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
     val labelStyle = J.sec.copy(fontWeight = J.ts.fontWeight)
     val pillShape = J.pill
     val textSize = rememberRowSize(options, labelStyle, (maxWidth - J.sp1 * (options.size + 1)) / options.size - J.sp1 * 2)
+    val glide by androidx.compose.animation.core.animateFloatAsState(selected.toFloat(),
+        if (stillMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(320, easing = J.ease),
+        label = "segment")
+    val at = position ?: { glide }
     Row(Modifier.fillMaxWidth().glass(J.pill).padding(J.sp1).drawBehind {
-            if (position == null) return@drawBehind
             val gap = J.sp1.toPx()
             val w = (size.width - gap * (options.size - 1)) / options.size
             val stroke = 1.dp.toPx()
             // Outlined: a 1 dp accent line, drawn inside the light's bounds
             // The light in the pill token's own shape, round or cut (22d: it stayed round with Industrial)
             val light = androidx.compose.ui.geometry.Size(w, size.height)
-            translate(left = (w + gap) * position()) {
+            translate(left = (w + gap) * at()) {
                 val o = pillShape.createOutline(light, layoutDirection, this)
                 if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
                 else drawOutline(o, J.text)
@@ -207,12 +211,12 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
         options.forEachIndexed { i, label ->
             val on = i == selected
+            // The words light up as the light passes halfway, not on the first frame (223c)
+            val lit = if (position == null) kotlin.math.abs(glide - i) < 0.5f else on
             Box(Modifier.weight(1f).heightIn(min = J.tap).clip(J.pill)
-                .background(if (on && position == null && !J.outline) J.text else Color.Transparent)
-                .border(1.dp, if (on && position == null && J.outline) J.acc else Color.Transparent, J.pill)
                 .clickable(role = Role.Tab) { onSelect(i) }
                 .semantics { this.selected = on }, contentAlignment = Alignment.Center) {  // TalkBack says which is on (223b)
-                Text(label, style = labelStyle.copy(color = if (!on) J.muted else if (J.outline) J.accText else J.bg,
+                Text(label, style = labelStyle.copy(color = if (!lit) J.muted else if (J.outline) J.accText else J.bg,
                     fontSize = textSize), maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1))
             }
         }
@@ -298,7 +302,7 @@ fun InlineAdd(label: String, draft: String, onDraft: (String) -> Unit, enabled: 
         Row(Modifier.fillMaxWidth().heightIn(min = J.tap).clip(J.rM).border(1.dp, J.line, J.rM)
             .clickable(role = Role.Button, enabled = enabled) { open = true }.padding(horizontal = J.sp3),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-            Text("+", style = J.ts.copy(color = J.accText), modifier = Modifier.clearAndSetSemantics { })  // TalkBack: just the label
+            Text("+", style = J.sec.copy(color = J.accText, fontWeight = androidx.compose.ui.text.font.FontWeight(600)), modifier = Modifier.clearAndSetSemantics { })  // TalkBack: just the label
             Text(label, style = J.sec.copy(color = J.muted))
         }
         return
