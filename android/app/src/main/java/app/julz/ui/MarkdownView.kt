@@ -1,7 +1,6 @@
 package app.julz.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +97,7 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
         is MdItem -> Item(b, opens, link, tags, read)
         is MdQuote -> Bar(J.line) { Text(spans(b.spans, opens, link, tags), style = read.copy(color = J.muted)) }
         is MdCallout -> Callout(b, read, opens, link, tags)
-        is MdCode -> Column(Modifier.fillMaxWidth().clip(J.rS).background(CODE_BG).border(1.dp, J.line, J.rS)
+        is MdCode -> Column(Modifier.fillMaxWidth().clip(J.rS).background(CODE_BG).outline(1.dp, J.line, J.rS)
             .padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
             // Its own Copy (26b): a command out of an answer without the words around it
             val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -108,7 +107,7 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
                 Text(b.lang, style = J.monoCap)
                 // Where it runs (204), so a PowerShell line never passes for bash
                 if (system != null) Text(system, style = J.cap.copy(color = J.muted), modifier = Modifier.clip(J.rS)
-                    .border(1.dp, J.line, J.rS).padding(horizontal = J.sp2))
+                    .outline(1.dp, J.line, J.rS).padding(horizontal = J.sp2))
                 Box(Modifier.weight(1f))
                 Text("Copy", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)),
                     modifier = Modifier.clip(J.pill).clickable(role = androidx.compose.ui.semantics.Role.Button,
@@ -144,7 +143,7 @@ private fun Callout(b: MdCallout, read: androidx.compose.ui.text.TextStyle, open
     }
     var open by androidx.compose.runtime.saveable.rememberSaveable(b) { androidx.compose.runtime.mutableStateOf(!b.folded) }
     val folds = b.folded && b.spans.isNotEmpty()
-    Column(Modifier.fillMaxWidth().clip(J.rM).background(tint.copy(alpha = 0.10f)).border(1.dp, tint.copy(alpha = 0.35f), J.rM)
+    Column(Modifier.fillMaxWidth().clip(J.rM).background(tint.copy(alpha = 0.10f)).outline(1.dp, tint.copy(alpha = 0.35f), J.rM)
         .padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
         Row(Modifier.fillMaxWidth().then(if (folds) Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button,
                 onClickLabel = if (open) "Fold" else "Open") { open = !open } else Modifier),
@@ -223,7 +222,7 @@ private fun Item(b: MdItem, opens: ((String) -> (() -> Unit)?)?, link: ((String)
         when (b.marker) {
             "[/]" -> {
                 // In progress: the box in the accent, half filled, as the stage circle on Todos (22d)
-                Box(Modifier.padding(top = 2.dp).size(20.dp).clip(RoundedCorner6).border(1.5.dp, J.acc, RoundedCorner6)) {
+                Box(Modifier.padding(top = 2.dp).size(20.dp).clip(RoundedCorner6).outline(1.5.dp, J.acc, RoundedCorner6)) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(0.5f).background(J.acc.copy(alpha = 0.6f)))
                 }
                 Text(spans(b.spans, opens, link, tags), style = read, modifier = Modifier.weight(1f))
@@ -232,7 +231,7 @@ private fun Item(b: MdItem, opens: ((String) -> (() -> Unit)?)?, link: ((String)
                 val done = b.marker == "[x]"
                 // Drawn, not tappable: ticking stays on Todos, signed (113)
                 Box(Modifier.padding(top = 2.dp).size(20.dp).clip(RoundedCorner6).background(if (done) J.acc else Color.Transparent)
-                    .border(1.5.dp, if (done) J.acc else J.muted, RoundedCorner6), contentAlignment = Alignment.Center) {
+                    .outline(1.5.dp, if (done) J.acc else J.muted, RoundedCorner6), contentAlignment = Alignment.Center) {
                     if (done) Icon(Icons.check, null, tint = J.onAcc, modifier = Modifier.size(14.dp))
                 }
                 Text(spans(b.spans, opens, link, tags), style = read.copy(color = if (done) J.muted else J.text), modifier = Modifier.weight(1f))
@@ -269,7 +268,7 @@ private fun Props(p: MdProps, tags: ((String) -> (() -> Unit)?)?) {
                 // A chip the browser knows opens its tag view (212). Compose widens its touch area
                 // to 48 dp without moving the layout, the closest chip wins (asked: no big gaps)
                 val go = tags?.invoke(t)
-                val chip = Modifier.clip(J.rS).border(1.dp, J.line, J.rS)
+                val chip = Modifier.clip(J.rS).outline(1.dp, J.line, J.rS)
                 Text("#$t", style = J.cap.copy(color = J.accText), modifier = (if (go != null)
                     chip.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = go) else chip)
                     .padding(horizontal = J.sp3, vertical = J.sp1))
@@ -300,7 +299,7 @@ private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((Strin
     val total = natural.fold(0.dp) { a, w -> a + w }
     val widths = if (total <= maxWidth) natural.map { it * (maxWidth / total) } else natural
     val scroll = rememberScrollState()
-    Box(Modifier.fillMaxWidth().clip(J.rS).border(1.dp, J.line, J.rS)) {
+    Box(Modifier.fillMaxWidth().clip(J.rS).outline(1.dp, J.line, J.rS)) {
         Column(Modifier.edgeFade(scroll).horizontalScroll(scroll)) {
             t.rows.forEachIndexed { r, row ->
                 Row(Modifier.background(if (r == 0) J.raise else Color.Transparent)) {
