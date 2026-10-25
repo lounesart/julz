@@ -43,6 +43,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Spacer
@@ -203,7 +205,8 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
             Box(Modifier.weight(1f).heightIn(min = J.tap).clip(J.pill)
                 .background(if (on && position == null && !J.outline) J.text else Color.Transparent)
                 .border(1.dp, if (on && position == null && J.outline) J.acc else Color.Transparent, J.pill)
-                .clickable(role = Role.Tab) { onSelect(i) }, contentAlignment = Alignment.Center) {
+                .clickable(role = Role.Tab) { onSelect(i) }
+                .semantics { this.selected = on }, contentAlignment = Alignment.Center) {  // TalkBack says which is on (223b)
                 Text(label, style = labelStyle.copy(color = if (!on) J.muted else if (J.outline) J.accText else J.bg,
                     fontSize = textSize), maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1))
             }
