@@ -258,7 +258,7 @@ class PushToolsTest(unittest.TestCase):
         self.owui = FakeOpenWebUI({
             "tools/julz_notes": {"name": "Notes", "content": "old notes\n", "meta": meta,
                                  "access_grants": [{"group": "phone"}]},
-            "functions/julz_saves": {"name": "Saves", "content": "saves\n", "meta": meta},
+            "functions/julz_honest_saves": {"name": "Saves", "content": "saves\n", "meta": meta},
         })
         self.asked = []
         self.answer = True
@@ -307,6 +307,16 @@ class PushToolsTest(unittest.TestCase):
         self.assertEqual(data["meta"], {"description": "d", "manifest": {"title": "t"}})
         self.assertEqual(data["id"], "julz_notes")
         self.assertNotIn("access_grants", data)
+
+    def test_a_file_maps_to_the_id_open_webui_gave_it(self):
+        (self.release / "functions" / "julz_saves.py").write_text("new saves\n")
+        out = self.push()
+        self.assertEqual(deploy.OWUI_IDS["functions/julz_saves"], "julz_honest_saves")
+        self.assertEqual(self.owui.store["functions/julz_honest_saves"]["content"], "new saves\n")
+        self.assertIn("pushed: functions/julz_saves", out)
+        (_, path, _, data), = [c for c in self.updates() if "functions" in c[1]]
+        self.assertEqual(path, "/api/v1/functions/id/julz_honest_saves/update")
+        self.assertEqual(data["id"], "julz_honest_saves")
 
     def test_only_python_files_are_tools(self):
         out = self.push()

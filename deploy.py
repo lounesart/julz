@@ -42,6 +42,8 @@ PASTE = ("tools/", "functions/")  # Open WebUI keeps its own copy: --tools pushe
 OWUI = "http://127.0.0.1:3100"
 # 0.11.4's replace_imports rewrites these before storing, so the hash check could never pass
 REWRITTEN = ("from utils", "from apps", "from main", "from config")
+# Open WebUI made the id from the name I typed when I first pasted it; the rest match the file
+OWUI_IDS = {"functions/julz_saves": "julz_honest_saves"}
 REBUILD = ("modelfiles/",)  # build-models.sh may pull a model, an install: I run it
 SUDO = ("run-webui.sh", "run-searxng.sh", "run-speaches.sh", "systemd/ollama-limits.conf")
 
@@ -280,6 +282,7 @@ def push_tools(release: Path, lib: Path, http, email: str, password: str, confir
     try:
         for name, p in items:
             kind, tid = name.split("/")
+            tid = OWUI_IDS.get(name, tid)
             src = p.read_text()
             try:
                 current = http("GET", f"/api/v1/{kind}/id/{tid}", token)
