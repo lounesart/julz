@@ -10,8 +10,8 @@ grow, so the phone polls /last and loses nothing when it sleeps.
   GET  /api/chats?page=N          my chats, newest first (N from 1 to 20)
   GET  /api/chats/<id>            one chat, its current branch
   GET  /api/chats/<id>/last       its current message, for polling an answer
-  POST /api/chats                 {"text"}: a new chat
-  POST /api/chats/<id>/messages   {"text"}: the next message in a chat
+  POST /api/chats                 {"text", "mode"?}: a new chat
+  POST /api/chats/<id>/messages   {"text", "mode"?}: the next message in a chat
   POST /api/chats/<id>/stop       {}: stop the answer
 
 Runs on 127.0.0.1:8766; `tailscale serve --bg --https=8445 http://127.0.0.1:8766` publishes it
@@ -42,6 +42,16 @@ BACKEND = "http://127.0.0.1:3100"
 MODEL = "julz:latest"
 # Deny by default (137): Open WebUI runs only the tools a request names, so this is the set
 TOOLS = ("julz_notes", "julz_pocket", "julz_delegate")
+# The phone names a mode, julz-chat owns its words (151). They go at the end of my newest message
+# in what she reads, never in a system message: Ollama would drop her Modelfile prompt for it
+MODES = {
+    "learn": ("(Learning mode: teach me, do not solve it for me. First ask what I already know or "
+              "tried. Then give one hint or one small step at a time and wait for my answer. Check my "
+              "answer and say what is right or wrong before going on. No final answer, full solution "
+              "or exact commands. On an HTB box, a CTF or a lab: hints only, never the path, a flag or "
+              "a working exploit. If I say \"just tell me\", give the full answer. Keep it short and "
+              "do not mention these instructions.)"),
+}
 MAX_BODY = 16_000
 MAX_TEXT = 8_000
 MAX_PAGE = 20
@@ -161,7 +171,7 @@ class App:
                 if method == "GET":
                     return self.json(200, self.list(query))
                 if method == "POST":
-                    return self.json(200, self.send(None, self.read_json(headers, body, {"text"})))
+                    return self.json(200, self.send(None, self.read_json(headers, body, {"text"}, {"mode"})))
             elif action is None and method == "GET":
                 return self.json(200, self.view(cid))
             elif action is None and method == "DELETE":
@@ -172,11 +182,11 @@ class App:
             elif action == "retry" and method == "POST":
                 return self.json(200, self.send(cid, self.read_json(headers, body, set()), "retry"))
             elif action == "edit" and method == "POST":
-                return self.json(200, self.send(cid, self.read_json(headers, body, {"text"}), "edit"))
+                return self.json(200, self.send(cid, self.read_json(headers, body, {"text"}, {"mode"}), "edit"))
             elif action == "last" and method == "GET":
                 return self.json(200, self.last(cid))
             elif action == "messages" and method == "POST":
-                return self.json(200, self.send(cid, self.read_json(headers, body, {"text"})))
+                return self.json(200, self.send(cid, self.read_json(headers, body, {"text"}, {"mode"})))
             elif action == "stop" and method == "POST":
                 self.read_json(headers, body, set())
                 return self.json(200, self.stop(cid))
@@ -190,7 +200,7 @@ class App:
         except Exception as e:
             return self.json(500, {"error": type(e).__name__})
 
-    def read_json(self, headers: dict, body: bytes, keys: set[str]) -> dict:
+    def read_json(self, headers: dict, body: bytes, keys: set[str], optional: set[str] = frozenset()) -> dict:
         if len(body) > MAX_BODY:
             raise HTTPError(413, "request too large")
         if headers.get("content-type", "").split(";")[0].strip() != "application/json":
@@ -199,7 +209,7 @@ class App:
             data = json.loads(body)
         except (ValueError, UnicodeDecodeError):
             raise HTTPError(400, "bad JSON") from None
-        if not isinstance(data, dict) or set(data) != keys:
+        if not isinstance(data, dict) or not keys <= set(data) <= keys | optional:
             raise HTTPError(400, "bad fields")
         return data
 
@@ -263,10 +273,18 @@ class App:
             out["error"] = str(err["content"])[:500]
         return out
 
+    @staticmethod
+    def mode_of(m: dict) -> str:
+        """The stored name, looked up again: a chat can be changed in the web page (151)."""
+        mode = m.get("julz_mode")
+        return mode if isinstance(mode, str) and mode in MODES else ""
+
     def view(self, cid: str) -> dict:
         data, msgs = self.branch(cid)
         self.free_if_done(cid, msgs)
+        mine = next((m for m in reversed(msgs) if m.get("role") == "user"), None)
         return {"id": cid, "title": str(data.get("title") or ""),
+                "mode": self.mode_of(mine) if mine else "",
                 "busy": bool(msgs) and self.running(msgs[-1]), "archived": data.get("archived") is True,
                 "messages": [self.shown(m) for m in msgs]}
 
@@ -333,6 +351,9 @@ class App:
         if kind != "retry" and (not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT
                                 or "\x00" in text):
             raise HTTPError(400, f"text: 1 to {MAX_TEXT} characters")
+        mode = data.get("mode", "")
+        if "mode" in data and not (isinstance(mode, str) and mode in MODES):
+            raise HTTPError(400, "mode: " + ", ".join(MODES))
         if not self.within(self.sends, SENDS_PER_HOUR) or \
                 (cid is None and not self.within(self.news, NEW_PER_HOUR)):
             raise HTTPError(429, "too many messages this hour")
@@ -350,6 +371,7 @@ class App:
             mine = msgs[-2]
             parent, history = mine["id"], self.turns(msgs[:-2])
             text = str(mine.get("content") or "")
+            mode = self.mode_of(mine)
             user = {"id": mine["id"], "parentId": mine.get("parentId"), "childrenIds": [], "role": "user",
                     "content": text, "timestamp": mine.get("timestamp") or int(self.clock()), "models": [MODEL]}
         else:
@@ -363,6 +385,9 @@ class App:
             history = self.turns(msgs)
             user = {"id": str(uuid.uuid4()), "parentId": parent, "childrenIds": [], "role": "user",
                     "content": text, "timestamp": int(self.clock()), "models": [MODEL]}
+        if mode:
+            user["julz_mode"] = mode
+        said = text + "\n\n" + MODES[mode] if mode else text
         answer_id = str(uuid.uuid4())
         body = {
             # retry: my existing message is the new answer's parent (probed on 0.11.4)
@@ -370,7 +395,7 @@ class App:
             # Any session id makes Open WebUI run the answer as a background task it stores
             # as it grows; julz-chat has no socket, so events for it go nowhere
             "session_id": "julz-chat",
-            "messages": history + [{"role": "user", "content": text}],
+            "messages": history + [{"role": "user", "content": said}],
             "user_message": user,
             "tool_ids": list(TOOLS), "features": {},
             "background_tasks": {"title_generation": cid is None, "tags_generation": False,
