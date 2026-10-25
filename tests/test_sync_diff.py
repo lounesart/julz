@@ -16,7 +16,8 @@ from test_sync_filter import load_sync_module  # noqa: E402
 
 
 def sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+    """The hash of what sync uploads for a note in study/: the note with its chunk headers (163)."""
+    return hashlib.sha256(load_sync_module().with_headers(text, Path("study")).encode()).hexdigest()
 
 
 class FakeKb:
@@ -26,7 +27,7 @@ class FakeKb:
         # files: (id, filename, file_hash or None for a file without meta)
         self.files = {i: {"id": i, "filename": n, "meta": {"file_hash": h} if h else {}}
                       for i, n, h in files}
-        self.calls, self.fail_upload_of, self.n = [], fail_upload_of, 0
+        self.calls, self.fail_upload_of, self.n, self.sent = [], fail_upload_of, 0, {}
 
     def api(self, key, method, path, data=None, **kw):
         if method == "GET" and "/files" in path:
@@ -39,14 +40,15 @@ class FakeKb:
             return {}
         raise AssertionError(f"unexpected call {method} {path}")
 
-    def upload(self, key, path, name):
+    def upload(self, key, data, name):
         if name == self.fail_upload_of:
             raise SystemExit(f"POST /api/v1/files -> HTTP 500 for {name}")
         self.n += 1
         fid = f"up{self.n}"
         # Open WebUI keeps the uploaded file outside the collection until it is added
         self.files[fid] = {"id": fid, "filename": name,
-                           "meta": {"file_hash": hashlib.sha256(path.read_bytes()).hexdigest()}}
+                           "meta": {"file_hash": hashlib.sha256(data).hexdigest()}}
+        self.sent[fid] = data
         self.calls.append(("upload", name))
         return {"id": fid}
 

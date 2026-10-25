@@ -37,6 +37,17 @@ def source_names(resp):
     return names
 
 
+def fact_in_chunk(resp, case) -> bool:
+    """133: a chunk of the expected note holds every expect word. Cited only says the file came
+    back; on 25 Oct it did with the wrong part of it, and she guessed the CPTS name."""
+    for src in resp.get("sources") or []:
+        for doc, meta in zip(src.get("document") or [], src.get("metadata") or []):
+            name = meta.get("name") or meta.get("source") or ""
+            if case["source"] in name and all(k.lower() in doc.lower() for k in case["expect"]):
+                return True
+    return False
+
+
 def says_claude_wrote(answer: str) -> bool:
     return "claude wrote" in answer.lower()
 
@@ -52,7 +63,7 @@ def ask(key, model, kb, q):
 def run_case(case, ask, claude=False):
     """Ask a case its number of tries and judge it. ask(q) returns (answer, response)."""
     tries = case.get("tries", 1)
-    good = cited_count = 0
+    good = cited_count = found = 0
     shown = None  # the first failing try, else the last one, is what gets printed
     for _ in range(tries):
         answer, resp = ask(case["q"])
@@ -61,6 +72,7 @@ def run_case(case, ask, claude=False):
         said = [k for k in case.get("forbid", []) if k.lower() in answer.lower()]
         cited = any(case["source"] in n for n in source_names(resp))
         cited_count += cited
+        found += fact_in_chunk(resp, case)  # measured, not gated
         if claude or tries > 1:
             ok = cited and (claude or not missing)
         else:
@@ -70,7 +82,7 @@ def run_case(case, ask, claude=False):
         if shown is None or (shown[0] and not ok):
             shown = (ok, missing, said, answer)
     _, missing, said, answer = shown
-    return {"ok": good == tries, "good": good, "tries": tries, "cited": cited_count == tries,
+    return {"ok": good == tries, "good": good, "tries": tries, "cited": cited_count == tries, "found": found,
             "missing": missing, "said": said, "answer": answer,
             "credited": says_claude_wrote(answer)}
 
@@ -89,26 +101,30 @@ def main():
         kb = None
 
     cases = json.loads((CLAUDE_EVAL_FILE if claude else EVAL_FILE).read_text())
-    passed = keywords = credited = 0
+    passed = keywords = credited = found = 0
     for i, case in enumerate(cases, 1):
         r = run_case(case, lambda q: ask(key, model, kb, q), claude)
         missing, cited, answer = r["missing"], r["cited"], r["answer"]
         keywords += not missing
         credited += r["credited"]
+        found += r["found"] == r["tries"]
         passed += r["ok"]
         extra = f" says-claude={'yes' if r['credited'] else 'no '}" if claude else ""
         rate = f" {r['good']}/{r['tries']}" if r["tries"] > 1 else ""
-        print(f"{'PASS' if r['ok'] else 'FAIL'} {i:2}{rate} cited={'yes' if cited else 'no '}"
+        fact = (f" fact={r['found']}/{r['tries']}" if r["tries"] > 1
+                else f" fact={'yes' if r['found'] else 'no '}")
+        print(f"{'PASS' if r['ok'] else 'FAIL'} {i:2}{rate} cited={'yes' if cited else 'no '}{fact}"
               f"{extra} {case['q']}")
         if not r["ok"] or missing:
             print(f"        missing {missing}; said {r['said']}; answer: {answer[:200]!r}")
 
     n = len(cases)
     if claude:
-        print(f"\nretrieval {passed}/{n} (hard pass: all), keywords {keywords}/{n}, "
+        print(f"\nretrieval {passed}/{n} (hard pass: all), fact in a chunk {found}/{n}, "
+              f"keywords {keywords}/{n}, "
               f"\"Claude wrote\" {credited}/{n} (measured) with model {model}")
         sys.exit(0 if passed == n else 1)
-    print(f"\n{passed}/{n} passed (pass mark {PASS_MARK}) with model {model}")
+    print(f"\n{passed}/{n} passed (pass mark {PASS_MARK}), fact in a chunk {found}/{n} with model {model}")
     sys.exit(0 if passed >= PASS_MARK else 1)
 
 
