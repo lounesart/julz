@@ -3,6 +3,7 @@ package app.julz.ui
 import kotlinx.coroutines.launch
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.height
@@ -275,7 +277,11 @@ internal fun Shell(wide: Boolean, bar: @Composable (Boolean) -> Unit, content: @
     Row(Modifier.fillMaxSize()) {
       if (wide) bar(true)
       Box(Modifier.weight(1f)) {
-        Box(Modifier.fillMaxSize()) { content() }
+        // A tap on an empty part of the screen ends editing and the keyboard goes (226). Children see
+        // a tap first: a control or a field consumes it, a scroll cancels it, so only empty space lands here
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        Box(Modifier.fillMaxSize().pointerInput(Unit) {
+            detectTapGestures { focus.clearFocus() } }) { content() }
         if (!wide) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             // Content slides out through a short fade, then the band the bar sits on is solid
             // page colour: the glass showed the list through its icons (found 19 Oct). The
