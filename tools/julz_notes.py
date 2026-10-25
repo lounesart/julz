@@ -957,9 +957,12 @@ class Tools:
 
     async def save_feedback(self, text: str, __event_call__=None) -> str:
         """
-        Save the user's feedback about julz herself (what she does badly, what to change), for
-        Claude Code to read at the start of the next session. The user confirms it first. Use
-        it when the user complains about julz or says how she should behave.
+        Save the user's feedback about you, the assistant (what you do badly, what to change),
+        for Claude Code to read at the start of the next session. The user confirms it first.
+        Use it when the user complains about how you behave in general, even without the word
+        feedback: "you always forget my notes", "stop adding emoji from now on". Not for a
+        change to the answer you just gave (shorter, another format, a better example): just
+        give that answer, with no tool.
         :param text: the feedback in the user's own words
         :return: what happened
         """
@@ -1257,8 +1260,10 @@ class Tools:
     async def create_note(self, name: str, content: str, kind: str = "", folder: str = "Inbox",
                           __event_call__=None, __messages__=None) -> str:
         """
-        Save a new note. By default it goes into the Inbox. Save what the user said in their
-        own words; do not invent lines. Pick a kind and the code adds the right headings:
+        Save a new note, only when the user asks to save, note or write something down ("make
+        a note", "save this", "запиши"). Never to keep your own answer or an explanation you
+        gave. By default it goes into the Inbox. Save what the user said in their own words;
+        do not invent lines. Pick a kind and the code adds the right headings:
         "todo" (each line becomes a checkbox), "thought", "concept" (a study topic), "lab".
         Outside the Inbox the user confirms first.
         :param name: short file name without folders, for example "physio review"

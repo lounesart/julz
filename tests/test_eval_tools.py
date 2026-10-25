@@ -1,12 +1,16 @@
 """Tests for eval-tools.py (158): the specs it builds must be the ones Open WebUI 0.11.4 builds,
 the request the one its Legacy tool calling sends, and the pick read the way it reads it.
 Nothing reaches Ollama and no tool runs: the tool file is a fake one in a temp folder."""
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -182,6 +186,48 @@ class JudgeTest(unittest.TestCase):
     def test_any_of_several_tools(self):
         case = {"q": "x", "tool": ["search_notes", "read_note"]}
         self.assertTrue(ev.judge(case, [("search_notes", {})], self.NAMES))
+
+
+class UnaskedWriteTest(unittest.TestCase):
+    NAMES = {"read_note", "search_notes", "create_note", "save_feedback"}
+
+    def test_a_write_nobody_asked_for(self):
+        self.assertTrue(ev.unasked_write({"tool": None}, [("create_note", {})], self.NAMES))
+        self.assertTrue(ev.unasked_write({"tool": "read_note"}, [("save_feedback", {})], self.NAMES))
+
+    def test_a_read_or_an_asked_write_is_not_one(self):
+        self.assertFalse(ev.unasked_write({"tool": None}, [("search_notes", {})], self.NAMES))
+        self.assertFalse(ev.unasked_write({"tool": "create_note"}, [("create_note", {})], self.NAMES))
+        self.assertFalse(ev.unasked_write({"tool": ["read_note", "create_note"]}, [("create_note", {})], self.NAMES))
+        self.assertFalse(ev.unasked_write({"tool": None}, [], self.NAMES))
+
+    def test_only_the_first_known_call_counts(self):
+        calls = [("made_up", {}), ("read_note", {}), ("create_note", {})]
+        self.assertFalse(ev.unasked_write({"tool": None}, calls, self.NAMES))
+
+    def test_every_real_tool_is_sorted(self):
+        names = {s["name"] for s in ev.all_specs()}
+        self.assertEqual(names - ev.WRITES, ev.READS)
+        self.assertEqual(ev.WRITES & ev.READS, set())
+        self.assertTrue(ev.WRITES <= names)
+
+
+class MainTest(unittest.TestCase):
+    def test_cases_flag_reads_another_file(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        f = Path(d.name) / "mine.json"
+        f.write_text(json.dumps([{"q": "hi", "tool": None, "history": [["user", "x"], ["assistant", "y"]]}]))
+        sent = []
+        with mock.patch.object(ev, "ask", lambda body: sent.append(body) or '{"tool_calls": []}'), \
+                mock.patch.object(sys, "argv", ["eval-tools.py", "--cases", str(f)]), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            with self.assertRaises(SystemExit) as e:
+                ev.main()
+        self.assertEqual(e.exception.code, 0)
+        self.assertEqual(len(sent), 1)
+        self.assertTrue(sent[0]["messages"][1]["content"].endswith("Query: hi"))
+        self.assertIn("1 of 1", out.getvalue())
 
 
 class CasesTest(unittest.TestCase):
