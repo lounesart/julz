@@ -34,7 +34,8 @@ PROJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 FIELD_LINE = re.compile(r"^([a-z_]+):[ \t]*(.*)$")
 # Control, format (zero width, bidi), private use, surrogates, unassigned
 BAD_CATEGORIES = {"Cc", "Cf", "Co", "Cs", "Cn"}
-HEX64 = re.compile(r"^[0-9a-f]{64}$")
+# \A and \Z, not ^ and $: $ also takes a trailing newline, and most uses are .match (222)
+HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
 CONT_FIELDS = ("continue", "step", "need_hash", "answer")
 MAX_CONTINUATIONS = 3  # steps 2 to 4; a need at step 4 fails the task
 NEED_TTL = 24 * 3600
