@@ -165,6 +165,14 @@ object ChatLogic {
         return v.copy(busy = !m.done, messages = v.messages.dropLast(1) + m)
     }
 
+    /** julz-chat opens only chats it has listed since it started (136): after a restart (every
+     *  deploy) a 404 lists again once and repeats the request (215). Safe for a send, since
+     *  julz-chat refuses an unknown chat before it does anything */
+    suspend fun relisting(call: suspend () -> Pair<Int, String>, list: suspend () -> Boolean): Pair<Int, String> {
+        val first = call()
+        return if (first.first == 404 && list()) call() else first
+    }
+
     fun canSend(text: String, busy: Boolean, sending: Boolean): Boolean =
         !busy && !sending && text.isNotBlank() && text.length <= ChatApi.MAX_TEXT
 

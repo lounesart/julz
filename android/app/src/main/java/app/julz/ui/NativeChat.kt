@@ -196,9 +196,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
 
     suspend fun load(id: String) {
         val path = ChatApi.view(id) ?: return
-        var (code, raw) = call(path)
-        // julz-chat opens only chats it has listed: after a restart it lists again first (136)
-        if (code == 404 && loadList()) call(path).let { code = it.first; raw = it.second }
+        val (code, raw) = ChatLogic.relisting({ call(path) }, { loadList() })
         if (code == 200) ChatApi.parseView(raw)?.let { view = it; problem = null }
         else problem = ChatApi.problem(code)
     }
@@ -236,7 +234,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         if (path == null || body == null) return
         sending = true; problem = null
         scope.launch {
-            val (code, raw) = call(path, body)
+            val (code, raw) = ChatLogic.relisting({ call(path, body) }, { loadList() })
             // The status only, never the text: a send that failed left no trace (found 19 Oct)
             app.julz.AppLog.add("chat: send ${path.substringAfterLast('/')} -> $code")
             val sent = if (code == 200) ChatApi.parseSent(raw) else null

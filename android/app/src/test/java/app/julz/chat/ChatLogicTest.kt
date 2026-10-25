@@ -85,4 +85,22 @@ class ChatLogicTest {
         assertEquals("New chat", ChatLogic.title("New Chat"))
         assertEquals("DHCP", ChatLogic.title("DHCP"))
     }
+
+    // 215: after julz-chat restarts it knows no chat until it lists them; open, send, retry and
+    // edit all list again once on a 404 and repeat, never more
+    private fun relisting(vararg codes: Int, listed: Boolean = true): Triple<Int, Int, Int> {
+        var calls = 0; var lists = 0
+        val code = kotlinx.coroutines.runBlocking {
+            ChatLogic.relisting({ codes[calls++] to "" }, { lists++; listed }).first
+        }
+        return Triple(code, calls, lists)
+    }
+
+    @Test fun a404ListsAgainOnceAndRepeats() {
+        assertEquals(Triple(200, 1, 0), relisting(200))
+        assertEquals(Triple(429, 1, 0), relisting(429))
+        assertEquals(Triple(200, 2, 1), relisting(404, 200))
+        assertEquals(Triple(404, 2, 1), relisting(404, 404))
+        assertEquals(Triple(404, 1, 1), relisting(404, 200, listed = false))
+    }
 }
