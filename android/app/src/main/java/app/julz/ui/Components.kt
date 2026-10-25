@@ -425,7 +425,12 @@ fun JulzSheet(onDismiss: () -> Unit, content: @Composable androidx.compose.found
     val host = LocalSheetHost.current ?: return
     val body by androidx.compose.runtime.rememberUpdatedState(content)
     val close by androidx.compose.runtime.rememberUpdatedState(onDismiss)
+    // The sheet draws over the screen but focus stayed in the box under it, so the keyboard
+    // stayed up, even over a chat picked from My chats (216). A draft lives outside its field
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     androidx.compose.runtime.DisposableEffect(host) {
+        focus.clearFocus(); keyboard?.hide()
         host.content = { body(this) }
         host.dismiss = { close() }
         onDispose { host.content = null; host.dismiss = null }
