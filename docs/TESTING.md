@@ -201,6 +201,10 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 5. Ask for ten more changes in a row. [The eleventh is refused in the chat, nothing more on
    Approve.] Leave the old cards a day. [They are gone from Approve.]
 6. Big text and landscape: the card text wraps, both buttons reachable.
+7. Stay in the chat and ask for a change (221, 160). [Within seconds a push "Julz: 1 card
+   waiting", no note name or text in it; the Approve tab's badge counts 1.] Ask for a second.
+   [Badge 2; no second push inside 5 minutes.] Sign one. [Badge 1, no push.] Drop the other.
+   [No badge, the approval notices read.]
 
 ### Goals from before (126b(3), 157)
 1. Goals tab with an open goal in last week's note (goals/<last ISO week>.md). [Under the

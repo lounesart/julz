@@ -1,0 +1,11 @@
+# A card Julz asks for in Inbox/.proposals rings the phone ("N cards waiting"), counted by
+# name and rate limited in julz-notify.py because julz writes this folder. SECURITY.md threat 160
+[Unit]
+Description=julz: notify about cards waiting for my signature
+
+[Path]
+PathChanged=%h/Documents/julz-mem/Inbox/.proposals
+Unit=julz-notify-cards.service
+
+[Install]
+WantedBy=default.target

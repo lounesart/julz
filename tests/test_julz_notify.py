@@ -586,6 +586,136 @@ class InboxTest(Base):
         self.assertEqual(rec.sent, [])
 
 
+class CardsTest(Base):
+    """160: Julz writes Inbox/.proposals, so it can trigger this: counts the names Approve can
+    show, never opens a file, rings only when the count rises."""
+    NOW = 1_800_000_000
+
+    def setUp(self):
+        super().setUp()
+        self.cards = self.base / "Inbox" / ".proposals"
+        self.cards.mkdir()
+
+    def card(self, age=0, tail="0123abcd", text=SECRET):
+        name = f"{self.NOW - age}-{tail}.json"
+        (self.cards / name).write_text(text)
+        return name
+
+    def test_counts_names_approve_shows(self):
+        self.card(age=10)
+        self.card(age=notify.PROPOSAL_TTL, tail="0123abce")
+        self.card(age=-notify.PROPOSAL_SKEW, tail="0123abcf")
+        self.assertEqual(notify.count_cards(self.cards, self.NOW), 3)
+
+    def test_odd_names_old_and_future_not_counted(self):
+        self.card(age=notify.PROPOSAL_TTL + 1)
+        self.card(age=-notify.PROPOSAL_SKEW - 1, tail="0123abce")
+        for name in ("Bad Name.json", f"{self.NOW}-0123ABCD.json", f"{self.NOW}-0123abcd.md",
+                     f"{self.NOW}-0123abcd.json.tmp", f"{self.NOW}-0123abcd.json\n"):
+            (self.cards / name).write_text(SECRET)
+        (self.cards / f"{self.NOW}-0123abc0.json").mkdir()
+        (self.cards / f"{self.NOW}-0123abc1.json").symlink_to(self.cards / f"{self.NOW}-0123ABCD.json")
+        self.assertEqual(notify.count_cards(self.cards, self.NOW), 0)
+
+    def test_count_capped(self):
+        for i in range(notify.MAX_PROPOSALS + 5):
+            self.card(tail=f"{i:08x}")
+        self.assertEqual(notify.count_cards(self.cards, self.NOW), notify.MAX_PROPOSALS)
+
+    def test_scan_capped(self):
+        # Names that sort first and do not count must not hide the ones after them
+        for i in range(notify.MAX_PROPOSAL_SCAN):
+            (self.cards / f"0{i:09d}-0123abcd.json").write_text("")
+        self.card()
+        self.assertEqual(notify.count_cards(self.cards, self.NOW), 0)
+
+    def test_no_folder_is_none(self):
+        self.cards.rmdir()
+        self.assertEqual(notify.count_cards(self.cards, self.NOW), 0)
+
+    def test_rings_with_count_only(self):
+        self.card()
+        self.card(tail="0123abce")
+        rec, state = Recorder(), {}
+        notify.check_cards(self.cards, state, self.NOW, rec)
+        self.assertEqual(rec.sent, [notify.cards_notice(2)])
+        self.assertNotIn(SECRET, self.all_text(rec.sent))
+        self.assertNotIn("0123abc", self.all_text(rec.sent) + json.dumps(state))
+
+    def test_fall_is_quiet_rise_rings(self):
+        a = self.card()
+        self.card(tail="0123abce")
+        rec, state = Recorder(), {}
+        notify.check_cards(self.cards, state, self.NOW, rec)
+        (self.cards / a).unlink()  # I signed one
+        notify.check_cards(self.cards, state, self.NOW + notify.INBOX_EVERY + 1, rec)
+        self.assertEqual(len(rec.sent), 1)
+        self.card(tail="0123abcf")  # 1 to 2 is a new card, though 2 was seen before
+        notify.check_cards(self.cards, state, self.NOW + 2 * notify.INBOX_EVERY + 2, rec)
+        self.assertEqual(rec.sent[-1], notify.cards_notice(2))
+        self.assertEqual(len(rec.sent), 2)
+
+    def test_rate_limited(self):
+        rec, state = Recorder(), {}
+        for i in range(8):
+            self.card(tail=f"{i:08x}")
+            notify.check_cards(self.cards, state, self.NOW + i * 10, rec)
+        self.assertEqual(len(rec.sent), 1)
+        self.card(tail="0000ffff")
+        notify.check_cards(self.cards, state, self.NOW + notify.INBOX_EVERY + 1, rec)
+        self.assertEqual(len(rec.sent), 2)
+
+    def test_none_quiet(self):
+        rec, state = Recorder(), {}
+        notify.check_cards(self.cards, state, self.NOW, rec)
+        self.assertEqual(rec.sent, [])
+
+    def test_failed_send_is_tried_again(self):
+        self.card()
+        state = {}
+        with self.assertRaises(OSError):
+            notify.check_cards(self.cards, state, self.NOW, Recorder(fail_after=0))
+        rec = Recorder()
+        notify.check_cards(self.cards, state, self.NOW + 1, rec)
+        self.assertEqual(rec.sent, [notify.cards_notice(1)])
+
+    def test_same_limits_as_approve(self):
+        web = load("julz_approve_web_for_notify", "julz-approve-web.py")
+        for name in ("MAX_PROPOSALS", "MAX_PROPOSAL_SCAN", "PROPOSAL_TTL", "PROPOSAL_SKEW"):
+            self.assertEqual(getattr(notify, name), getattr(web, name), name)
+        self.assertEqual(notify.CARDS, web.PROPOSALS)
+
+    def test_template_ascii_and_plural(self):
+        self.assertEqual(notify.cards_notice(1).title, "Julz: 1 card waiting")
+        self.assertEqual(notify.cards_notice(3).title, "Julz: 3 cards waiting")
+        n = notify.cards_notice(2)
+        self.assertEqual(n.kind, "approval")
+        (n.title + n.body + n.tags + n.priority).encode("ascii")
+
+
+class CardsUnitFileTest(unittest.TestCase):
+    """160: its own unit pair, the cards folder read only and nothing else of the vault."""
+
+    def lines(self, unit):
+        return [l for l in (ROOT / "systemd" / unit).read_text().splitlines() if not l.startswith("#")]
+
+    def test_path_watches_the_cards(self):
+        lines = self.lines("julz-notify-cards.path")
+        self.assertIn("PathChanged=%h/Documents/julz-mem/Inbox/.proposals", lines)
+        self.assertIn("Unit=julz-notify-cards.service", lines)
+
+    def test_service_binds(self):
+        lines = self.lines("julz-notify-cards.service")
+        self.assertIn("ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-notify.py --cards", lines)
+        self.assertIn("TemporaryFileSystem=%h:ro", lines)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX", lines)
+        binds = [l for l in lines if l.startswith(("BindPaths=", "BindReadOnlyPaths="))]
+        self.assertEqual(sorted(binds), sorted([
+            "BindReadOnlyPaths=%h/.local/lib/julz", "BindReadOnlyPaths=%h/.config/julz/notify",
+            "BindReadOnlyPaths=%h/Documents/julz-mem/Inbox/.proposals",
+            "BindPaths=%h/.local/share/julz/notify"]))
+
+
 class TopicTest(Base):
     def test_new_topic_is_random_and_private(self):
         path = self.base / "notify" / "ntfy.env"
