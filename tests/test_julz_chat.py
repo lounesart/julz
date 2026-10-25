@@ -723,12 +723,15 @@ class ModeTest(Base):
         return posts[0]
 
     def test_learn_adds_the_words_to_what_she_reads_only(self):
+        # 0.11.4 rebuilds a stored chat's messages from its store: the words go as the regeneration
+        # prompt, which it appends after that and never stores
         self.listed()
         self.assertEqual(self.req("POST", f"/api/chats/{C1}/messages", {"text": "what is a VLAN", "mode": "learn"})[0], 200)
         body = self.completion()
-        self.assertEqual(body["messages"][-1], {"role": "user", "content": "what is a VLAN\n\n" + chat.MODES["learn"]})
-        self.assertEqual(body["messages"][:-1], [{"role": "user", "content": "what is DORA"},
-                                                 {"role": "assistant", "content": "Discover, Offer, Request, Ack"}])
+        self.assertEqual(body["regeneration_prompt"], chat.MODES["learn"])
+        self.assertEqual(body["messages"], [{"role": "user", "content": "what is DORA"},
+                                            {"role": "assistant", "content": "Discover, Offer, Request, Ack"},
+                                            {"role": "user", "content": "what is a VLAN"}])
         self.assertEqual(body["user_message"]["content"], "what is a VLAN")  # the stored text is mine
         self.assertEqual(body["user_message"]["julz_mode"], "learn")
 
@@ -737,15 +740,17 @@ class ModeTest(Base):
         body = self.completion()
         self.assertEqual(body["messages"], [{"role": "user", "content": "hi"}])
         self.assertNotIn("julz_mode", body["user_message"])
+        self.assertNotIn("regeneration_prompt", body)
 
     def test_a_new_chat_and_an_edit_take_a_mode(self):
         self.req("POST", "/api/chats", {"text": "hi", "mode": "learn"})
-        self.assertTrue(self.completion()["messages"][-1]["content"].endswith(chat.MODES["learn"]))
+        self.assertEqual(self.completion()["regeneration_prompt"], chat.MODES["learn"])
         self.owui.finish("99999999-9999-4999-8999-999999999999")
         self.listed()
         self.req("POST", f"/api/chats/{C1}/edit", {"text": "what is DORA, step by step", "mode": "learn"})
         body = self.completion()
-        self.assertEqual(body["messages"][-1]["content"], "what is DORA, step by step\n\n" + chat.MODES["learn"])
+        self.assertEqual(body["messages"][-1]["content"], "what is DORA, step by step")
+        self.assertEqual(body["regeneration_prompt"], chat.MODES["learn"])
         self.assertEqual(body["user_message"]["julz_mode"], "learn")
 
     def test_the_phone_names_a_mode_never_words(self):
@@ -777,7 +782,8 @@ class ModeTest(Base):
         self.with_mode("learn")
         self.assertEqual(self.req("POST", f"/api/chats/{C1}/retry", {})[0], 200)
         body = self.completion()
-        self.assertEqual(body["messages"], [{"role": "user", "content": "what is DORA\n\n" + chat.MODES["learn"]}])
+        self.assertEqual(body["messages"], [{"role": "user", "content": "what is DORA"}])
+        self.assertEqual(body["regeneration_prompt"], chat.MODES["learn"])
         self.assertEqual(body["user_message"]["content"], "what is DORA")
         self.assertEqual(body["user_message"]["julz_mode"], "learn")
 
@@ -788,6 +794,7 @@ class ModeTest(Base):
             self.req("POST", f"/api/chats/{C1}/retry", {})
             body = self.completion()
             self.assertEqual(body["messages"], [{"role": "user", "content": "what is DORA"}], bad)
+            self.assertNotIn("regeneration_prompt", body)
             self.assertNotIn("julz_mode", body["user_message"])
             self.owui.finish(C1)
             self.owui.calls.clear()

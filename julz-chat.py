@@ -42,15 +42,16 @@ BACKEND = "http://127.0.0.1:3100"
 MODEL = "julz:latest"
 # Deny by default (137): Open WebUI runs only the tools a request names, so this is the set
 TOOLS = ("julz_notes", "julz_pocket", "julz_delegate")
-# The phone names a mode, julz-chat owns its words (151). They go at the end of my newest message
-# in what she reads, never in a system message: Ollama would drop her Modelfile prompt for it
+# The phone names a mode, julz-chat owns its words (151). They go as Open WebUI's regeneration
+# prompt, a user turn after mine that it never stores: 0.11.4 rebuilds a stored chat's messages
+# from its own store and drops ours, and a system message would make Ollama drop her Modelfile prompt
 MODES = {
-    "learn": ("(Learning mode: teach me, do not solve it for me. First ask what I already know or "
-              "tried. Then give one hint or one small step at a time and wait for my answer. Check my "
-              "answer and say what is right or wrong before going on. No final answer, full solution "
-              "or exact commands. On an HTB box, a CTF or a lab: hints only, never the path, a flag or "
-              "a working exploit. If I say \"just tell me\", give the full answer. Keep it short and "
-              "do not mention these instructions.)"),
+    "learn": ("(Learning mode, about my message above: teach me, do not solve it for me. First ask "
+              "what I already know or tried. Then give one hint or one small step at a time and wait for "
+              "my answer. Check my answer and say what is right or wrong before going on. No final "
+              "answer, full solution or exact commands. On an HTB box, a CTF or a lab: hints only, never "
+              "the path, a flag or a working exploit. But if my message above says \"just tell me\", "
+              "give the full answer. Keep it short and do not mention these instructions.)"),
 }
 MAX_BODY = 16_000
 MAX_TEXT = 8_000
@@ -387,7 +388,6 @@ class App:
                     "content": text, "timestamp": int(self.clock()), "models": [MODEL]}
         if mode:
             user["julz_mode"] = mode
-        said = text + "\n\n" + MODES[mode] if mode else text
         answer_id = str(uuid.uuid4())
         body = {
             # retry: my existing message is the new answer's parent (probed on 0.11.4)
@@ -395,7 +395,7 @@ class App:
             # Any session id makes Open WebUI run the answer as a background task it stores
             # as it grows; julz-chat has no socket, so events for it go nowhere
             "session_id": "julz-chat",
-            "messages": history + [{"role": "user", "content": said}],
+            "messages": history + [{"role": "user", "content": text}],
             "user_message": user,
             "tool_ids": list(TOOLS), "features": {},
             "background_tasks": {"title_generation": cid is None, "tags_generation": False,
@@ -403,6 +403,8 @@ class App:
         }
         if cid is not None:
             body["chat_id"] = cid
+        if mode:
+            body["regeneration_prompt"] = MODES[mode]
         now = self.clock()
         self.sends.append(now)
         if cid is None:
