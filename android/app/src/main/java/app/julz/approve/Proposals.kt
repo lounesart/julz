@@ -33,6 +33,11 @@ object Proposals {
         }
     }
 
+    /** The Approve badge with the cards counted too (221): her reply sends me there, so the
+     *  badge must say a card waits. No state is null, so the notices count as before. */
+    fun badge(state: ApproverState?, cards: List<Proposal>?): Int? =
+        state?.let { it.waitingForMe + (cards?.size ?: 0) }
+
     /** Sign it (change) or drop it: the card's id and the hash of the text I see; the laptop
      *  builds the text to sign again from its file and refuses any other. */
     fun body(p: Proposal, action: String): JSONObject {

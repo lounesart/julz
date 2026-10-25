@@ -66,7 +66,7 @@ private fun localFingerprint(): String? = try { DeviceKey.publicDer()?.let { Dev
  *  text the server sends back for this nonce, shown whole above the fingerprint prompt. */
 @Composable
 fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String, String?) -> Unit,
-                  seen: (ApproverState?) -> Unit = {}, enroll: () -> Unit) {
+                  seen: (ApproverState?, List<Proposal>?) -> Unit = { _, _ -> }, enroll: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<ApproverState?>(null) }
@@ -78,8 +78,9 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
     val local = remember { localFingerprint() }
     // Each load also sets the Approve badge, so it drops the moment a card is done (9b)
     fun reload() = scope.launch {
-        loadState(origins).let { (s, w) -> state = s; work = w; seen(s) }
-        proposals = loadProposals(origins).orEmpty()
+        val (s, w) = loadState(origins)
+        val cards = loadProposals(origins)
+        state = s; work = w; proposals = cards.orEmpty(); seen(s, cards)
         loaded = true
     }
     // Fast after I act, so the run's Stop card shows while it goes (9b)

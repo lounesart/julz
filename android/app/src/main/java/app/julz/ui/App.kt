@@ -139,16 +139,17 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
             read = read.read(n.id); ReadState.save(context, read)
         }
         // The Approve badge counts what waits on the laptop, not unread notices: those stayed
-        // after I approved (found 18 Oct, 9b). Nothing waiting marks the approval notices read
+        // after I approved (found 18 Oct, 9b). Cards Julz asks for count too (221). Nothing
+        // waiting marks the approval notices read
         var liveWaiting by remember { mutableStateOf<Int?>(null) }
-        fun settleBadge(s: app.julz.approve.ApproverState?) {
-            liveWaiting = s?.waitingForMe
+        fun settleBadge(s: app.julz.approve.ApproverState?, cards: List<app.julz.approve.Proposal>?) {
+            liveWaiting = app.julz.approve.Proposals.badge(s, cards)
             if (liveWaiting == 0) {
                 val open = notices.filter { it.kind == Kind.APPROVAL && !read.isRead(it.id) }
                 if (open.isNotEmpty()) { read = open.fold(read) { r, n -> r.read(n.id) }; ReadState.save(context, read) }
             }
         }
-        LaunchedEffect(fresh, screen) { settleBadge(loadState(origins).first) }
+        LaunchedEffect(fresh, screen) { settleBadge(loadState(origins).first, loadProposals(origins)) }
         // The Inbox card counts what the laptop has now, not what an old notice said
         var liveInbox by remember { mutableStateOf<Int?>(null) }
         LaunchedEffect(fresh, screen) {
@@ -239,7 +240,7 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
                     screen == Screen.LOGS -> LogsScreen { nav = nav.back() }
                     screen == Screen.APPROVE -> ApproveScreen(origins, approveNotes,
                         { name, note -> approveNotes = if (note == null) approveNotes - name else approveNotes + (name to note) },
-                        seen = { s -> settleBadge(s) }
+                        seen = { s, cards -> settleBadge(s, cards) }
                     ) { nav = nav.open(Screen.ENROLL) }
                     screen == Screen.ENROLL -> EnrollScreen(origins) { nav = nav.back() }
                     screen == Screen.SETTINGS -> SettingsScreen(config.server, JulzService.lastContact(context), notices.size,
