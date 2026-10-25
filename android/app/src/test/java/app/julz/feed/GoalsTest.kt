@@ -29,6 +29,32 @@ class GoalsTest {
         JSONObject().put("id", ID).put("tree", tree).put("milestones", JSONArray(milestones)).put("periods", JSONArray(listOf(
             JSONObject().put("key", key).put("label", "This week").put("note", "goals/$key.md").put("goals", JSONArray(goals))))).toString()
 
+    private fun past(vararg periods: Pair<String, List<JSONObject>>) = JSONObject().put("periods", JSONArray(periods.map { (key, goals) ->
+        JSONObject().put("key", key).put("label", "Last week").put("note", "goals/$key.md").put("goals", JSONArray(goals)) })).toString()
+
+    // Open goals from past periods, read only (126b(3), threat 157)
+    @Test fun pastGoalsParse() {
+        val l = GoalsData.parsePast(past("2026-W42" to listOf(goal("Study 10 h (2/10)", listOf(2, 10))), "2025" to emptyList()))!!
+        assertEquals(listOf("2026-W42", "2025"), l.map { it.key })
+        assertEquals("Last week", l[0].label)
+        assertEquals("Study 10 h (2/10)", l[0].goals.single().text)
+        assertEquals(emptyList<GoalPeriod>(), GoalsData.parsePast(JSONObject().put("periods", JSONArray()).toString()))
+    }
+
+    @Test fun pastGoalsUrlIsAllowed() {
+        assertEquals("https://h/api/goals/past",
+            app.julz.approve.ApproverApi.urlOrNull(app.julz.ui.Origins("https://c", "https://h"), app.julz.approve.ApproverApi.GOALS_PAST))
+    }
+
+    @Test fun pastGoalsOffShapeIsNull() {
+        val ok = JSONObject(past("2026-W42" to listOf(goal())))
+        for (bad in listOf("", "{", snap(), past("2026-W42" to listOf(goal(done = true))), past("../x" to listOf(goal())),
+                past("2026-W42" to listOf(goal("a\u202Eb"))), past("2026-W42" to listOf(goal(rollup = 101))),
+                past(*Array(5) { "2026-W42" to listOf(goal()) }), past("2026-W42" to List(21) { goal() }),
+                ok.put("extra", 1).toString()))
+            assertNull(bad.take(60), GoalsData.parsePast(bad))
+    }
+
     @Test fun goalsParse() {
         val s = GoalsData.parse(snap())!!
         val g = s.periods.single().goals

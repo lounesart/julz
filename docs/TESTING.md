@@ -184,6 +184,14 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
    Approve.] Leave the old cards a day. [They are gone from Approve.]
 6. Big text and landscape: the card text wraps, both buttons reachable.
 
+### Goals from before (126b(3), 157)
+1. Goals tab with an open goal in last week's note (goals/<last ISO week>.md). [Under the
+   periods, a card "Still open from before": Last week, its words and bar, the hours if any.]
+2. Tap the goal on that card. [Nothing opens, no tick, nothing joins Apply.]
+3. Tick it in last week's note on the laptop, reload. [The card is gone.] No open past goals at
+   all. [No card.]
+4. Big text and landscape: the bar label and the period key stay on their lines.
+
 ### Code colours (204, 119)
 1. Ask "show me how to list my firewall rules with nft, as a bash block". [Keywords pink,
    strings green, a # comment grey and slanted, $ prompts grey; bash and a "Linux, macOS" chip.]

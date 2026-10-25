@@ -54,6 +54,7 @@ import kotlinx.coroutines.withContext
  *  result, so Apply sits at the bottom as on Todos and Inbox (asked 2026-10-18). */
 class GoalsUi {
     var snap by mutableStateOf<GoalsSnapshot?>(null)
+    var past by mutableStateOf<List<app.julz.feed.GoalPeriod>>(emptyList())  // read only (126b(3), 157)
     var problem by mutableStateOf<String?>(null)
     var reloads by mutableIntStateOf(0)
     val picks = mutableStateListOf<GoalPick>()
@@ -100,6 +101,9 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
         val parsed = if (reply.first == 200) GoalsData.parse(reply.second) else null
         if (parsed != null) { ui.snap = parsed; ui.problem = null }
         else ui.problem = if (reply.first == 0) "The approver is not reachable. Is the laptop on and Tailscale up?" else "The laptop answered oddly"
+        // Last periods' open goals: anything off is simply no card
+        val old = withContext(Dispatchers.IO) { try { ApproverApi.call(origins, ApproverApi.GOALS_PAST) } catch (e: Exception) { 0 to "" } }
+        ui.past = (if (old.first == 200) GoalsData.parsePast(old.second) else null).orEmpty()
     }
     fun toggle(p: GoalPick) { if (p in picks) picks.remove(p) else if (picks.size < 20) picks.add(p) }
     val colors = fieldColors()
@@ -144,6 +148,33 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
                 for (a in picks.filter { it.action == "add" && it.period == p.key }) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Will add: ${a.value}", style = J.sec.copy(color = J.accText), modifier = Modifier.weight(1f))
                     Pill("Undo", false, !busy) { picks.remove(a) }
+                }
+            }
+        }
+        if (ui.problem == null && s != null) PastGoalsCard(ui.past)
+    }
+}
+
+/** Open goals from the periods just before (126b(3), SECURITY.md 157): their words and bar,
+ *  nothing to tap or pick, so none of them can reach what I sign. */
+@Composable
+internal fun PastGoalsCard(past: List<app.julz.feed.GoalPeriod>) {
+    val open = past.filter { it.goals.isNotEmpty() }
+    if (open.isEmpty()) return
+    Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+        Text("Still open from before", style = J.ts)
+        for (p in open) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(p.label, style = J.sec, modifier = Modifier.weight(1f))
+                Text(p.key, style = J.monoCap)
+            }
+            for (g in p.goals) Column(verticalArrangement = Arrangement.spacedBy(J.sp1)) {
+                Text(GoalsData.title(g), style = J.bodyText)  // plain text (123)
+                val hours = g.hours?.let { " \u00b7 " + GoalsData.hoursLabel(it.first, it.second) }.orEmpty()
+                when {
+                    g.rollup != null -> Bar(g.rollup, 100, "${g.rollup}%$hours")
+                    g.progress != null -> Bar(g.progress.first, g.progress.second, "${g.progress.first}/${g.progress.second}$hours")
+                    else -> Text("No progress$hours", style = J.cap)
                 }
             }
         }

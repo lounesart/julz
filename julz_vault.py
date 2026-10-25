@@ -1012,6 +1012,18 @@ def goal_periods(today: date) -> list[tuple[str, str, str]]:
             (str(today.year), str(today.year), f"goals/{today.year}.md")]
 
 
+def past_goal_periods(today: date) -> list[tuple[str, str, str]]:
+    """(key, label, note) for the period just before each current one (126b(3), threat 157)."""
+    day = today - timedelta(days=1)
+    iso = (today - timedelta(days=7)).isocalendar()
+    week = f"{iso[0]}-W{iso[1]:02d}"
+    month = today.replace(day=1) - timedelta(days=1)
+    return [(day.isoformat(), "Yesterday", f"goals/{day.isoformat()}.md"),
+            (week, "Last week", f"goals/{week}.md"),
+            (month.strftime("%Y-%m"), month.strftime("%B"), f"goals/{month:%Y-%m}.md"),
+            (str(today.year - 1), str(today.year - 1), f"goals/{today.year - 1}.md")]
+
+
 def _goal_plain(text: str, limit: int) -> bool:
     try:
         checked_text(text, limit)
@@ -1020,7 +1032,7 @@ def _goal_plain(text: str, limit: int) -> bool:
     return not NOT_PLAIN.search(text)
 
 
-def goals_snapshot(vault: Path, today: date) -> dict:
+def goals_snapshot(vault: Path, today: date, periods_of=goal_periods) -> dict:
     """The goals of the four current periods for the app (123), each with its own (n/m) and,
     when it has a #goal/<id> tag, the progress of todos carrying that tag, computed here."""
     linked: dict[str, list[int]] = {}
@@ -1109,7 +1121,7 @@ def goals_snapshot(vault: Path, today: date) -> dict:
         return out
 
     periods = []
-    for key, label, rel in goal_periods(today):
+    for key, label, rel in periods_of(today):
         p = vault / rel
         goals = []
         if p.is_file() and not p.is_symlink() and p.stat().st_size <= MAX_NOTE_BYTES:
@@ -1146,6 +1158,13 @@ def goals_snapshot(vault: Path, today: date) -> dict:
                                "rollup": round(f * 100) if f is not None else None})
     return {"id": hashlib.sha256(json.dumps([periods, tree, milestones], sort_keys=True, ensure_ascii=False).encode()).hexdigest(),
             "periods": periods, "tree": tree, "milestones": milestones}
+
+
+def past_goals_snapshot(vault: Path, today: date) -> dict:
+    """Open goals of the periods just before the current ones, for a read only card (126b(3),
+    threat 157). Its own file: goal signing reads only goals.json, so these never reach it."""
+    snap = goals_snapshot(vault, today, past_goal_periods)
+    return {"periods": [{**p, "goals": [g for g in p["goals"] if not g["done"]]} for p in snap["periods"]]}
 
 
 def _minutes_of(text: str, field: re.Pattern) -> int | None:
@@ -1822,6 +1841,7 @@ def _write_snapshots(vault: Path, state_dir: Path, today: date):
     _write_json(state_dir / "notes.json", notes_snapshot(vault))
     _write_json(state_dir / "feedback.json", feedback_snapshot(vault))
     _write_json(state_dir / "goals.json", goals_snapshot(vault, today))
+    _write_json(state_dir / "goals-past.json", past_goals_snapshot(vault, today))
 
 
 def refresh(vault: Path, state_dir: Path, today: date) -> None:

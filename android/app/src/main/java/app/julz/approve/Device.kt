@@ -70,7 +70,8 @@ object ApproverApi {
     const val INTEGRATIONS = "/api/integrations"  // the Tools tab, read only (122)
     const val GOALS = "/api/goals"  // the Goals tab, read only (123)
     const val PROPOSALS = "/api/proposals"  // changes Julz asks for, signed on Approve (156)
-    private val PATHS = setOf(STATE, BEGIN, FINISH, ENROLL, DONE, INBOX, NOTES, FEEDBACK, INTEGRATIONS, GOALS, PROPOSALS)
+    const val GOALS_PAST = "/api/goals/past"  // open goals from past periods, read only (157)
+    private val PATHS = setOf(STATE, BEGIN, FINISH, ENROLL, DONE, INBOX, NOTES, FEEDBACK, INTEGRATIONS, GOALS, PROPOSALS, GOALS_PAST)
     // One note by its id, a key the laptop looks up in its snapshot, never a path (148)
     private val NOTE = Regex("/api/notes/[0-9a-f]{64}")
     private const val MAX_REPLY = 256_000

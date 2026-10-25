@@ -1173,6 +1173,9 @@ class GoalsWebTest(DeviceBase):
 
     def setUp(self):
         super().setUp()
+        self.fixture()
+
+    def fixture(self):
         base = Path(self.tmp.name)
         self.app.todos_file = base / "vault" / "todos.json"
         self.app.requests = base / "julz-mem" / "Inbox" / ".requests"
@@ -1305,6 +1308,86 @@ class GoalsWebTest(DeviceBase):
                 (self.app.todos_file.parent / "goals.json").write_text(json.dumps({**self.snap, "milestones": ms}))
                 status, _, data = self.request("GET", "/api/goals")
                 self.assertEqual((status, data), (200, {"id": "", "periods": [], "tree": {}, "milestones": []}), name)
+
+
+class PastGoalsWebTest(DeviceBase):
+    """Threat 157: open goals from past periods, read only (126b(3)), never what signing reads."""
+
+    def setUp(self):
+        super().setUp()
+        GoalsWebTest.fixture(self)
+        self.goal = dict(self.snap["periods"][1]["goals"][0], text="Study 10 h (2/10)", progress=[2, 10])
+        self.past = {"periods": [{"key": "2026-W41", "label": "Last week", "note": "goals/2026-W41.md",
+                                  "goals": [self.goal]}]}
+        self.write(self.past)
+
+    act = GoalsWebTest.act
+    written = GoalsWebTest.written
+
+    def write(self, data):
+        (self.app.todos_file.parent / "goals-past.json").write_text(json.dumps(data))
+
+    def served(self):
+        status, _, data = self.request("GET", "/api/goals/past")
+        self.assertEqual(status, 200, data)
+        return data
+
+    def test_served_whole(self):
+        self.assertEqual(self.served(), self.past)
+
+    def test_a_real_past_file_is_served_whole(self):
+        import tempfile
+        from datetime import date
+        vault = Path(tempfile.mkdtemp())
+        (vault / "goals").mkdir()
+        (vault / "goals" / "2026-W41.md").write_text("- [ ] Study 10 h (2/10) #goal/study [est:: 10h] [spent:: 3h]\n- [x] Gym\n")
+        self.write(web.vault.past_goals_snapshot(vault, date(2026, 10, 16)))
+        self.app.today = lambda: date(2026, 10, 16)
+        week = next(p for p in self.served()["periods"] if p["key"] == "2026-W41")
+        self.assertEqual([(g["text"][:10], g["rollup"]) for g in week["goals"]], [("Study 10 h", 30)])
+
+    def test_anything_off_is_an_empty_list(self):
+        p = self.past["periods"][0]
+        bad = [
+            {"periods": [dict(p, goals=[dict(self.goal, done=True)])]},
+            {"periods": [p] * 5},
+            {"periods": [dict(p, note="goals/2026-W40.md")]},
+            {"periods": [dict(p, key="../x", note="goals/../x.md")]},
+            {"periods": [dict(p, label="x" * 21)]},
+            {"periods": [dict(p, goals=[self.goal] * (web.vault.MAX_GOALS + 1))]},
+            {"periods": [dict(p, goals=[dict(self.goal, text="a\u202eb")])]},
+            {"periods": [dict(p, goals=[dict(self.goal, rollup=101)])]},
+            {"periods": [dict(p, goals=[dict(self.goal, extra=1)])]},
+            {"periods": [dict(p, extra=1)]},
+            {"periods": [p], "extra": 1},
+            {"periods": "x"}, [], "x",
+        ]
+        for data in bad:
+            with self.subTest(data=str(data)[:60]):
+                self.write(data)
+                self.assertEqual(self.served(), {"periods": []})
+        (self.app.todos_file.parent / "goals-past.json").write_text("not json")
+        self.assertEqual(self.served(), {"periods": []})
+        (self.app.todos_file.parent / "goals-past.json").unlink()
+        self.assertEqual(self.served(), {"periods": []})
+
+    def test_a_current_period_is_not_a_past_one(self):
+        from datetime import date
+        self.app.today = lambda: date(2026, 10, 16)
+        self.write({"periods": [dict(self.past["periods"][0], key="2026-W42", note="goals/2026-W42.md")]})
+        self.assertEqual(self.served(), {"periods": []})
+
+    def test_goals_unchanged_by_the_past_file(self):
+        status, _, data = self.request("GET", "/api/goals")
+        self.assertEqual((status, data), (200, self.snap))
+
+    def test_a_past_goal_is_never_signed(self):
+        for pick in ({"do": "tick", "period": "2026-W41", "item": "Study 10 h (2/10)"},
+                     {"do": "bump", "period": "2026-W41", "item": "Study 10 h (2/10)"},
+                     {"do": "add", "period": "2026-W41", "text": "Walk"}):
+            status, _, _ = self.act([pick])
+            self.assertEqual(status, 400, pick)
+        self.assertEqual(self.written(), [])
 
 
 class ApproveTest(Base):
