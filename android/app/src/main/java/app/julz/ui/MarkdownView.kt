@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
@@ -114,8 +115,9 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
                         onClickLabel = "Copy the code") { clipboard.setText(AnnotatedString(b.text)) }
                         .padding(horizontal = J.sp3, vertical = J.sp2))
             }
+            val scroll = rememberScrollState()
             Text(if (pieces == null) AnnotatedString(b.text) else coloured(pieces), style = J.monoCap.copy(color = J.text),
-                softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
+                softWrap = false, modifier = Modifier.edgeFade(scroll).horizontalScroll(scroll))
         }
         is MdTable -> Table(b, opens, link, tags)
         is MdChart -> Chart(b)
@@ -299,7 +301,7 @@ private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((Strin
     val widths = if (total <= maxWidth) natural.map { it * (maxWidth / total) } else natural
     val scroll = rememberScrollState()
     Box(Modifier.fillMaxWidth().clip(J.rS).border(1.dp, J.line, J.rS)) {
-        Column(Modifier.horizontalScroll(scroll)) {
+        Column(Modifier.edgeFade(scroll).horizontalScroll(scroll)) {
             t.rows.forEachIndexed { r, row ->
                 Row(Modifier.background(if (r == 0) J.raise else Color.Transparent)) {
                     for (c in 0 until cols) {
@@ -311,9 +313,22 @@ private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((Strin
                 if (r < t.rows.size - 1) Box(Modifier.width(widths.fold(0.dp) { a, w -> a + w }).height(1.dp).background(J.line))
             }
         }
-        if (scroll.canScrollForward) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
-            Box(Modifier.fillMaxHeight().width(J.sp8).background(androidx.compose.ui.graphics.Brush.horizontalGradient(
-                listOf(Color.Transparent, J.bg))))
-        }
     }
 }
+
+/** Fades the edges of a sideways scroll (26e, 217): the right while more is hidden there, the left
+ *  once scrolled. The usual sign that a box scrolls. A mask on the content's own alpha, not a painted
+ *  colour, so it matches whatever is behind (a painted fade showed a dark band over the chat's glow) */
+private fun Modifier.edgeFade(scroll: androidx.compose.foundation.ScrollState): Modifier =
+    graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val w = J.sp8.toPx()
+            if (scroll.canScrollBackward) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(
+                listOf(Color.Transparent, Color.Black), startX = 0f, endX = w),
+                size = androidx.compose.ui.geometry.Size(w, size.height), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+            if (scroll.canScrollForward) drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(
+                listOf(Color.Black, Color.Transparent), startX = size.width - w, endX = size.width),
+                topLeft = androidx.compose.ui.geometry.Offset(size.width - w, 0f),
+                size = androidx.compose.ui.geometry.Size(w, size.height), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        }
