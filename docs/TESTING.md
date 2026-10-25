@@ -318,3 +318,5 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
    minute.]
 2. Reboot the laptop and wait without logging in. [The phone reconnects by itself.]
 3. Reboot the phone. [Julz comes back without opening it.]
+4. Swipe "Julz is listening" away. [It is back at once, still at the top of Julz's notices.]
+5. Force stop Julz in Android's settings, then open it. [The notice is there again.]
