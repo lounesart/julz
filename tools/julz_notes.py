@@ -69,6 +69,18 @@ KINDS = ("todo", "thought", "concept", "lab")
 # Words a task may add to mine without making it up (threat 140)
 FILLERS = {"a", "an", "to", "of", "at", "in", "on", "my", "the", "and", "for", "with", "from", "into",
            "your", "our", "then"}
+# A new Inbox note is the one write with no click, so my last message must ask for it (threat 161)
+SAVE_WORD = re.compile(
+    r"\b(?:save[sd]?|saving|(?:make|take|create|new)\s+(?:a\s+)?(?:new\s+)?note|"
+    r"note\s+(?:this|that|it|down)|jot|write\s+(?:it\s+|this\s+|that\s+)?down|"
+    r"remember\s+(?:this|that)|keep\s+(?:this|that)|record|store|to-?dos?)\b|"
+    r"\b(?:сохран|запиш|записа|запомни|zapisz|zapisa|zanotuj|zachowaj|zapamiętaj)\w*|"
+    r"\b(?:сделай|создай|нов\w*)\s+(?:\w+\s+)?заметк\w*|"
+    r"\b(?:zrób|utwórz|now\w*)\s+(?:\w+\s+)?notatk\w*", re.I)
+# An addition to a note: a card or click follows, so the words are wider, a miss costs a message
+ADD_WORD = re.compile(
+    r"\b(?:add|adds|added|adding|append|put|insert|attach)\b|"
+    r"\b(?:добав|допиш|дописа|внеси|внести|вставь|dodaj|dopisz|dopisa|wstaw|wpisz)\w*", re.I)
 # Open and done checkboxes. A tick by julz adds "(done <date>)", so done_tasks can tell when
 OPEN_TASK = re.compile(r"^\s*[-*] \[ \] (.+?)\s*$", re.M)
 DONE_TASK = re.compile(r"^\s*[-*] \[[xX]\] (.+?) \(done (\d{4}-\d{2}-\d{2})\)\s*$", re.M)
@@ -1112,7 +1124,8 @@ class Tools:
         self._log("mark_reviewed", note=str(rel))
         return f"Marked {rel} as reviewed today."
 
-    async def append_note(self, note: str, text: str, __event_call__=None) -> str:
+    async def append_note(self, note: str, text: str, __event_call__=None,
+                          __messages__=None) -> str:
         """
         Add text to the end of one of the user's notes, after they confirm it. Use it when
         the user asks to add, append or save something into an existing note. It never
@@ -1132,6 +1145,13 @@ class Tools:
         rel, answer = self._resolve(note)
         if answer:
             return answer
+        # Her study answers went into daily/ as cards I never asked for (158)
+        mine = self._my_last_message(__messages__)
+        if not (ADD_WORD.search(mine) or SAVE_WORD.search(mine)):
+            self._log("append_note_refused", note=str(rel), reason="no add word")
+            return ("Refused: text is added to a note only when the user asks for it in their "
+                    "last message (add, append, save). Nothing was added. If it may help, ask "
+                    "them whether to add it.")
         if self._rate_limited():
             return "Refused: too many changes in the last minute."
         ok = await self._confirm(__event_call__, "Julz wants to add to your note",
@@ -1309,6 +1329,10 @@ class Tools:
         if self._rate_limited():
             return "Refused: too many notes in the last minute."
         if parts != ["Inbox"]:
+            # A card I never asked for is noise I learn to sign unread (158, threat 161)
+            if not SAVE_WORD.search(self._my_last_message(__messages__)):
+                self._log("create_note_refused", note="/".join(parts + [name]), reason="no save word")
+                return self._not_asked()
             return await self._create_elsewhere(name, content, parts, self._shown(content, whole=True),
                                                 __event_call__)
         try:
@@ -1328,6 +1352,10 @@ class Tools:
                                           f"was not confirmed.")
             action = "overwrite_note"
         else:
+            # Docstrings alone did not stop her saving her own answers (158)
+            if not SAVE_WORD.search(self._my_last_message(__messages__)):
+                self._log("create_note_refused", note=str(rel), reason="no save word")
+                return self._not_asked()
             action = "create_note"
 
         # O_NOFOLLOW: never write through a symlink swapped in after the checks above
@@ -1343,6 +1371,12 @@ class Tools:
         # The user cannot open Inbox from the chat, so the answer carries the exact text
         return (f"Saved {rel} {made} ({len(data)} bytes). Show the user this saved text as it "
                 f"is, and say it is in {rel}:\n\n{self._shown(content)}")
+
+    @staticmethod
+    def _not_asked() -> str:
+        return ("Refused: a new note is saved only when the user asks for it in their last "
+                "message (save, note this, write down). Nothing was saved. Do not save your "
+                "own answers; if the user wants this kept, they can say save.")
 
     async def _create_elsewhere(self, name, content, parts, shown, __event_call__) -> str:
         """A new note in study/ or daily/: the host writes it, after my click (threat 74)."""

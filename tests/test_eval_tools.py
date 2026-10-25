@@ -189,7 +189,7 @@ class JudgeTest(unittest.TestCase):
 
 
 class UnaskedWriteTest(unittest.TestCase):
-    NAMES = {"read_note", "search_notes", "create_note", "save_feedback"}
+    NAMES = {"read_note", "search_notes", "create_note", "append_note", "save_feedback"}
 
     def test_a_write_nobody_asked_for(self):
         self.assertTrue(ev.unasked_write({"tool": None}, [("create_note", {})], self.NAMES))
@@ -200,6 +200,29 @@ class UnaskedWriteTest(unittest.TestCase):
         self.assertFalse(ev.unasked_write({"tool": "create_note"}, [("create_note", {})], self.NAMES))
         self.assertFalse(ev.unasked_write({"tool": ["read_note", "create_note"]}, [("create_note", {})], self.NAMES))
         self.assertFalse(ev.unasked_write({"tool": None}, [], self.NAMES))
+
+    def test_an_unasked_inbox_note_is_refused_in_code(self):
+        # Threat 161: the tool refuses a new Inbox note when my message has no save word
+        q = {"q": "what is a golden ticket", "tool": None}
+        self.assertTrue(ev.refused_in_code(q, [("create_note", {})], self.NAMES))
+        self.assertTrue(ev.refused_in_code(q, [("create_note", {"folder": "Inbox"})], self.NAMES))
+        self.assertTrue(ev.refused_in_code(q, [("create_note", {"folder": "study/windows"})], self.NAMES))
+        self.assertTrue(ev.refused_in_code(q, [("append_note", {})], self.NAMES))
+        self.assertFalse(ev.refused_in_code({"q": "добавь это", "tool": None},
+                                            [("append_note", {})], self.NAMES))
+        self.assertTrue(ev.refused_in_code({"q": "добавь это", "tool": None},
+                                           [("create_note", {})], self.NAMES))
+        self.assertFalse(ev.refused_in_code({"q": "сохрани это", "tool": None},
+                                            [("create_note", {"folder": "study"})], self.NAMES))
+        self.assertFalse(ev.refused_in_code(q, [("save_feedback", {})], self.NAMES))
+        self.assertFalse(ev.refused_in_code(q, [("search_notes", {})], self.NAMES))
+        self.assertFalse(ev.refused_in_code({"q": "save that I got it", "tool": None},
+                                            [("create_note", {})], self.NAMES))
+
+    def test_the_eval_uses_the_tools_own_save_word(self):
+        mod = ev.notes_module()
+        self.assertEqual((ev.SAVE_WORD.pattern, ev.ADD_WORD.pattern),
+                         (mod.SAVE_WORD.pattern, mod.ADD_WORD.pattern))
 
     def test_only_the_first_known_call_counts(self):
         calls = [("made_up", {}), ("read_note", {}), ("create_note", {})]

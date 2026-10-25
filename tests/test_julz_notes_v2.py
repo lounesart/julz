@@ -16,6 +16,10 @@ def note(front: str, body: str) -> str:
     return f"---\n{front}\n---\n\n{body}" if front else body
 
 
+# My message asking for the save (threat 161)
+ASKED = [{"role": "user", "content": "save this"}]
+
+
 class NotesV2Test(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -73,7 +77,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
     async def test_create_answers_with_the_saved_text(self):
         # The user cannot see Inbox from the chat (asked for 2026-10-16), so the answer
         # carries the exact text, and the place to find it
-        out = await self.tools.create_note("physio", "I need to write a review to my physio.")
+        out = await self.tools.create_note("physio", "I need to write a review to my physio.", __messages__=ASKED)
         self.assertIn("Inbox/physio.md", out)
         self.assertIn("I need to write a review to my physio.", out)
 
@@ -163,7 +167,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
             return True
 
         out = await self.tools.append_note("dhcp", "Relay agents forward to another subnet.",
-                                           __event_call__=confirm)
+                                           __event_call__=confirm, __messages__=ASKED)
         self.assertIn("study/dhcp.md", out)
         self.assertEqual(seen[0]["type"], "confirmation")
         self.assertIn("study/dhcp.md", seen[0]["data"]["message"])
@@ -184,7 +188,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
             return {"error": "Client session disconnected."}
 
         for call in (None, cancel, disconnected):
-            out = await self.tools.append_note("dhcp", "text", __event_call__=call)
+            out = await self.tools.append_note("dhcp", "text", __event_call__=call, __messages__=ASKED)
             self.assertTrue(out.startswith("Not added"), out)
         self.assertEqual(self.requests_written(), [])
 
@@ -194,7 +198,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
 
         for target in ("Claude/network-plus/acls.md", "Outbox/abc.md", "Inbox/x.md",
                        "../secret.md", "/etc/passwd", "study/missing.md", "acls"):
-            out = await self.tools.append_note(target, "x", __event_call__=confirm)
+            out = await self.tools.append_note(target, "x", __event_call__=confirm, __messages__=ASKED)
             self.assertTrue(out.startswith(("Refused", "No note")), f"{target} -> {out}")
         self.assertEqual(self.requests_written(), [])
 
@@ -205,7 +209,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
             return True
 
         (self.vault / "study" / "dhcp.md").rename(self.vault / "study" / "dhcp-notes.md")
-        out = await self.tools.append_note("dhcp", "x", __event_call__=confirm)
+        out = await self.tools.append_note("dhcp", "x", __event_call__=confirm, __messages__=ASKED)
         self.assertIn("Several notes", out)
         self.assertEqual(self.requests_written(), [])
 
@@ -214,7 +218,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
             return True
 
         for text in ("", "   \n", "x" * (self.mod.MAX_APPEND_CHARS + 1)):
-            out = await self.tools.append_note("dhcp", text, __event_call__=confirm)
+            out = await self.tools.append_note("dhcp", text, __event_call__=confirm, __messages__=ASKED)
             self.assertTrue(out.startswith("Refused"), out)
         self.assertEqual(self.requests_written(), [])
 
@@ -228,7 +232,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
         for text in ("see [docs](https://evil.example)", "![x](https://e.example/a.png)",
                      "<img src=x>", "go to https://evil.com/?d=1", "www.evil.com",
                      "zero\u200bwidth", "bidi\u202eflip"):
-            out = await self.tools.append_note("dhcp", text, __event_call__=confirm)
+            out = await self.tools.append_note("dhcp", text, __event_call__=confirm, __messages__=ASKED)
             self.assertTrue(out.startswith("Refused"), f"{text!r} -> {out}")
         self.assertEqual(asked, [])
         self.assertEqual(self.requests_written(), [])
@@ -238,15 +242,15 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
             return True
 
         for i in range(self.mod.MAX_WRITES_PER_MINUTE):
-            await self.tools.create_note(f"n{i}", "x")
-        out = await self.tools.append_note("dhcp", "x", __event_call__=confirm)
+            await self.tools.create_note(f"n{i}", "x", __messages__=ASKED)
+        out = await self.tools.append_note("dhcp", "x", __event_call__=confirm, __messages__=ASKED)
         self.assertTrue(out.startswith("Refused"), out)
 
     async def test_request_appears_whole(self):
         async def confirm(_event):
             return True
 
-        await self.tools.append_note("dhcp", "x", __event_call__=confirm)
+        await self.tools.append_note("dhcp", "x", __event_call__=confirm, __messages__=ASKED)
         names = [p.name for p in self.requests.iterdir()]
         self.assertEqual(len(names), 1)
         self.assertRegex(names[0], r"^\d{10}-[0-9a-f]{8}\.json$")  # no .tmp left behind
