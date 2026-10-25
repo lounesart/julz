@@ -648,6 +648,34 @@ def inbox_snapshot(vault: Path) -> dict:
 MAX_NOTES_SHOWN = 300
 MAX_NOTE_TEXT = 4000
 NOTES_ROOTS = ("study", "daily", "Inbox", "Claude", "Outbox", "feedback")
+# Tags for the notes browser (212, threat 149): a letter first, then letters, digits, _ - /
+MAX_TAG_CHARS = 40
+TAG = re.compile(rf"[\w/-]{{1,{MAX_TAG_CHARS}}}")
+INLINE_TAG = re.compile(r"(?<!\S)#([\w/-]+)")
+CODE = re.compile(r"```.*?(```|\Z)|`[^`\n]*`", re.S)
+MAX_NOTE_TAGS = 10
+MAX_TAGS = 200
+
+
+def is_tag(t) -> bool:
+    return isinstance(t, str) and bool(TAG.fullmatch(t)) and t[0].isalpha() and t == t.lower()
+
+
+def note_tags(text: str, known: set) -> list[str]:
+    """The tags of a note, front matter first, then each #tag in the text outside code, lower
+    case. At most MAX_NOTE_TAGS a note; a tag new to [known] only while it holds fewer than
+    MAX_TAGS, and it is added there. Anything not shaped like a tag is left out."""
+    meta, body = front(text)
+    found = [t.strip("'\" ").lstrip("#").lower() for t in tags(meta)]
+    found += [m.group(1).lower() for m in INLINE_TAG.finditer(CODE.sub(" ", body))]
+    out = []
+    for t in found:
+        if len(out) == MAX_NOTE_TAGS:
+            break
+        if is_tag(t) and t not in out and (t in known or len(known) < MAX_TAGS):
+            known.add(t)
+            out.append(t)
+    return out
 
 
 def notes_snapshot(vault: Path) -> dict:
@@ -656,6 +684,7 @@ def notes_snapshot(vault: Path) -> dict:
     hidden names. Text capped, hidden and bidi characters marked (116)."""
     by_folder: dict[str, list] = {}
     count = 0
+    known: set = set()
     for root in NOTES_ROOTS:
         base = vault / root
         if not base.is_dir() or base.is_symlink():
@@ -670,11 +699,12 @@ def notes_snapshot(vault: Path) -> dict:
                     or any((vault / q).is_symlink() for q in rel.parents):  # rglob follows linked folders before Python 3.13
                 continue
             data = read_note(p)
+            text = data.decode("utf-8", errors="replace")
             folder = str(rel.parent)
             by_folder.setdefault(folder, []).append({
                 "name": p.stem, "note": str(rel), "size": len(data),
                 "modified": date.fromtimestamp(p.stat().st_mtime).isoformat(),
-                "text": _shown(data.decode("utf-8", errors="replace")[:MAX_NOTE_TEXT])})
+                "text": _shown(text[:MAX_NOTE_TEXT]), "tags": note_tags(text, known)})
             count += 1
     return {"folders": [{"folder": f, "notes": by_folder[f]} for f in sorted(by_folder)]}
 

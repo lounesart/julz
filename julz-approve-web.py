@@ -61,14 +61,16 @@ INBOX_NOTE = re.compile(r"Inbox/\w[\w .-]{0,99}\.md")
 INBOX_FOLDER = re.compile(r"(daily|study)(/[a-z0-9][a-z0-9-]{0,39})?")
 INBOX_KEYS = {"name", "note", "sha256", "size", "modified", "preview"}
 GOAL_KEY = re.compile(r"\d{4}(-\d{2}(-\d{2})?|-W\d{2})?")
-NOTE_KEYS = {"name", "note", "size", "modified", "text"}
+NOTE_KEYS = {"name", "note", "size", "modified", "text", "tags"}
 # The folders the notes browser may show (118): a root, then plain folder names, never ".."
 # One note by its id: the SHA-256 of its path, looked up in notes.json, never a path (148)
 NOTE_BY_ID = re.compile(r"/api/notes/([0-9a-f]{64})")
 NOTES_FOLDER = re.compile(r"(study|daily|Inbox|Claude|Outbox|feedback)(/\w[\w .-]{0,99})*")
 # From the snapshot's own caps: 300 notes of 4000 characters, 6 bytes a letter once JSON
-# escapes it, plus room for names and keys. Less, and a full vault reads as empty (148)
-MAX_NOTES_BYTES = vault.MAX_NOTES_SHOWN * (vault.MAX_NOTE_TEXT * 6 + 1000)
+# escapes it, plus room for names and keys and the most tags (149). Less, and a full vault
+# reads as empty (148)
+MAX_NOTES_BYTES = vault.MAX_NOTES_SHOWN * (vault.MAX_NOTE_TEXT * 6 + 1000
+                                           + vault.MAX_NOTE_TAGS * (vault.MAX_TAG_CHARS * 6 + 4))
 
 MAX_BODY = 16_000
 MAX_SHOWN = 3
@@ -453,6 +455,7 @@ class App:
         if not isinstance(folders, list):
             return []
         count = 0
+        seen = set()
         for f in folders:
             if not isinstance(f, dict) or set(f) != {"folder", "notes"} or not isinstance(f["folder"], str) \
                     or not NOTES_FOLDER.fullmatch(f["folder"]) or f["folder"].startswith("Inbox/") \
@@ -460,20 +463,31 @@ class App:
                 return []
             for n in f["notes"]:
                 if not isinstance(n, dict) or set(n) != NOTE_KEYS \
-                        or not all(isinstance(n[k], str) for k in NOTE_KEYS - {"size"}) \
+                        or not all(isinstance(n[k], str) for k in NOTE_KEYS - {"size", "tags"}) \
                         or type(n["size"]) is not int or n["note"].rpartition("/")[0] != f["folder"] \
                         or not n["note"].endswith(".md") or not DAY.fullmatch(n["modified"]) \
                         or len(n["text"]) > vault.MAX_NOTE_TEXT or vault._shown(n["text"]) != n["text"]:
                     return []
+                # Tags (149): unique, shaped like a tag, at most 10 a note and 200 in all
+                t = n["tags"]
+                if not isinstance(t, list) or len(t) > vault.MAX_NOTE_TAGS or not all(map(vault.is_tag, t)) \
+                        or len(set(t)) != len(t):
+                    return []
+                seen.update(t)
                 count += 1
-        return [] if count > vault.MAX_NOTES_SHOWN else folders
+        return [] if count > vault.MAX_NOTES_SHOWN or len(seen) > vault.MAX_TAGS else folders
 
     def all_notes(self) -> dict:
         """The notes browser: folders and names with an id each, no text, so the reply stays
-        small however long the notes are (206). Read only."""
+        small however long the notes are (206). Tags as one sorted table, each note's as indexes
+        into it, so the most tags still fit the phone (149). Read only."""
+        folders = self.checked_notes()
+        table = sorted({t for f in folders for n in f["notes"] for t in n["tags"]})
+        index = {t: i for i, t in enumerate(table)}
         return {"folders": [{"folder": f["folder"], "notes": [
-            {**{k: v for k, v in n.items() if k != "text"}, "id": gate.sha256(n["note"])}
-            for n in f["notes"]]} for f in self.checked_notes()]}
+            {**{k: v for k, v in n.items() if k != "text"}, "id": gate.sha256(n["note"]),
+             "tags": [index[t] for t in n["tags"]]}
+            for n in f["notes"]]} for f in folders], "tags": table}
 
     def one_note(self, nid: str) -> dict:
         """One note's text by its id (148). The id only selects among the checked snapshot;
