@@ -39,6 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import julz_gate as gate  # noqa: E402
+import julz_vault as vault  # noqa: E402
 
 HOME = Path.home()
 TOPIC_FILE = HOME / ".config" / "julz" / "notify" / "ntfy.env"
@@ -62,7 +63,6 @@ INBOX_EVERY = 300
 # New notes (209, threat 142): julz-vault writes notes.json, this counts names it has not seen
 NOTES_FILE = HOME / ".local" / "share" / "julz" / "vault" / "notes.json"
 NOTES_EVERY = 60
-MAX_NOTES_READ = 2_000_000
 MAX_LOG_READ = 1_000_000
 
 
@@ -136,8 +136,9 @@ def check_notes(path: Path, state: dict, now: float, send):
     """One card when new notes land, at most once per NOTES_EVERY: julz can write Inbox/.
     The first run only records. A note held back by the limit stays new for the next card."""
     try:
-        found = _new_note_keys(json.loads(path.read_text()[:MAX_NOTES_READ]))
-    except (OSError, ValueError):
+        # In bytes from the snapshot's own caps, no symlink (213): a cut mid JSON read as nothing
+        found = _new_note_keys(json.loads(gate.read_regular(path, vault.MAX_NOTES_JSON)))
+    except (gate.SpecError, OSError, ValueError):
         return
     if found is None:
         return

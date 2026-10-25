@@ -458,6 +458,50 @@ class NewNotesTest(Base):
             self.check(state, 1000.0, rec)
             self.assertEqual((rec.sent, state), ([], {"notes_seen": ["x"]}), raw)
 
+    def full_snapshot(self, last):
+        """The vault's worst case (213): every note and tag at its cap in Cyrillic, which JSON
+        escapes to 6 bytes a letter, so far past the old 2 MB cut."""
+        vault = notify.vault
+        tags = ["т" * vault.MAX_TAG_CHARS] * vault.MAX_NOTE_TAGS
+        notes = [{"name": f"n{i}", "note": f"Inbox/n{i}.md", "size": 1, "modified": "2026-10-25",
+                  "text": "я" * vault.MAX_NOTE_TEXT, "tags": tags}
+                 for i in range(vault.MAX_NOTES_SHOWN - 1)]
+        notes.append({"name": last, "note": f"Inbox/{last}.md", "size": 1,
+                      "modified": "2026-10-25", "text": "я" * vault.MAX_NOTE_TEXT, "tags": tags})
+        self.notes = self.base / "notes.json"
+        self.notes.write_text(json.dumps({"folders": [{"folder": "Inbox", "notes": notes}]}))
+
+    def test_full_size_snapshot_still_counts(self):
+        self.full_snapshot("first")
+        rec, state = Recorder(), {}
+        self.check(state, 1000.0, rec)
+        self.full_snapshot("second")
+        self.assertGreater(self.notes.stat().st_size, 2_000_000)
+        self.assertLessEqual(self.notes.stat().st_size, notify.vault.MAX_NOTES_JSON)
+        self.check(state, 2000.0, rec)
+        self.assertEqual(rec.sent, [notify.notes_notice(1, notify.vault.MAX_NOTES_SHOWN)])
+
+    def test_same_cap_as_the_approver(self):
+        approver = load("julz_approve_web_213", "julz-approve-web.py")
+        self.assertEqual(approver.MAX_NOTES_BYTES, notify.vault.MAX_NOTES_JSON)
+
+    def test_over_cap_snapshot_changes_nothing(self):
+        self.write("Inbox/a.md", "Inbox/b.md")
+        raw = self.notes.read_text()
+        self.notes.write_text(raw + " " * (notify.vault.MAX_NOTES_JSON + 1 - len(raw)))
+        rec, state = Recorder(), {"notes_seen": ["x"]}
+        self.check(state, 1000.0, rec)
+        self.assertEqual((rec.sent, state), ([], {"notes_seen": ["x"]}))
+
+    def test_symlink_is_not_followed(self):
+        self.write("Inbox/a.md", "Inbox/b.md")
+        real = self.base / "real.json"
+        self.notes.rename(real)
+        self.notes.symlink_to(real)
+        rec, state = Recorder(), {"notes_seen": ["x"]}
+        self.check(state, 1000.0, rec)
+        self.assertEqual((rec.sent, state), ([], {"notes_seen": ["x"]}))
+
     def test_state_keeps_no_names(self):
         self.write(f"Inbox/{self.SECRET_NAME}.md")
         state = {}
