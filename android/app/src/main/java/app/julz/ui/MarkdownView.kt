@@ -57,10 +57,11 @@ import app.julz.feed.Span
 private val CODE_BG get() = J.raise
 
 /** A note drawn in the app's own styles (SECURITY.md 119). Nothing here loads anything: the
- *  blocks come from ObsidianMd, a wikilink is tappable only when `opens` knows the note. [link]
- *  is for chat answers only (138): a checked https address goes to it on a tap, for 104. */
+ *  blocks come from ObsidianMd, a wikilink is tappable only when `opens` knows the note, a
+ *  #tag only when `tags` knows it (212). [link] is for chat answers only (138): a checked https address goes to it on a tap, for 104. */
 @Composable
-fun MarkdownView(blocks: List<MdBlock>, opens: ((String) -> (() -> Unit)?)? = null, link: ((String) -> Unit)? = null) {
+fun MarkdownView(blocks: List<MdBlock>, opens: ((String) -> (() -> Unit)?)? = null,
+                 tags: ((String) -> (() -> Unit)?)? = null, link: ((String) -> Unit)? = null) {
     // Reading rhythm (26e, from Practical Typography, Material 3 and how Claude sets answers): body
     // at a line height of 1.5; a heading sits closer to what it opens than to what came before;
     // list items closer to each other than to the paragraphs around them
@@ -75,23 +76,24 @@ fun MarkdownView(blocks: List<MdBlock>, opens: ((String) -> (() -> Unit)?)? = nu
                 b is MdItem && prev is MdItem -> J.sp2
                 else -> J.sp4
             }
-            Box(Modifier.padding(top = gap)) { Block(b, read, opens, link) }
+            Box(Modifier.padding(top = gap)) { Block(b, read, opens, link, tags) }
         }
     }
 }
 
 @Composable
-private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?) {
+private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?,
+                  tags: ((String) -> (() -> Unit)?)?) {
     when (b) {
-        is MdProps -> Props(b)
+        is MdProps -> Props(b, tags)
         // H1 and H2 in the display font, the app's own voice; smaller ones bold body text
-        is MdHeading -> Text(spans(b.spans, opens, link), style = when (b.level) {
+        is MdHeading -> Text(spans(b.spans, opens, link, tags), style = when (b.level) {
             1 -> J.tm; 2 -> J.ts.copy(fontFamily = J.display); else -> read.copy(fontWeight = FontWeight(700))
         })
-        is MdPara -> Text(spans(b.spans, opens, link), style = read)
-        is MdItem -> Item(b, opens, link, read)
-        is MdQuote -> Bar(J.line) { Text(spans(b.spans, opens, link), style = read.copy(color = J.muted)) }
-        is MdCallout -> Callout(b, read, opens, link)
+        is MdPara -> Text(spans(b.spans, opens, link, tags), style = read)
+        is MdItem -> Item(b, opens, link, tags, read)
+        is MdQuote -> Bar(J.line) { Text(spans(b.spans, opens, link, tags), style = read.copy(color = J.muted)) }
+        is MdCallout -> Callout(b, read, opens, link, tags)
         is MdCode -> Column(Modifier.fillMaxWidth().clip(J.rS).background(CODE_BG).border(1.dp, J.line, J.rS)
             .padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
             // Its own Copy (26b): a command out of an answer without the words around it
@@ -106,7 +108,7 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
             Text(b.text, style = J.monoCap.copy(color = J.text),
                 softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
         }
-        is MdTable -> Table(b, opens, link)
+        is MdTable -> Table(b, opens, link, tags)
         is MdChart -> Chart(b)
         MdRule -> Box(Modifier.fillMaxWidth().height(1.dp).background(J.line))
         is MdEmbed -> Row(Modifier.clip(J.rS).background(J.raise).padding(horizontal = J.sp4, vertical = J.sp2)) {
@@ -120,7 +122,8 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
  *  blue, a warning amber, a danger red, a question in the accent. "-" starts it folded; its
  *  title opens it. Before, every kind was the same accent bar, so a warning read as a tip. */
 @Composable
-private fun Callout(b: MdCallout, read: androidx.compose.ui.text.TextStyle, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?) {
+private fun Callout(b: MdCallout, read: androidx.compose.ui.text.TextStyle, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?,
+                  tags: ((String) -> (() -> Unit)?)?) {
     val (tint, icon) = when (b.kind) {
         "tip", "hint", "success", "check", "done" -> J.good to Icons.check
         "warning", "caution", "attention", "important" -> J.caution to Icons.alert
@@ -140,7 +143,7 @@ private fun Callout(b: MdCallout, read: androidx.compose.ui.text.TextStyle, open
             if (folds) Icon(Icons.down, null, tint = tint, modifier = Modifier.size(20.dp)
                 .graphicsLayer { rotationZ = if (open) 180f else 0f })
         }
-        if (open && b.spans.isNotEmpty()) Text(spans(b.spans, opens, link), style = read)
+        if (open && b.spans.isNotEmpty()) Text(spans(b.spans, opens, link, tags), style = read)
     }
 }
 
@@ -167,7 +170,8 @@ private fun Chart(c: MdChart) {
 }
 
 /** Spans as styled text; only a wikilink to a known note gets a tap. */
-private fun spans(list: List<Span>, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)? = null): AnnotatedString = buildAnnotatedString {
+private fun spans(list: List<Span>, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)? = null,
+                  tags: ((String) -> (() -> Unit)?)? = null): AnnotatedString = buildAnnotatedString {
     for (s in list) {
         var style = SpanStyle()
         if (s.bold) style = style.merge(SpanStyle(fontWeight = FontWeight(700)))
@@ -181,6 +185,7 @@ private fun spans(list: List<Span>, opens: ((String) -> (() -> Unit)?)?, link: (
         // An inline field as a quiet chip: mono, muted, on a raised background (22d)
         if (s.field) style = style.merge(SpanStyle(fontFamily = J.mono, fontSize = J.cap.fontSize, color = J.muted, background = J.raise))
         val open = s.wiki?.let { opens?.invoke(it) }
+        val tap = if (s.tag) tags?.invoke(s.text) else null
         val web = s.link
         when {
             web != null && link != null -> withLink(LinkAnnotation.Clickable(web, TextLinkStyles(SpanStyle(color = J.accText,
@@ -188,13 +193,15 @@ private fun spans(list: List<Span>, opens: ((String) -> (() -> Unit)?)?, link: (
             open != null -> withLink(LinkAnnotation.Clickable(s.wiki, TextLinkStyles(SpanStyle(color = J.accText,
                 textDecoration = TextDecoration.Underline))) { open() }) { withStyle(style) { append(s.text) } }
             s.wiki != null -> withStyle(style.merge(SpanStyle(color = J.muted))) { append(s.text) }  // no such note
+            tap != null -> withLink(LinkAnnotation.Clickable(s.text, TextLinkStyles(style)) { tap() }) { append(s.text) }
             else -> withStyle(style) { append(s.text) }
         }
     }
 }
 
 @Composable
-private fun Item(b: MdItem, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?, read: androidx.compose.ui.text.TextStyle = J.bodyText) {
+private fun Item(b: MdItem, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?, tags: ((String) -> (() -> Unit)?)?,
+                 read: androidx.compose.ui.text.TextStyle = J.bodyText) {
     Row(Modifier.padding(start = J.sp4 * b.depth), horizontalArrangement = Arrangement.spacedBy(J.sp3)) {
         when (b.marker) {
             "[/]" -> {
@@ -202,7 +209,7 @@ private fun Item(b: MdItem, opens: ((String) -> (() -> Unit)?)?, link: ((String)
                 Box(Modifier.padding(top = 2.dp).size(20.dp).clip(RoundedCorner6).border(1.5.dp, J.acc, RoundedCorner6)) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(0.5f).background(J.acc.copy(alpha = 0.6f)))
                 }
-                Text(spans(b.spans, opens, link), style = read, modifier = Modifier.weight(1f))
+                Text(spans(b.spans, opens, link, tags), style = read, modifier = Modifier.weight(1f))
             }
             "[ ]", "[x]" -> {
                 val done = b.marker == "[x]"
@@ -211,11 +218,11 @@ private fun Item(b: MdItem, opens: ((String) -> (() -> Unit)?)?, link: ((String)
                     .border(1.5.dp, if (done) J.acc else J.muted, RoundedCorner6), contentAlignment = Alignment.Center) {
                     if (done) Icon(Icons.check, null, tint = J.onAcc, modifier = Modifier.size(14.dp))
                 }
-                Text(spans(b.spans, opens, link), style = read.copy(color = if (done) J.muted else J.text), modifier = Modifier.weight(1f))
+                Text(spans(b.spans, opens, link, tags), style = read.copy(color = if (done) J.muted else J.text), modifier = Modifier.weight(1f))
             }
             else -> {
                 Text(b.marker, style = read.copy(color = J.muted), modifier = Modifier.widthIn(min = 16.dp))
-                Text(spans(b.spans, opens, link), style = read, modifier = Modifier.weight(1f))
+                Text(spans(b.spans, opens, link, tags), style = read, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -232,7 +239,7 @@ private fun Bar(color: Color, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Props(p: MdProps) {
+private fun Props(p: MdProps, tags: ((String) -> (() -> Unit)?)?) {
     Column(Modifier.fillMaxWidth().clip(J.rS).background(J.raise).padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
         for ((k, v) in p.props) Row(horizontalArrangement = Arrangement.spacedBy(J.sp3), verticalAlignment = Alignment.CenterVertically) {
             Text(k, style = J.monoCap)
@@ -241,8 +248,14 @@ private fun Props(p: MdProps) {
         // Tags wrap onto the next line, never cut off at the edge
         if (p.tags.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(J.sp2),
             verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-            for (t in p.tags) Text("#$t", style = J.cap.copy(color = J.accText),
-                modifier = Modifier.clip(J.rS).border(1.dp, J.line, J.rS).padding(horizontal = J.sp3, vertical = J.sp1))
+            for (t in p.tags) {
+                // A chip the browser knows opens its tag view (212)
+                val go = tags?.invoke(t)
+                val chip = Modifier.clip(J.rS).border(1.dp, J.line, J.rS)
+                Text("#$t", style = J.cap.copy(color = J.accText), modifier = (if (go != null)
+                    chip.clickable(role = androidx.compose.ui.semantics.Role.Button, onClick = go) else chip)
+                    .padding(horizontal = J.sp3, vertical = J.sp1))
+            }
         }
     }
 }
@@ -251,7 +264,8 @@ private fun Props(p: MdProps) {
  *  a table that fits fills the width, a wider one scrolls with a fade at the edge that says so
  *  (every column was 132 dp, and "Broadcast" was cut with no hint, found 19 Oct). */
 @Composable
-private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?) = androidx.compose.foundation.layout.BoxWithConstraints {
+private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((String) -> Unit)?,
+                  tags: ((String) -> (() -> Unit)?)?) = androidx.compose.foundation.layout.BoxWithConstraints {
     val cols = (t.rows.maxOfOrNull { it.size } ?: 0).coerceAtLeast(1)
     // Each cell measured in its own style (a guess per character broke bold headers mid word);
     // a column at most 240 dp, so one long cell wraps instead of pushing the rest away
@@ -274,7 +288,7 @@ private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((Strin
                 Row(Modifier.background(if (r == 0) J.raise else Color.Transparent)) {
                     for (c in 0 until cols) {
                         val cell = row.getOrNull(c).orEmpty()
-                        Text(spans(cell, opens, link), style = (if (r == 0) J.sec.copy(fontWeight = FontWeight(700)) else J.sec).copy(color = J.text),
+                        Text(spans(cell, opens, link, tags), style = (if (r == 0) J.sec.copy(fontWeight = FontWeight(700)) else J.sec).copy(color = J.text),
                             modifier = Modifier.width(widths[c]).padding(horizontal = J.sp2, vertical = J.sp2))
                     }
                 }

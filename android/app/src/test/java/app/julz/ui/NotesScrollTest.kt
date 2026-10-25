@@ -25,6 +25,7 @@ class NotesScrollTest {
         assertEquals(400, s.at(NotesScroll.key(null, null)))
         assertNotEquals(NotesScroll.key(null, null), NotesScroll.key("daily", null))
         assertNotEquals(NotesScroll.key("a", null), NotesScroll.key("a", "aa".repeat(32)))
+        assertNotEquals(NotesScroll.key("a", null), NotesScroll.key("a", null, "net"))  // a tag view, 212
     }
 
     @Test fun keepsAFixedNumberOfPlaces() {
