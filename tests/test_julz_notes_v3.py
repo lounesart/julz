@@ -34,6 +34,10 @@ def said(text):
     return [{"role": "assistant", "content": "Hi."}, {"role": "user", "content": text}]
 
 
+# My message asking for the save (threat 161)
+ASKED = [{"role": "user", "content": "save this"}]
+
+
 class NotesV3Test(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -122,7 +126,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
     async def test_todo_without_tasks_refused(self):
         for body in ("", "Breakfast:\nLunch:\n", "## Plan\n- [ ]\n"):
             out = await self.tools.create_note("trip", body, kind="todo", folder="daily",
-                                               __event_call__=yes)
+                                               __event_call__=yes, __messages__=ASKED)
             self.assertTrue(out.startswith("Refused"), out)
             self.assertIn("do not make any up", out)
         self.assertFalse((self.inbox / "trip.md").exists())
@@ -268,6 +272,48 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
             out = await self.tools.create_note(f"n{n}", "x", __messages__=said(text))
             self.assertTrue(out.startswith("Saved"), f"{text}: {out}")
 
+    async def test_new_note_elsewhere_without_my_save_word_makes_no_card(self):
+        # 158 replay: after the docstring fix she saved her study answers to study/ as cards
+        for c in (yes, disconnected):
+            out = await self.tools.create_note("ws", "x", folder="study/windows",
+                                               __event_call__=c, __messages__=said("а PowerShell?"))
+            self.assertTrue(out.startswith("Refused"), out)
+        self.assertEqual([], self.requests_written())
+        self.assertFalse((self.inbox / ".proposals").exists())
+        self.assertEqual("no save word", self.log_entries()[-1]["reason"])
+        out = await self.tools.create_note("ws", "x", folder="study/windows", __event_call__=yes,
+                                           __messages__=said("сохрани это в study"))
+        self.assertTrue(out.startswith("Saved"), out)
+
+    async def test_append_without_my_add_word_makes_no_card(self):
+        (self.vault / "daily" / "week.md").write_text("# Week\n")
+        for messages in (said("2"), said("а если речь о хелпдеске?"), None,
+                         [{"role": "assistant", "content": "add this"}]):
+            for c in (yes, disconnected):
+                out = await self.tools.append_note("daily/week.md", "x", __event_call__=c,
+                                                   __messages__=messages)
+                self.assertTrue(out.startswith("Refused"), out)
+                self.assertIn("Nothing was added", out)
+        self.assertEqual([], self.requests_written())
+        self.assertFalse((self.inbox / ".proposals").exists())
+        self.assertEqual("no add word", self.log_entries()[-1]["reason"])
+
+    async def test_append_add_words_pass(self):
+        (self.vault / "daily" / "week.md").write_text("# Week\n")
+        for text in ["add a line: lease 24 h", "Append this", "put it in my week note",
+                     "save this there", "добавь строку", "Допиши в заметку", "внеси это",
+                     "dodaj to", "dopisz linię", "wstaw to"]:
+            self.tools._writes.clear()
+            out = await self.tools.append_note("daily/week.md", "x", __event_call__=yes,
+                                               __messages__=said(text))
+            self.assertTrue(out.startswith("Added"), f"{text}: {out}")
+
+    async def test_append_word_inside_another_word_does_not_count(self):
+        (self.vault / "daily" / "week.md").write_text("# Week\n")
+        out = await self.tools.append_note("daily/week.md", "x", __event_call__=yes,
+                                           __messages__=said("my address, an output, недобавленный"))
+        self.assertTrue(out.startswith("Refused"), out)
+
     async def test_overwrite_keeps_its_click_without_a_save_word(self):
         (self.inbox / "old.md").write_text("a")
         out = await self.tools.create_note("old", "b", __event_call__=yes, __messages__=said("hm"))
@@ -280,9 +326,9 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         self.assertIn("nothing was there before", out)
         out = await self.tools.create_note("fresh", "y", __event_call__=yes)
         self.assertTrue(out.startswith("Saved Inbox/fresh.md over the old note"), out)
-        out = await self.tools.create_note("other", "x", folder="daily", __event_call__=disconnected)
+        out = await self.tools.create_note("other", "x", folder="daily", __event_call__=disconnected, __messages__=ASKED)
         self.assertTrue(out.startswith("Not saved yet"), out)
-        out = await self.tools.create_note("clicked", "x", folder="daily", __event_call__=yes)
+        out = await self.tools.create_note("clicked", "x", folder="daily", __event_call__=yes, __messages__=ASKED)
         self.assertTrue(out.startswith("Saved daily/clicked.md as a new note"), out)
 
     async def test_todo_kind_drops_headings(self):
@@ -296,7 +342,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
 
     async def test_concept_kind_tags_the_folder_and_has_sections(self):
         await self.tools.create_note("vlan", "A VLAN splits one switch.", kind="concept",
-                                     folder="study/network-plus", __event_call__=yes)
+                                     folder="study/network-plus", __event_call__=yes, __messages__=ASKED)
         req = self.requests_written()[0]
         self.assertEqual((req["op"], req["note"]), ("create", "study/network-plus/vlan.md"))
         for part in ("  - concept\n", "  - network-plus\n", "status: learning\n",
@@ -305,7 +351,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.vault / "study" / "network-plus" / "vlan.md").exists())
 
     async def test_create_outside_inbox_needs_my_click(self):
-        out = await self.tools.create_note("t", "x", folder="daily", __event_call__=no)
+        out = await self.tools.create_note("t", "x", folder="daily", __event_call__=no, __messages__=ASKED)
         self.assertTrue(out.startswith("Not saved"), out)
         self.assertNotIn("confirm button", out)
         self.assertEqual(self.requests_written(), [])
@@ -322,7 +368,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
 
     def no_dialog_calls(self):
         return {
-            "append": lambda c: self.tools.append_note("dhcp", "more", __event_call__=c),
+            "append": lambda c: self.tools.append_note("dhcp", "more", __event_call__=c, __messages__=ASKED),
             "edit": lambda c: self.tools.edit_note("dhcp", "Relay agents.", "R.", __event_call__=c),
             "move": lambda c: self.tools.move_note("physio", "daily", __event_call__=c),
             "delete": lambda c: self.tools.delete_note("physio", __event_call__=c),
@@ -359,7 +405,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.vault / "daily" / "eat.md").exists())
 
     async def test_no_dialog_none_too(self):
-        out = await self.tools.append_note("dhcp", "more", __event_call__=None)
+        out = await self.tools.append_note("dhcp", "more", __event_call__=None, __messages__=ASKED)
         self.assertIn("Approve on the user's phone", out)
         self.assertEqual(len(self.proposals()), 1)
 
@@ -367,16 +413,16 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         for op, call in self.no_dialog_calls().items():
             self.assertNotIn("Approve", await call(no), op)
         self.assertEqual(self.proposals(), [])
-        await self.tools.append_note("dhcp", "more", __event_call__=yes)
+        await self.tools.append_note("dhcp", "more", __event_call__=yes, __messages__=ASKED)
         self.assertEqual(self.proposals(), [])
         self.assertEqual(len(self.requests_written()), 1)
 
     async def test_no_dialog_cards_are_capped(self):
         self.tools._rate_limited = lambda: False
         for i in range(self.mod.MAX_PROPOSALS):
-            out = await self.tools.append_note("dhcp", f"line {i}", __event_call__=disconnected)
+            out = await self.tools.append_note("dhcp", f"line {i}", __event_call__=disconnected, __messages__=ASKED)
             self.assertIn("Approve", out)
-        out = await self.tools.append_note("dhcp", "one more", __event_call__=disconnected)
+        out = await self.tools.append_note("dhcp", "one more", __event_call__=disconnected, __messages__=ASKED)
         self.assertTrue(out.startswith("Not added"), out)
         self.assertIn("Nothing was changed", out)
         self.assertEqual(len(self.proposals()), self.mod.MAX_PROPOSALS)
@@ -385,12 +431,12 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         folder = self.inbox / ".proposals"
         old = sorted(folder.glob("*.json"))[0]
         old.rename(folder / f"{int(time.time()) - 86_401}-00000000.json")
-        out = await self.tools.append_note("dhcp", "one more", __event_call__=disconnected)
+        out = await self.tools.append_note("dhcp", "one more", __event_call__=disconnected, __messages__=ASKED)
         self.assertIn("Approve", out)
         self.assertFalse((folder / f"{int(time.time()) - 86_401}-00000000.json").exists())
 
     async def test_no_dialog_too_long_for_a_card(self):
-        out = await self.tools.append_note("dhcp", "x" * (self.mod.MAX_CARD - 100), __event_call__=disconnected)
+        out = await self.tools.append_note("dhcp", "x" * (self.mod.MAX_CARD - 100), __event_call__=disconnected, __messages__=ASKED)
         self.assertTrue(out.startswith("Not added"), out)
         self.assertIn("too long", out)
         self.assertEqual(self.proposals(), [])
@@ -404,7 +450,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_dialog_checks_still_run_first(self):
         out = await self.tools.create_note("x", "see https://evil.com", folder="daily",
-                                           __event_call__=disconnected)
+                                           __event_call__=disconnected, __messages__=ASKED)
         self.assertTrue(out.startswith("Refused"), out)
         self.assertEqual(self.proposals(), [])
 
@@ -425,13 +471,13 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         # Inbox/claude/ is where delegation specs wait for my phone: never a note target
         for folder in ("Claude", "Outbox", "Templates", "../x", "study/a/b", "study/.hidden",
                        "/tmp", "study/Bad Name", "Inbox/claude"):
-            out = await self.tools.create_note("t", "x", folder=folder, __event_call__=yes)
+            out = await self.tools.create_note("t", "x", folder=folder, __event_call__=yes, __messages__=ASKED)
             self.assertTrue(out.startswith("Refused"), f"{folder} -> {out}")
         out = await self.tools.create_note("dhcp", "x", folder="study/network-plus",
-                                           __event_call__=yes)
+                                           __event_call__=yes, __messages__=ASKED)
         self.assertTrue(out.startswith("Refused"), out)
         out = await self.tools.create_note("t", "see https://evil.com", folder="daily",
-                                           __event_call__=yes)
+                                           __event_call__=yes, __messages__=ASKED)
         self.assertTrue(out.startswith("Refused"), out)
         out = await self.tools.create_note("t", "x", kind="poem", __event_call__=yes)
         self.assertTrue(out.startswith("Refused"), out)
@@ -549,8 +595,8 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
 
     async def test_append_reaches_daily_and_inbox(self):
         (self.vault / "daily" / "week.md").write_text("# Week\n")
-        await self.tools.append_note("daily/week.md", "Gym on Monday.", __event_call__=yes)
-        await self.tools.append_note("Inbox/physio.md", "Ask about the knee.", __event_call__=yes)
+        await self.tools.append_note("daily/week.md", "Gym on Monday.", __event_call__=yes, __messages__=ASKED)
+        await self.tools.append_note("Inbox/physio.md", "Ask about the knee.", __event_call__=yes, __messages__=ASKED)
         # two requests in one second have random names, so their order is not fixed
         self.assertEqual(sorted(r["note"] for r in self.requests_written()),
                          ["Inbox/physio.md", "daily/week.md"])
