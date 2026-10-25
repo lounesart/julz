@@ -715,6 +715,16 @@ class App:
             except vault.Refused as e:
                 raise HTTPError(400, str(e)) from None
             key = match[0]["sha256"]
+        elif action == "case":
+            # A bad answer kept as an eval case (153): the text is built here from my question
+            # and her answer; the app proves it hashed the same two, NUL between them
+            q, a = data.get("question"), data.get("answer")
+            try:
+                match = [{"text": vault.case_text(q, a, data.get("mode")),
+                          "sha256": gate.sha256(q + "\x00" + a) if isinstance(q, str) and isinstance(a, str) else ""}]
+            except vault.Refused as e:
+                raise HTTPError(400, str(e)) from None
+            key = match[0]["sha256"]
         elif action == "goal":
             # As ticks: the app proves which goals it saw; the text is built here (123)
             snap = self.goals()
@@ -837,6 +847,14 @@ class App:
             vault.write_request(self.requests, req)
             gate.log(self.dirs, "save-signed", digest, "ok", channel)
             return {"done": "saved", "sha256": digest}
+        if action == "case":
+            try:
+                req = vault.case_request(text, datetime.now())
+            except vault.Refused as e:
+                raise HTTPError(400, str(e)) from None
+            vault.write_request(self.requests, req)
+            gate.log(self.dirs, "case-signed", digest, "ok", channel)
+            return {"done": "kept", "sha256": digest}
         if action == "goal":
             try:
                 reqs = vault.goal_requests(text, self.goals())

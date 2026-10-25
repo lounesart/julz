@@ -198,6 +198,11 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 18. Send a message. [It rises into place; "Thinking" with a light sweeping through it in the accent
     and a breathing dot; it leaves when the first words come, never lying over them; Copy fades
     in when the answer is done. With animations off in Android's developer options, all still.]
+19. Hold an answer, Bad answer (finger) (155, 153). [The sheet says "Keep as a bad answer" and
+    shows mode, my question and her answer, links without https; after the fingerprint "Kept as
+    a test case"; `./eval-promote.py` on the laptop lists it as new within a minute.] Hold an
+    older answer. [The same; the sheet says `mode: unknown`.] Hold my own message. [No Bad
+    answer row.]
 19. Icon buttons: the header's, send and the jump arrow. [The same 40 dp shape, each easy to hit.]
 
 ### Tab bar (22i)

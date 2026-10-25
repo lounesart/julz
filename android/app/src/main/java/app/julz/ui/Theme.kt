@@ -196,6 +196,7 @@ object Icons {
     val check = icon("check", "M5 12l5 5L19 7", 2.4f)
     val reload = icon("reload", "M20 12a8 8 0 11-2.4-5.7 M20 4v6h-6")
     val feedback = icon("feedback", "M4 5h16v11H9l-5 4z M12 8v3 M12 13.5h.01", 1.9f)
+    val bad = icon("bad", "M8 4h8.5l2.5 7v3h-5.5l.8 4.3c.2 1-.6 1.7-1.5 1.7L8 13z M8 4v9 M4 4h4v9H4z", 1.9f)
     /** The Integrations mockup's icons, by integration. */
     fun integration(id: String) = when (id) {
         "keep" -> icon("keep", "M4 4h12l4 4v12H4z M8 12h8 M8 16h5")

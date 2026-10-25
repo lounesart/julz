@@ -75,6 +75,23 @@ class JulzNotesTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(".obsidian", await self.tools.search_notes("hidden"))
         self.assertNotIn("link.md", await self.tools.search_notes("SECRET"))
 
+    async def test_kept_bad_answers_are_never_read_back(self):
+        # SECURITY.md 153: her own wrong answer, kept as an eval case, must not teach her again
+        case = self.vault / "feedback" / "eval" / "2026-10-25 nft 210509.md"
+        case.parent.mkdir(parents=True)
+        case.write_text("# Bad answer\n\n## Answer\n\nsudo iptables -L zebracode\n")
+        (self.vault / "feedback" / "voice.md").write_text("# Feedback\nvoice zebracode\n")
+        out = await self.tools.search_notes("zebracode")
+        self.assertIn("feedback/voice.md", out)
+        self.assertNotIn("eval", out)
+        for path in ("feedback/eval/2026-10-25 nft 210509.md", "feedback/../feedback/eval/2026-10-25 nft 210509.md"):
+            out = await self.tools.read_note(path)
+            self.assertTrue(out.startswith("Refused"), out)
+            self.assertNotIn("iptables", out)
+        self.assertNotIn("iptables", await self.tools.read_note("nft"))
+        for listing in (await self.tools.list_notes(), await self.tools.recent_notes()):
+            self.assertNotIn("eval", listing)
+
     async def test_search_by_file_name_never_looks_empty(self):
         # Found live 2026-10-16: "dhcp.md" matched the name, no line held it, the hit showed
         # nothing after the colon, and julz said the note was essentially empty
