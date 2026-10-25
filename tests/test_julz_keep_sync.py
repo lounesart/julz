@@ -22,15 +22,29 @@ class RunSyncTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.dirs = gate.Dirs(Path(self.tmp.name) / "gate")
         self.dirs.ensure()
+        self.state = Path(self.tmp.name) / "state"
+        self.state.mkdir()
         self.pending = self.dirs.sync / "pending"
-        self.failed = self.dirs.sync / "failed"
+        self.failed = self.state / "failed"
+        self.synced = self.state / "synced"
         self.calls = 0
+        self.now = 1_800_000_000.0
 
     def tearDown(self):
         self.tmp.cleanup()
 
+    def run_sync(self, do_sync, fp="A", now=None):
+        return ks.run_sync(self.dirs, self.state, fp, do_sync, self.now if now is None else now)
+
     def stamp(self):
         self.pending.write_text("1\n")
+
+    def record(self, fp="A", checked=None):
+        self.synced.write_text(json.dumps({"fingerprint": fp,
+                                           "checked": self.now if checked is None else checked}))
+
+    def recorded(self):
+        return json.loads(self.synced.read_text())["fingerprint"]
 
     def log(self):
         if not self.dirs.log.exists():
@@ -45,24 +59,71 @@ class RunSyncTest(unittest.TestCase):
         self.calls += 1
         raise ConnectionRefusedError("open webui down")
 
-    def test_no_stamp_no_sync(self):
-        # The timer runs this every 10 minutes: without a stamp it must not touch the key
-        self.assertEqual(ks.run_sync(self.dirs, self.ok), "nothing to sync")
+    def test_no_stamp_no_change_no_sync(self):
+        # The timer runs this every 10 minutes: with Claude/ unchanged it must not touch the key
+        self.record("A")
+        self.assertEqual(self.run_sync(self.ok, "A"), "nothing to sync")
         self.assertEqual(self.calls, 0)
+        self.assertEqual(self.log(), [])
 
-    def test_sync_clears_the_stamp(self):
+    def test_removal_by_hand_syncs_without_stamp(self):
+        # BACKLOG 13: a Claude note I delete changes the fingerprint, no Keep stamps anything
+        self.record("A")
+        self.assertEqual(self.run_sync(self.ok, "B"), "synced 12 notes")
+        self.assertEqual(self.calls, 1)
+        self.assertEqual(self.recorded(), "B")
+        self.assertEqual(self.run_sync(self.ok, "B"), "nothing to sync")
+        self.assertEqual(self.calls, 1)
+
+    def test_first_run_syncs(self):
+        self.assertEqual(self.run_sync(self.ok), "synced 12 notes")
+        self.assertEqual(self.recorded(), "A")
+
+    def test_day_old_check_syncs(self):
+        self.record("A", checked=self.now - ks.DAY)
+        self.assertEqual(self.run_sync(self.ok, "A"), "synced 12 notes")
+        self.record("A", checked=self.now - ks.DAY + 1)
+        self.assertEqual(self.run_sync(self.ok, "A"), "nothing to sync")
+
+    def test_check_from_the_future_syncs(self):
+        # A clock set back must not freeze the sync for good
+        self.record("A", checked=self.now + 60)
+        self.assertEqual(self.run_sync(self.ok, "A"), "synced 12 notes")
+
+    def test_odd_record_syncs(self):
+        for text in ("not json", "[1]", ""):
+            self.synced.write_text(text)
+            self.calls = 0
+            self.run_sync(self.ok, "A")
+            self.assertEqual(self.calls, 1, text)
+
+    def test_failure_records_nothing(self):
+        self.record("A")
+        self.assertTrue(self.run_sync(self.boom, "B").startswith("failed"))
+        self.assertEqual(self.recorded(), "A")  # the next tick tries again
+        self.assertEqual(self.run_sync(self.ok, "B"), "synced 12 notes")
+        self.assertEqual(self.recorded(), "B")
+
+    def test_state_stays_out_of_the_watched_folder(self):
+        # julz-keep-sync.path watches sync/: a write there would start this unit again
+        self.run_sync(self.boom, "A")
+        self.run_sync(self.ok, "A")
+        self.assertEqual(os.listdir(self.dirs.sync), [])
+
+    def test_stamp_syncs_even_when_unchanged(self):
+        self.record("A")
         self.stamp()
-        self.assertEqual(ks.run_sync(self.dirs, self.ok), "synced 12 notes")
+        self.assertEqual(self.run_sync(self.ok, "A"), "synced 12 notes")
         self.assertFalse(self.pending.exists())
         self.assertEqual([(e["action"], e["status"]) for e in self.log()], [("sync", "ok")])
 
     def test_failure_keeps_stamp_and_pushes_once(self):
         self.stamp()
         for _ in range(3):
-            self.assertTrue(ks.run_sync(self.dirs, self.boom).startswith("failed"))
+            self.assertTrue(self.run_sync(self.boom).startswith("failed"))
         self.assertTrue(self.pending.exists())
         self.assertEqual([(e["action"], e["status"]) for e in self.log()], [("sync", "failed")])
-        self.assertEqual(ks.run_sync(self.dirs, self.ok), "synced 12 notes")
+        self.assertEqual(self.run_sync(self.ok), "synced 12 notes")
         self.assertFalse(self.failed.exists())  # the next failure is pushed again
 
     def test_http_error_exit_is_a_failure(self):
@@ -71,7 +132,7 @@ class RunSyncTest(unittest.TestCase):
 
         def exits():
             sys.exit("POST /api/v1/files -> HTTP 500")
-        self.assertTrue(ks.run_sync(self.dirs, exits).startswith("failed"))
+        self.assertTrue(self.run_sync(exits).startswith("failed"))
         self.assertTrue(self.pending.exists())
 
     def test_keep_during_sync_syncs_again(self):
@@ -80,16 +141,52 @@ class RunSyncTest(unittest.TestCase):
         def keep_lands_meanwhile():
             os.utime(self.pending, ns=(1, 1))  # julz-keep stamped again during the sync
             return 3
-        ks.run_sync(self.dirs, keep_lands_meanwhile)
+        self.run_sync(keep_lands_meanwhile)
         self.assertTrue(self.pending.exists())
 
     def test_linked_stamp_removed_unused(self):
         target = Path(self.tmp.name) / "target"
         target.write_text("x")
         self.pending.symlink_to(target)
-        self.assertEqual(ks.run_sync(self.dirs, self.ok), "odd stamp removed")
+        self.assertEqual(self.run_sync(self.ok), "odd stamp removed")
         self.assertEqual(self.calls, 0)
         self.assertTrue(target.exists())
+
+
+class FingerprintTest(unittest.TestCase):
+    """Claude/ as it would be uploaded: a removal, an edit or a rename changes it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        for name in ("a.md", "b.md"):
+            (self.root / name).write_text(f"# {name}\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def fp(self):
+        return ks.fingerprint(ks.sk.claude_notes(self.root))
+
+    def test_same_notes_same_print(self):
+        self.assertEqual(self.fp(), self.fp())
+
+    def test_removal_edit_and_rename_change_it(self):
+        seen = {self.fp()}
+        (self.root / "b.md").unlink()
+        seen.add(self.fp())
+        (self.root / "a.md").write_text("# a, edited\n")
+        seen.add(self.fp())
+        (self.root / "a.md").rename(self.root / "c.md")
+        seen.add(self.fp())
+        self.assertEqual(len(seen), 4)
+
+    def test_named_as_uploaded(self):
+        # The upload name, Claude__ prefix and all: a note moved into a subfolder is a change
+        (self.root / "sub").mkdir()
+        before = self.fp()
+        (self.root / "a.md").rename(self.root / "sub" / "a.md")
+        self.assertNotEqual(before, self.fp())
 
 
 def unit_lines(unit):
@@ -115,6 +212,13 @@ class SyncUnitFileTest(unittest.TestCase):
                          {"%h/.local/lib/julz", "%h/.config/julz/api.env",
                           "%h/Documents/julz-mem/Claude"})
         self.assertIn("TemporaryFileSystem=%h:ro", unit_lines(self.U))
+
+    def test_own_state_folder(self):
+        # Threat 154: the fingerprint lives outside sync/, which julz-keep-sync.path watches
+        self.assertIn("StateDirectory=julz-keepsync", unit_lines(self.U))
+        self.assertEqual(ks.STATE, Path.home() / ".local" / "state" / "julz-keepsync")
+        path = [l for l in unit_lines("julz-keep-sync.path") if l.startswith("Path")]
+        self.assertEqual(path, ["PathChanged=%h/.local/share/julz/sync"])
 
     def test_no_pretend_network_rule(self):
         # IPAddressDeny is ignored in user units (tested 2026-10-16): never write it as if
@@ -159,6 +263,7 @@ class SyncRealSandboxTest(unittest.TestCase):
             argv = ["systemd-run", "--user", "--wait", "--pipe", "--quiet", "-E", f"HOME={home}"]
             for line in unit_lines("julz-keep-sync.service"):
                 key = line.split("=", 1)[0]
+                # StateDirectory is left out: it would follow the real manager's home, not this one
                 if key in ("NoNewPrivileges", "ProtectSystem", "UMask", "TemporaryFileSystem",
                            "BindPaths", "BindReadOnlyPaths", "RestrictAddressFamilies"):
                     line = line.replace("%h/.local/lib/julz", str(ROOT))
