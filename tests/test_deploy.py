@@ -299,6 +299,30 @@ class PushToolsTest(unittest.TestCase):
         self.assertEqual(self.owui.store["tools/julz_notes"]["content"], "old notes\n")
         self.assertIn("kept live: tools/julz_notes", out)
 
+    def test_reformatted_live_copy_is_named_as_formatting_only(self):
+        # Open WebUI's editor reformats on save: same code, other bytes
+        self.owui.store["tools/julz_notes"]["content"] = "x = {'a':1}  # mine\n"
+        (self.release / "tools" / "julz_notes.py").write_text('x = {"a": 1}\n')
+        self.push()
+        (name, diff), = self.asked
+        self.assertTrue(diff.startswith(deploy.FORMAT_ONLY))
+        self.assertIn('+x = {"a": 1}', diff)
+
+    def test_a_real_change_shows_the_diff_without_the_note(self):
+        self.owui.store["tools/julz_notes"]["content"] = "x = 1\n"
+        (self.release / "tools" / "julz_notes.py").write_text("x = 2\n")
+        self.push()
+        (name, diff), = self.asked
+        self.assertNotIn(deploy.FORMAT_ONLY, diff)
+        self.assertIn("-x = 1", diff)
+        self.assertIn("+x = 2", diff)
+
+    def test_a_live_copy_that_does_not_parse_is_a_real_change(self):
+        self.owui.store["tools/julz_notes"]["content"] = "x = (\n"
+        (self.release / "tools" / "julz_notes.py").write_text("x = 2\n")
+        self.push()
+        self.assertNotIn(deploy.FORMAT_ONLY, self.asked[0][1])
+
     def test_name_and_meta_go_back_as_they_are_and_grants_are_never_sent(self):
         self.push()
         (_, path, token, data), = self.updates()
