@@ -157,7 +157,6 @@ class ScreenshotTest {
         shell(Screen.TODOS) {
             androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().padding(horizontal = J.gutter)) {
                 PastGoalsCard(listOf(
-                    app.julz.feed.GoalPeriod("2026-10-24", "Yesterday", emptyList()),
                     app.julz.feed.GoalPeriod("2026-W42", "Last week", listOf(
                         app.julz.feed.GoalItem("Study 10 h (2/10) #goal/study-10-h [in:: pass-cpts] [est:: 10h] [spent:: 3h]", false,
                             2 to 10, "study-10-h", null, "pass-cpts", 30, 0, null, 600, 180, 180 to 600),
@@ -166,6 +165,26 @@ class ScreenshotTest {
             }
         }
     }
+
+    // The year always, then week or month by pills (223): both picks, a goal in each card
+    private fun goalCards(view: String) = paparazzi.snapshot {
+        shell(Screen.TODOS) {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().padding(horizontal = J.gutter),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(J.sp3)) {
+                val s = app.julz.feed.GoalsSnapshot("c".repeat(64), listOf(
+                    app.julz.feed.GoalPeriod("2026-W43", "This week", listOf(
+                        app.julz.feed.GoalItem("Study 10 h (3/10)", false, 3 to 10, null, null))),
+                    app.julz.feed.GoalPeriod("2026-10", "October", listOf(
+                        app.julz.feed.GoalItem("Finish the Network+ course #goal/net-plus [in:: pass-cpts]", false, null, "net-plus", 2 to 5,
+                            "pass-cpts", 40, 5))),
+                    app.julz.feed.GoalPeriod("2026", "2026", listOf(
+                        app.julz.feed.GoalItem("Pass CPTS #goal/pass-cpts", false, null, "pass-cpts", null, null, 40, 1)))))
+                GoalCards(s, view, {}, GoalsUi(), emptyList(), {})
+            }
+        }
+    }
+    @Test fun goalsWeek() = goalCards("week")
+    @Test fun goalsMonth() = goalCards("month")
 
     @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
     @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, learn = true) }

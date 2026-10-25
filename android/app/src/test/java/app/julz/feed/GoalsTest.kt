@@ -50,7 +50,8 @@ class GoalsTest {
         val ok = JSONObject(past("2026-W42" to listOf(goal())))
         for (bad in listOf("", "{", snap(), past("2026-W42" to listOf(goal(done = true))), past("../x" to listOf(goal())),
                 past("2026-W42" to listOf(goal("a\u202Eb"))), past("2026-W42" to listOf(goal(rollup = 101))),
-                past(*Array(5) { "2026-W42" to listOf(goal()) }), past("2026-W42" to List(21) { goal() }),
+                past(*Array(4) { "2026-W42" to listOf(goal()) }), past("2026-W42" to List(21) { goal() }),
+                past("2026-10-24" to emptyList()),  // a day is no period (223, threat 159)
                 ok.put("extra", 1).toString()))
             assertNull(bad.take(60), GoalsData.parsePast(bad))
     }
@@ -125,8 +126,28 @@ class GoalsTest {
                 snap(listOf(goal(due = "2026-02-30"))), snap(listOf(goal(due = "2026-10-30 x"))),
                 snap(milestones = listOf(milestone(text = "a\u202Eb"))), snap(milestones = listOf(milestone(goal = "../x"))),
                 snap(milestones = listOf(milestone(due = "soon"))), snap(milestones = listOf(milestone(rollup = 101))),
-                snap(milestones = List(21) { milestone() })))
+                snap(milestones = List(21) { milestone() }), snap(key = "2026-10-25"), periods(4)))
             assertNull(bad, GoalsData.parse(bad))
+        assertEquals(3, GoalsData.parse(periods(3))!!.periods.size)
+    }
+
+    private fun periods(n: Int) = JSONObject().put("id", ID).put("tree", JSONObject()).put("milestones", JSONArray()).put("periods", JSONArray(
+        listOf("2026-W43", "2026-10", "2026", "2027").take(n).map { k ->
+            JSONObject().put("key", k).put("label", k).put("note", "goals/$k.md").put("goals", JSONArray()) })).toString()
+
+    // Week or month under the year (223, threat 159): the stored pick is a value read back from storage
+    @Test fun theViewIsWeekOrMonthOnly() {
+        assertEquals("month", GoalsData.viewOf("month"))
+        for (v in listOf(null, "", "week", "Month", "month ", "year", "day", "2026-10"))
+            assertEquals(v.toString(), "week", GoalsData.viewOf(v))
+    }
+
+    @Test fun theYearAlwaysThenThePickedPeriod() {
+        val ps = GoalsData.parse(periods(3))!!.periods
+        assertEquals(listOf("2026", "2026-W43"), GoalsData.shown(ps, "week").map { it.key })
+        assertEquals(listOf("2026", "2026-10"), GoalsData.shown(ps, "month").map { it.key })
+        assertEquals(listOf("year", "month", "week", null), listOf("2026", "2026-10", "2026-W43", "2026-10-25").map { GoalsData.kindOf(it) })
+        for (bad in listOf("2026-W4", "../-W43", "2026-W43x", "x2026")) assertNull(bad, GoalsData.kindOf(bad))
     }
 
     @Test fun aGoalIsNeverOfferedAsItsOwnParentOrUnderItsParts() {

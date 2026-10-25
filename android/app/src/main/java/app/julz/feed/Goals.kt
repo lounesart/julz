@@ -21,13 +21,32 @@ data class GoalPick(val action: String, val period: String, val value: String, v
  *  sends to begin a signed change. */
 object GoalsData {
     private val ID = Regex("[0-9a-f]{64}")
-    private val KEY = Regex("\\d{4}(-\\d{2}(-\\d{2})?|-W\\d{2})?")
+    private val KEY = Regex("\\d{4}(-\\d{2}|-W\\d{2})?")  // a year, month or week; never a day (159)
     private val GOAL_ID = Regex("[a-z0-9][a-z0-9-]{0,39}")
     private val TAG = Regex("\\s*(#goal/[a-z0-9-]+|\\[in:: [a-z0-9-]+\\]|\\[due:: [0-9-]+\\]|\\[(est|spent):: [0-9.]+h\\])")
     private val EST = Regex("\\[est:: (\\d{1,4}(?:\\.\\d{1,2})?)h\\]")
     private val SPENT = Regex("\\[spent:: (\\d{1,4}(?:\\.\\d{1,2})?)h\\]")
     private val HOURS_IN = Regex("\\d{1,3}(\\.(0|25|5|75))?")
     private const val MAX_MINUTES = 9999 * 60
+
+    /** A period key's kind, from its shape: year, month or week; anything else null. */
+    fun kindOf(key: String) = when {
+        YEAR.matches(key) -> "year"
+        MONTH.matches(key) -> "month"
+        WEEK.matches(key) -> "week"
+        else -> null
+    }
+    private val YEAR = Regex("\\d{4}")
+    private val MONTH = Regex("\\d{4}-\\d{2}")
+    private val WEEK = Regex("\\d{4}-W\\d{2}")
+
+    /** Which of week and month the Goals tab shows under the year (223, threat 159): the phone
+     *  keeps it for itself and never sends it; read back as month, else week. */
+    fun viewOf(stored: String?) = if (stored == "month") "month" else "week"
+
+    /** The cards on the Goals tab: the year always, then the picked week or month. */
+    fun shown(periods: List<GoalPeriod>, view: String) =
+        periods.filter { kindOf(it.key) == "year" } + periods.filter { kindOf(it.key) == view }
 
     private val COUNT = Regex("\\s*\\(\\d{1,4}/\\d{1,4}\\)")
 
@@ -73,7 +92,7 @@ object GoalsData {
     fun parse(raw: String): GoalsSnapshot? {
         val j = try { JSONObject(raw) } catch (e: Exception) { return null }
         val id = j.optString("id"); val ps = j.optJSONArray("periods") ?: return null
-        if (!(ID.matches(id) || (id.isEmpty() && ps.length() == 0)) || ps.length() > 4) return null
+        if (!(ID.matches(id) || (id.isEmpty() && ps.length() == 0)) || ps.length() > 3) return null
         val t = j.optJSONObject("tree") ?: JSONObject()
         if (t.length() > 500) return null
         val tree = t.keys().asSequence().associateWith { k -> if (t.isNull(k)) null else t.optString(k) }
@@ -97,7 +116,7 @@ object GoalsData {
         val j = try { JSONObject(raw) } catch (e: Exception) { return null }
         if (j.keys().asSequence().toSet() != setOf("periods")) return null
         val ps = j.optJSONArray("periods") ?: return null
-        if (ps.length() > 4) return null
+        if (ps.length() > 3) return null
         return periodsOf(ps)?.takeIf { l -> l.none { p -> p.goals.any { it.done } } }
     }
 
