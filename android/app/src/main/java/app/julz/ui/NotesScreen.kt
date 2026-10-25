@@ -67,8 +67,8 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
         else noteProblem = if (reply.first == 404) "This note changed on the laptop. Go back and reload."
                            else unreadable(reply.first, "This note is too big to show")
     }
-    // Up one level: a note to its folder or tag, a tag to where it was tapped, a folder to the
-    // one around it, then the overview
+    // Up one level: a note to its folder or tag, a tag to the folder of the note it was tapped
+    // in, a folder to the one around it, then the overview
     fun up() {
         val f = folder
         when {

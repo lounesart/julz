@@ -249,7 +249,8 @@ private fun Props(p: MdProps, tags: ((String) -> (() -> Unit)?)?) {
         if (p.tags.isNotEmpty()) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(J.sp2),
             verticalArrangement = Arrangement.spacedBy(J.sp2)) {
             for (t in p.tags) {
-                // A chip the browser knows opens its tag view (212)
+                // A chip the browser knows opens its tag view (212). Compose widens its touch area
+                // to 48 dp without moving the layout, the closest chip wins (asked: no big gaps)
                 val go = tags?.invoke(t)
                 val chip = Modifier.clip(J.rS).border(1.dp, J.line, J.rS)
                 Text("#$t", style = J.cap.copy(color = J.accText), modifier = (if (go != null)
