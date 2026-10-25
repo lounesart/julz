@@ -184,6 +184,17 @@ class ScreenshotTest {
         }
     }
     @Test fun goalsWeek() = goalCards("week")
+    // A goal's page, HTB style (227): percent, bar, hours and due, Done and Left by name, counts
+    @Test fun goalPage() = paparazzi.snapshot {
+        shell(Screen.TODOS) {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().padding(horizontal = J.gutter)) {
+                GoalPage(app.julz.feed.GoalDetail("Pass CPTS", 40, 180 to 600, "2027-03-01",
+                    listOf(app.julz.feed.GoalPart("Net+", true, "100%"), app.julz.feed.GoalPart("DNS lab", true)),
+                    listOf(app.julz.feed.GoalPart("Kerberos chapter", false, "1/3"), app.julz.feed.GoalPart("Subnetting drill", false)),
+                    1, 0, 1), java.time.LocalDate.of(2026, 10, 25))
+            }
+        }
+    }
     // The ghost row open, with a kept draft (223c): the field and Add in the row's place
     @Test fun inlineAddOpen() = paparazzi.snapshot {
         shell(Screen.TODOS) {

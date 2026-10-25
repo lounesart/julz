@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +75,7 @@ class GoalsUi {
     var open by mutableStateOf<String?>(null)       // the goal shown whole, by period and text
     val targets = mutableStateMapOf<String, String>()  // target numbers being typed, by goal
     var view by mutableStateOf<String?>(null)       // week or month under the year; null: the stored one (223)
+    var page by mutableStateOf<GoalItem?>(null)     // the goal whose read only page is open (227)
     val active get() = status != null || picks.isNotEmpty()
 }
 
@@ -140,8 +142,13 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
             s == null -> Text("Asking the laptop", style = J.sec)
             else -> GoalCards(s, view, ::pickView, ui, todos, ::toggle)
         }
-        if (ui.problem == null && s != null) PastGoalsCard(ui.past)
+        if (ui.problem == null && s != null) PastGoalsCard(ui.past) { ui.page = it }
     }
+    // The page reads what the phone holds; nothing on it acts, so a past goal stays out of signing (157)
+    val s = ui.snap
+    ui.page?.let { g -> if (s != null) JulzSheet(onDismiss = { ui.page = null }) {
+        GoalPage(GoalsData.detail(g, s.periods + ui.past, s.tree, todos), java.time.LocalDate.now())
+    } }
 }
 
 /** The year's card always, then one card for this week or the month, switched by a segmented
@@ -206,10 +213,10 @@ private fun PeriodBody(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app
     }
 }
 
-/** Open goals from the periods just before (126b(3), SECURITY.md 157): their words and bar,
- *  nothing to tap or pick, so none of them can reach what I sign. */
+/** Open goals from the periods just before (126b(3), SECURITY.md 157): their words and bar;
+ *  a tap opens the goal's read only page (227), nothing picks, so none of them can reach what I sign. */
 @Composable
-internal fun PastGoalsCard(past: List<app.julz.feed.GoalPeriod>) {
+internal fun PastGoalsCard(past: List<app.julz.feed.GoalPeriod>, openPage: (GoalItem) -> Unit = {}) {
     val open = past.filter { it.goals.isNotEmpty() }
     if (open.isEmpty()) return
     Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
@@ -219,7 +226,8 @@ internal fun PastGoalsCard(past: List<app.julz.feed.GoalPeriod>) {
                 Text(p.label, style = J.sec, modifier = Modifier.weight(1f))
                 Text(p.key, style = J.monoCap)
             }
-            for (g in p.goals) Column(verticalArrangement = Arrangement.spacedBy(J.sp1)) {
+            for (g in p.goals) Column(Modifier.fillMaxWidth().clip(J.rM).clickable(role = Role.Button, onClickLabel = "Open goal page") { openPage(g) }
+                .padding(vertical = J.sp1), verticalArrangement = Arrangement.spacedBy(J.sp1)) {
                 Text(GoalsData.title(g), style = J.bodyText)  // plain text (123)
                 val hours = g.hours?.let { " \u00b7 " + GoalsData.hoursLabel(it.first, it.second) }.orEmpty()
                 when {
@@ -265,6 +273,7 @@ private fun GoalRow(period: String, g: GoalItem, ui: GoalsUi, todos: List<app.ju
             g.linked != null -> Bar(g.linked.first, g.linked.second, "${g.linked.first}/${g.linked.second} todos$under")
             !g.done -> Text("No progress yet$under", style = J.cap)
         }
+        if (open) ActionRow("Overview") { SmallPill("Details", false, true) { ui.page = g } }  // its page (227)
         if (open && !g.done) {
             // Grouped by purpose, the labels in one column (22d, asked 18 Oct): what moves it on,
             // how it is planned, where it belongs; each field opens under its pill
@@ -405,6 +414,40 @@ private fun DueSheet(goal: String, current: String?, choose: (String) -> Unit, c
     }
 }
 
+/** A goal's page, HTB style (227): the percent large over one bar, hours and due under it, then
+ *  Done and Left by name, a tick or a circle each, and counts for parts the phone cannot name.
+ *  Read only: nothing here picks or signs. */
+@Composable
+internal fun GoalPage(d: app.julz.feed.GoalDetail, today: java.time.LocalDate) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+        Text(d.title, style = J.ts)  // plain text (123)
+        Text(d.percent?.let { "$it%" } ?: "No progress yet", style = if (d.percent != null) J.hero.copy(color = J.accText) else J.sec)
+        if (d.percent != null) Bar(d.percent, 100, "")
+        listOfNotNull(d.hours?.let { GoalsData.hoursLabel(it.first, it.second) },
+            d.due?.let { "due ${shortDay(it)} \u00b7 ${GoalsData.dueLabel(it, today)}" })
+            .takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" \u00b7 "), style = J.monoCap) }
+        @Composable
+        fun section(name: String, parts: List<app.julz.feed.GoalPart>, extra: Int, extraWords: String) {
+            if (parts.isEmpty() && extra == 0) return
+            Text("$name ${parts.size + extra}", style = J.cap.copy(fontWeight = FontWeight(600)), modifier = Modifier.padding(top = J.sp2))
+            for (part in parts) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp3)) {
+                // One column for the marks, so every part's words start on the same line
+                Box(Modifier.widthIn(min = 20.dp).clearAndSetSemantics { }, contentAlignment = Alignment.Center) {  // TalkBack: the section says done or left
+                    Text(if (part.done) "\u2713" else "\u25cb", style = J.bodyText.copy(color = if (part.done) J.accText else J.muted))
+                }
+                Text(part.text, style = J.bodyText.copy(color = if (part.done) J.muted else J.text), modifier = Modifier.weight(1f))
+                part.progress?.let { Text(it, style = J.monoCap) }
+            }
+            if (extra > 0) Text("$extra $extraWords", style = J.cap)
+        }
+        section("Done", d.done, d.unnamedDone, if (d.unnamedDone == 1) "more, in a finished list" else "more, in finished lists")
+        section("Left", d.left, d.unnamedLeft, "more, not on the phone")
+        if (d.elsewhere > 0) Text("${d.elsewhere} more ${if (d.elsewhere == 1) "goal" else "goals"} in other periods", style = J.cap)
+        if (d.done.isEmpty() && d.left.isEmpty() && d.unnamedDone + d.unnamedLeft + d.elsewhere == 0)
+            Text("No parts yet. Tie a todo to it with Todos, or put a goal under it.", style = J.sec)
+    }
+}
+
 @Composable
 private fun Bar(n: Int, m: Int, label: String) {
     val f = if (m > 0) (n.toFloat() / m).coerceIn(0f, 1f) else 0f
@@ -412,7 +455,7 @@ private fun Bar(n: Int, m: Int, label: String) {
         Box(Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(J.raise)) {
             Box(Modifier.fillMaxWidth(f).fillMaxHeight().clip(RoundedCornerShape(3.dp)).background(J.acc))
         }
-        Text(label, style = J.monoCap)
+        if (label.isNotEmpty()) Text(label, style = J.monoCap)
     }
 }
 
