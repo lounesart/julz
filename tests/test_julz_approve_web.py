@@ -1181,7 +1181,7 @@ class GoalsWebTest(DeviceBase):
         self.app.requests = base / "julz-mem" / "Inbox" / ".requests"
         self.app.requests.mkdir(parents=True)
         self.app.todos_file.parent.mkdir()
-        periods = [{"key": "2026-10-18", "label": "Today", "note": "goals/2026-10-18.md", "goals": []},
+        periods = [{"key": "2026-10", "label": "October", "note": "goals/2026-10.md", "goals": []},
                    {"key": "2026-W42", "label": "This week", "note": "goals/2026-W42.md", "goals": [
                        {"text": "Study 10 h (3/10)", "done": False, "progress": [3, 10], "goal": None, "linked": None,
                         "parent": None, "rollup": None, "parts": 0, "due": None,
@@ -1225,12 +1225,44 @@ class GoalsWebTest(DeviceBase):
         status, _, data = self.request("GET", "/api/goals")
         self.assertEqual((status, data), (200, self.snap))
 
+    def reshaped(self, periods):
+        import hashlib
+        snap = dict(self.snap, periods=periods)
+        snap["id"] = hashlib.sha256(json.dumps([periods, snap["tree"], snap["milestones"]], sort_keys=True,
+                                               ensure_ascii=False).encode()).hexdigest()
+        (self.app.todos_file.parent / "goals.json").write_text(json.dumps(snap))
+        return snap
+
+    def test_a_day_period_is_no_goals_at_all(self):
+        # A goals.json still holding Today (written before 223) or a forged one: nothing to show or sign (159)
+        day = {"key": "2026-10-18", "label": "Today", "note": "goals/2026-10-18.md", "goals": []}
+        for periods in ([day] + self.snap["periods"], [day]):
+            with self.subTest(n=len(periods)):
+                snap = self.reshaped(periods)
+                status, _, data = self.request("GET", "/api/goals")
+                self.assertEqual((status, data), (200, {"id": "", "periods": [], "tree": {}, "milestones": []}))
+                for pick in ({"do": "add", "period": "2026-10-18", "text": "Walk"},
+                             {"do": "tick", "period": "2026-10-18", "item": "Walk"},
+                             {"do": "add", "period": "2026-W42", "text": "Walk"}):
+                    status, _, _ = self.act([pick], sha=snap["id"])
+                    self.assertEqual(status, 404, pick)  # the snapshot is refused whole: reload
+        self.assertEqual(self.written(), [])
+
+    def test_at_most_three_periods(self):
+        p = self.snap["periods"]
+        self.reshaped(p + [{"key": "2026", "label": "2026", "note": "goals/2026.md", "goals": []}])
+        self.assertEqual(self.request("GET", "/api/goals")[2]["periods"], p + [{"key": "2026", "label": "2026",
+                                                                                "note": "goals/2026.md", "goals": []}])
+        self.reshaped(p + [{"key": "2026", "label": "2026", "note": "goals/2026.md", "goals": []},
+                           {"key": "2027", "label": "2027", "note": "goals/2027.md", "goals": []}])
+        self.assertEqual(self.request("GET", "/api/goals")[2]["periods"], [])
+
     def test_one_fingerprint_adds_and_counts(self):
-        status, data, begun = self.act([{"do": "add", "period": "2026-10-18", "text": "Walk 10k"},
+        status, data, begun = self.act([{"do": "add", "period": "2026-10", "text": "Walk 10k"},
                                         {"do": "bump", "period": "2026-W42", "item": "Study 10 h (3/10)"}])
         self.assertEqual(status, 200, data)
-        self.assertIn("add: 2026-10-18 Walk 10k #goal/walk-10k\n", begun["text"])
-        self.assertEqual(self.written(), [{"op": "goal", "note": "goals/2026-10-18.md", "item": "Walk 10k #goal/walk-10k"},
+        self.assertIn("add: 2026-10 Walk 10k #goal/walk-10k\n", begun["text"])
+        self.assertEqual(self.written(), [{"op": "goal", "note": "goals/2026-10.md", "item": "Walk 10k #goal/walk-10k"},
                                           {"op": "progress", "note": "goals/2026-W42.md", "item": "Study 10 h (3/10)"}])
 
     def test_target_and_link_through_the_approver(self):
@@ -1275,7 +1307,7 @@ class GoalsWebTest(DeviceBase):
         self.assertEqual(status, 400)
 
     def test_refused_and_stale(self):
-        status, _, _ = self.act([{"do": "add", "period": "2026-10-18", "text": "see https://evil.example"}])
+        status, _, _ = self.act([{"do": "add", "period": "2026-10", "text": "see https://evil.example"}])
         self.assertEqual(status, 400)
         status, _, _ = self.act([{"do": "bump", "period": "2026-W42", "item": "Study 10 h (3/10)"}], sha="d" * 64)
         self.assertEqual(status, 409)
@@ -1350,7 +1382,8 @@ class PastGoalsWebTest(DeviceBase):
         p = self.past["periods"][0]
         bad = [
             {"periods": [dict(p, goals=[dict(self.goal, done=True)])]},
-            {"periods": [p] * 5},
+            {"periods": [p] * 4},
+            {"periods": [dict(p, key="2026-10-09", note="goals/2026-10-09.md")]},  # a day is no period (159)
             {"periods": [dict(p, note="goals/2026-W40.md")]},
             {"periods": [dict(p, key="../x", note="goals/../x.md")]},
             {"periods": [dict(p, label="x" * 21)]},

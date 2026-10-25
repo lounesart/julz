@@ -29,12 +29,12 @@ class GoalBase(VaultBase):
 
 
 class PeriodsTest(unittest.TestCase):
-    def test_the_four_current_periods(self):
+    def test_the_three_current_periods(self):
+        # No day period: today's goal work is a todo tied with #goal/<id> (223, threat 159)
         self.assertEqual([(k, rel) for k, _, rel in vault_mod.goal_periods(TODAY)],
-                         [("2026-10-16", "goals/2026-10-16.md"), ("2026-W42", "goals/2026-W42.md"),
-                          ("2026-10", "goals/2026-10.md"), ("2026", "goals/2026.md")])
-        self.assertEqual([label for _, label, _ in vault_mod.goal_periods(TODAY)], ["Today", "This week", "October", "2026"])
-        self.assertEqual(vault_mod.goal_periods(date(2027, 1, 1))[1][0], "2026-W53")  # ISO week of the old year
+                         [("2026-W42", "goals/2026-W42.md"), ("2026-10", "goals/2026-10.md"), ("2026", "goals/2026.md")])
+        self.assertEqual([label for _, label, _ in vault_mod.goal_periods(TODAY)], ["This week", "October", "2026"])
+        self.assertEqual(vault_mod.goal_periods(date(2027, 1, 1))[0][0], "2026-W53")  # ISO week of the old year
 
 
 class GoalSnapshotTest(GoalBase):
@@ -45,12 +45,19 @@ class GoalSnapshotTest(GoalBase):
         self.assertEqual(exam["goal"], "net-plus-exam")
         self.assertEqual(exam["linked"], [1, 2])  # one of two tagged todos ticked
         self.assertTrue(g["Gym twice"]["done"])
-        self.assertEqual(self.period("2026-10-16")["goals"], [])  # no note yet: an empty card
+        self.assertEqual(self.period("2026-10")["goals"], [])  # no note yet: an empty card
         self.assertRegex(self.snap()["id"], r"^[0-9a-f]{64}$")
 
     def test_a_goal_that_may_not_travel_is_left_out(self):
         (self.goals / "2026.md").write_text("- [ ] see https://evil.example\n- [ ] a\u202eb\n- [ ] Learn C\n")
         self.assertEqual([x["text"] for x in self.period("2026")["goals"]], ["Learn C"])
+
+    def test_a_stray_day_note_is_no_period(self):
+        # A hand written goals/<date>.md never becomes a card or a period to sign (threat 159)
+        before = self.snap()
+        (self.goals / "2026-10-16.md").write_text("- [ ] Read the DNS chapter\n")
+        self.assertEqual(self.snap(), before)
+        self.assertNotIn("2026-10-16", [p["key"] for p in self.snap()["periods"]])
 
     def test_run_writes_the_goals_snapshot(self):
         self.run_vault()
@@ -60,22 +67,26 @@ class GoalSnapshotTest(GoalBase):
 class GoalTextTest(GoalBase):
     def test_add_tick_and_bump_from_the_snapshot(self):
         s = self.snap()
-        text = vault_mod.goal_text(s, [{"do": "add", "period": "2026-10-16", "text": "Read the DNS chapter"},
+        text = vault_mod.goal_text(s, [{"do": "add", "period": "2026-10", "text": "Read the DNS chapter"},
                                        {"do": "bump", "period": "2026-W42", "item": "Study 10 h (3/10)"},
                                        {"do": "tick", "period": "2026-W42", "item": "Pass the Net+ practice exam #goal/net-plus-exam"}])
         self.assertEqual(text, f"goal: {s['id']}\n"
-                               "add: 2026-10-16 Read the DNS chapter #goal/read-the-dns-chapter\n"
+                               "add: 2026-10 Read the DNS chapter #goal/read-the-dns-chapter\n"
                                "bump: 2026-W42 Study 10 h (3/10)\n"
                                "tick: 2026-W42 Pass the Net+ practice exam #goal/net-plus-exam\n")
         self.assertEqual(vault_mod.goal_requests(text, s), [
-            {"op": "goal", "note": "goals/2026-10-16.md", "item": "Read the DNS chapter #goal/read-the-dns-chapter"},
+            {"op": "goal", "note": "goals/2026-10.md", "item": "Read the DNS chapter #goal/read-the-dns-chapter"},
             {"op": "progress", "note": "goals/2026-W42.md", "item": "Study 10 h (3/10)"},
             {"op": "tick", "note": "goals/2026-W42.md", "item": "Pass the Net+ practice exam #goal/net-plus-exam"}])
 
     def test_refusals(self):
         s = self.snap()
         for name, picks in {
-            "unknown period": [{"do": "add", "period": "2025", "text": "x"}],
+            "unknown period": [{"do": "add", "period": "2026-W41", "text": "x"}],
+            "a day at add": [{"do": "add", "period": "2026-10-16", "text": "x"}],
+            "a day at tick": [{"do": "tick", "period": "2026-10-16", "item": "Study 10 h (3/10)"}],
+            "a day at link": [{"do": "link", "period": "2026-10-16", "item": "Pass the Net+ practice exam #goal/net-plus-exam",
+                               "list": "study", "todo": "unrelated"}],
             "a link": [{"do": "add", "period": "2026", "text": "see https://evil.example"}],
             "a tag of my own": [{"do": "add", "period": "2026", "text": "x #goal/other"}],
             "too long": [{"do": "add", "period": "2026", "text": "y" * 121}],
@@ -96,6 +107,14 @@ class GoalTextTest(GoalBase):
         with self.assertRaises(vault_mod.Refused):
             vault_mod.goal_text(self.snap(), [{"do": "bump", "period": "2026-W42", "item": "Gym (3/3)"}])
 
+    def test_requests_refuse_a_period_the_snapshot_has_not(self):
+        # A signed text names only current periods; a day or an old week is no goal line (159)
+        s = self.snap()
+        for line in ("add: 2026-10-16 Walk #goal/walk", "tick: 2026-W41 Gym twice", "add: 2026-10-16"):
+            with self.subTest(line=line):
+                with self.assertRaises(vault_mod.Refused):
+                    vault_mod.goal_requests(f"goal: {s['id']}\n{line}\n", s)
+
     def test_requests_refuse_another_snapshot(self):
         s = self.snap()
         text = vault_mod.goal_text(s, [{"do": "bump", "period": "2026-W42", "item": "Study 10 h (3/10)"}])
@@ -107,10 +126,10 @@ class GoalTextTest(GoalBase):
 class GoalOpsTest(GoalBase):
     def test_add_creates_the_period_note_once_then_appends(self):
         for item in ("Read the DNS chapter #goal/read-the-dns-chapter", "Walk #goal/walk"):
-            self.request({"op": "goal", "note": "goals/2026-10-16.md", "item": item})
+            self.request({"op": "goal", "note": "goals/2026-10.md", "item": item})
         self.assertEqual([r[1] for r in self.run_vault()], ["ok", "ok"])
-        text = (self.goals / "2026-10-16.md").read_text()
-        self.assertTrue(text.startswith("---\ntags:\n  - goal\nperiod: 2026-10-16\n---\n"))
+        text = (self.goals / "2026-10.md").read_text()
+        self.assertTrue(text.startswith("---\ntags:\n  - goal\nperiod: 2026-10\n---\n"))
         self.assertIn("- [ ] Read the DNS chapter #goal/read-the-dns-chapter\n- [ ] Walk #goal/walk\n", text)
 
     def test_progress_counts_one_up_on_the_exact_line(self):

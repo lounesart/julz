@@ -1003,23 +1003,21 @@ MAX_TREE_DEPTH = 6
 
 
 def goal_periods(today: date) -> list[tuple[str, str, str]]:
-    """(key, label, note) for today, this ISO week, this month and this year."""
+    """(key, label, note) for this ISO week, this month and this year. No day: today's goal work
+    is a todo tied with #goal/<id> (223, threat 159)."""
     iso = today.isocalendar()
     week = f"{iso[0]}-W{iso[1]:02d}"
-    return [(today.isoformat(), "Today", f"goals/{today.isoformat()}.md"),
-            (week, "This week", f"goals/{week}.md"),
+    return [(week, "This week", f"goals/{week}.md"),
             (today.strftime("%Y-%m"), today.strftime("%B"), f"goals/{today:%Y-%m}.md"),
             (str(today.year), str(today.year), f"goals/{today.year}.md")]
 
 
 def past_goal_periods(today: date) -> list[tuple[str, str, str]]:
     """(key, label, note) for the period just before each current one (126b(3), threat 157)."""
-    day = today - timedelta(days=1)
     iso = (today - timedelta(days=7)).isocalendar()
     week = f"{iso[0]}-W{iso[1]:02d}"
     month = today.replace(day=1) - timedelta(days=1)
-    return [(day.isoformat(), "Yesterday", f"goals/{day.isoformat()}.md"),
-            (week, "Last week", f"goals/{week}.md"),
+    return [(week, "Last week", f"goals/{week}.md"),
             (month.strftime("%Y-%m"), month.strftime("%B"), f"goals/{month:%Y-%m}.md"),
             (str(today.year - 1), str(today.year - 1), f"goals/{today.year - 1}.md")]
 
@@ -1033,7 +1031,7 @@ def _goal_plain(text: str, limit: int) -> bool:
 
 
 def goals_snapshot(vault: Path, today: date, periods_of=goal_periods) -> dict:
-    """The goals of the four current periods for the app (123), each with its own (n/m) and,
+    """The goals of the three current periods for the app (123), each with its own (n/m) and,
     when it has a #goal/<id> tag, the progress of todos carrying that tag, computed here."""
     linked: dict[str, list[int]] = {}
     linked_hours: dict[str, list[int]] = {}  # goal id -> [spent, estimate] minutes of its todos (129)

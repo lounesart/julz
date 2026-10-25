@@ -67,7 +67,7 @@ DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 INBOX_NOTE = re.compile(r"Inbox/\w[\w .-]{0,99}\.md")
 INBOX_FOLDER = re.compile(r"(daily|study)(/[a-z0-9][a-z0-9-]{0,39})?")
 INBOX_KEYS = {"name", "note", "sha256", "size", "modified", "preview"}
-GOAL_KEY = re.compile(r"\d{4}(-\d{2}(-\d{2})?|-W\d{2})?")
+GOAL_KEY = re.compile(r"\d{4}(-\d{2}|-W\d{2})?")  # a year, month or week; never a day (159)
 NOTE_KEYS = {"name", "note", "size", "modified", "text", "tags"}
 # The folders the notes browser may show (118): a root, then plain folder names, never ".."
 # One note by its id: the SHA-256 of its path, looked up in notes.json, never a path (148)
@@ -560,7 +560,7 @@ class App:
         return {"items": items}
 
     def goals(self) -> dict:
-        """The four current periods' goals for the app (123), checked again as if anyone could
+        """The three current periods' goals for the app (123), checked again as if anyone could
         have written them. Anything off is no goals at all."""
         empty = {"id": "", "periods": [], "tree": {}, "milestones": []}
         day = _day_ok
@@ -574,7 +574,7 @@ class App:
                 for k, v in tree.items()):
             return empty
         if not isinstance(data, dict) or set(data) != {"id", "periods", "tree", "milestones"} or not isinstance(data["id"], str) \
-                or not gate.HEX64.match(data["id"]) or not isinstance(data["periods"], list) or len(data["periods"]) > 4 \
+                or not gate.HEX64.match(data["id"]) or not isinstance(data["periods"], list) or len(data["periods"]) > 3 \
                 or not isinstance(data["milestones"], list) or len(data["milestones"]) > vault.MAX_MILESTONES:
             return empty
         for m in data["milestones"]:
@@ -599,7 +599,7 @@ class App:
         except (gate.SpecError, OSError, ValueError, UnicodeDecodeError):
             return empty
         if not isinstance(data, dict) or set(data) != {"periods"} or not isinstance(data["periods"], list) \
-                or len(data["periods"]) > 4:
+                or len(data["periods"]) > 3:
             return empty
         current = {k for k, _, _ in vault.goal_periods(self.today())}
         for p in data["periods"]:
