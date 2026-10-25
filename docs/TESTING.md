@@ -82,6 +82,12 @@ Expected results in brackets.
 9. Unlink (128): open a goal, Plan: Todos. [Linked todos first with a check.] Tap one, Apply
    (finger). [Struck through while picked; after it the tag is gone from the line in Obsidian
    and the bar drops it.]
+10. Periods (223): open Goals. [The year card, then pills This week and the month, then one
+   card; no Today anywhere, also not in the Add form's For row.] Tap the month pill, leave the
+   app, force stop it, open Goals again. [The month card is still the one shown.] Add a goal
+   for This week while the month shows. [The view moves to This week and shows Will add.]
+11. Ask Julz "set me a goal for today: read the DNS chapter". [She offers a todo in daily, a
+   card to sign, not a goal; signed, it shows on Todos.]
 
 ### Inbox and notes (116 to 119, 148)
 1. Inbox: Move a note, choose a folder in the sheet (finger). [The note leaves the Inbox; Notes
