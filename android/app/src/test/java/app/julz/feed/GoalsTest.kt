@@ -150,6 +150,13 @@ class GoalsTest {
         for (bad in listOf("2026-W4", "../-W43", "2026-W43x", "x2026")) assertNull(bad, GoalsData.kindOf(bad))
     }
 
+    // A card says its key only when the label does not already (223b: "2026  2026")
+    @Test fun theKeyShowsOnlyWhenItAddsSomething() {
+        assertFalse(GoalsData.keyShown(GoalPeriod("2026", "2026", emptyList())))
+        assertTrue(GoalsData.keyShown(GoalPeriod("2026-W43", "This week", emptyList())))
+        assertTrue(GoalsData.keyShown(GoalPeriod("2026-10", "October", emptyList())))
+    }
+
     @Test fun aGoalIsNeverOfferedAsItsOwnParentOrUnderItsParts() {
         val tree = mapOf("cpts" to null, "net" to "cpts", "dns" to "net", "linux" to "cpts")
         assertEquals(setOf("cpts", "linux"), GoalsData.parentsFor("net", tree))  // not itself, not its part dns

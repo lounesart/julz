@@ -63,7 +63,7 @@ class GoalsUi {
     var status by mutableStateOf<String?>(null)
     var open by mutableStateOf<String?>(null)       // the goal shown whole, by period and text
     val targets = mutableStateMapOf<String, String>()  // target numbers being typed, by goal
-    var addTo by mutableStateOf<String?>(null)      // the period the one Add form adds to (126b)
+    var adding by mutableStateOf<String?>(null)     // the period whose Add field is open (223b)
     var view by mutableStateOf<String?>(null)       // week or month under the year; null: the stored one (223)
     val active get() = status != null || picks.isNotEmpty()
 }
@@ -95,8 +95,6 @@ fun GoalsBar(origins: Origins, ui: GoalsUi) {
 @Composable
 fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>) {
     val picks = ui.picks
-    val drafts = ui.drafts
-    val busy = ui.busy
     LaunchedEffect(ui.reloads) {
         val reply = withContext(Dispatchers.IO) { try { ApproverApi.call(origins, ApproverApi.GOALS) } catch (e: Exception) { 0 to "" } }
         val parsed = if (reply.first == 200) GoalsData.parse(reply.second) else null
@@ -107,7 +105,6 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
         ui.past = (if (old.first == 200) GoalsData.parsePast(old.second) else null).orEmpty()
     }
     fun toggle(p: GoalPick) { if (p in picks) picks.remove(p) else if (picks.size < 20) picks.add(p) }
-    val colors = fieldColors()
     // The last pick of week or month stays on the phone, a UI value never sent or signed (223, threat 159)
     val context = LocalContext.current
     val stored = remember { context.getSharedPreferences("julz_ui", android.content.Context.MODE_PRIVATE).getString("goals_view", null) }
@@ -120,23 +117,6 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
     Column(verticalArrangement = Arrangement.spacedBy(J.sp3)) {
         val s = ui.snap
         val today = java.time.LocalDate.now()
-        // One Add form with the period as a choice, this week first; a field in every card
-        // filled the screen (126b)
-        if (ui.problem == null && s != null && s.periods.isNotEmpty()) {
-            val to = ui.addTo?.takeIf { k -> s.periods.any { it.key == k } } ?: s.periods[0].key
-            Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-                    OutlinedTextField(drafts["new"].orEmpty(), { if (it.length <= 120) drafts["new"] = it }, Modifier.weight(1f),
-                        label = { Text("Add a goal") }, singleLine = true, enabled = !busy, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText)
-                    Pill("Add", false, !busy && !drafts["new"].isNullOrBlank()) {
-                        drafts["new"]?.trim()?.takeIf { it.isNotEmpty() }?.let { toggle(GoalPick("add", to, it)); drafts["new"] = "" }
-                        // Its "Will add" line shows in its card, so that card comes into view
-                        GoalsData.kindOf(to)?.takeIf { it != "year" && it != view }?.let(::pickView)
-                    }
-                }
-                ActionRow("For") { for (p in s.periods) SmallPill(p.label, p.key == to, !busy) { ui.addTo = p.key } }
-            }
-        }
         // Milestones first: open goals with a date from any period, soonest first (126)
         if (ui.problem == null && s != null && s.milestones.isNotEmpty())
             Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
@@ -155,33 +135,51 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
     }
 }
 
-/** The year's card always, then pills for this week and the month and the one picked (223):
- *  four cards one under another read too long. */
+/** The year's card always, then one card for this week or the month, switched by a segmented
+ *  header on that card (223, 223b): four cards one under another read too long, and loose pills
+ *  between cards read as part of the card above. */
 @Composable
 internal fun GoalCards(s: GoalsSnapshot, view: String, pickView: (String) -> Unit, ui: GoalsUi,
                        todos: List<app.julz.feed.TodoList>, toggle: (GoalPick) -> Unit) {
     val (years, picked) = GoalsData.shown(s.periods, view).partition { GoalsData.kindOf(it.key) == "year" }
     for (p in years) PeriodCard(p, ui, todos, toggle)
-    val choices = s.periods.mapNotNull { p -> GoalsData.kindOf(p.key)?.takeIf { it != "year" }?.let { it to p.label } }
-    if (choices.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
-        for ((kind, label) in choices) SmallPill(label, kind == view, true) { pickView(kind) }
+    val choices = s.periods.filter { GoalsData.kindOf(it.key).let { k -> k == "week" || k == "month" } }
+    for (p in picked) PeriodCard(p, ui, todos, toggle) {
+        Segmented(choices.map { it.label }, choices.indexOf(p)) { i -> GoalsData.kindOf(choices[i].key)?.let(pickView) }
     }
-    for (p in picked) PeriodCard(p, ui, todos, toggle)
 }
 
+/** A period's goals and, at its end, its own Add: a quiet line that opens one field in this card
+ *  only, so the card is where the goal goes and no "For" choice is needed (223b, was one form, 126b). */
 @Composable
-private fun PeriodCard(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app.julz.feed.TodoList>, toggle: (GoalPick) -> Unit) {
+private fun PeriodCard(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app.julz.feed.TodoList>, toggle: (GoalPick) -> Unit,
+                       switcher: (@Composable () -> Unit)? = null) {
+    val busy = ui.busy
     Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(p.label, style = J.ts, modifier = Modifier.weight(1f))
+        if (switcher != null) {
+            switcher()
             Text(p.key, style = J.monoCap)
+        } else Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(p.label, style = J.ts, modifier = Modifier.weight(1f))
+            if (GoalsData.keyShown(p)) Text(p.key, style = J.monoCap)
         }
         if (p.goals.isEmpty()) Text("No goals yet.", style = J.sec)
         for (g in p.goals) GoalRow(p.key, g, ui, todos, toggle)
         for (a in ui.picks.filter { it.action == "add" && it.period == p.key }) Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Will add: ${a.value}", style = J.sec.copy(color = J.accText), modifier = Modifier.weight(1f))
-            Pill("Undo", false, !ui.busy) { ui.picks.remove(a) }
+            Pill("Undo", false, !busy) { ui.picks.remove(a) }
         }
+        val draft = "new:${p.key}"
+        if (ui.adding == p.key) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+            OutlinedTextField(ui.drafts[draft].orEmpty(), { if (it.length <= 120) ui.drafts[draft] = it }, Modifier.weight(1f),
+                label = { Text("Add a goal") }, singleLine = true, enabled = !busy, colors = fieldColors(), shape = fieldShape(oneLine = true),
+                textStyle = J.bodyText)
+            Pill("Add", false, !busy && !ui.drafts[draft].isNullOrBlank()) {
+                ui.drafts[draft]?.trim()?.takeIf { it.isNotEmpty() }?.let { toggle(GoalPick("add", p.key, it)) }
+                ui.drafts.remove(draft); ui.adding = null
+            }
+        } else Text("+ Add a goal", style = J.sec.copy(color = J.accText, fontWeight = FontWeight(600)),
+            modifier = Modifier.minimumInteractiveComponentSize().clickable(role = Role.Button, enabled = !busy) { ui.adding = p.key })
     }
 }
 

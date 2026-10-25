@@ -82,10 +82,11 @@ Expected results in brackets.
 9. Unlink (128): open a goal, Plan: Todos. [Linked todos first with a check.] Tap one, Apply
    (finger). [Struck through while picked; after it the tag is gone from the line in Obsidian
    and the bar drops it.]
-10. Periods (223): open Goals. [The year card, then pills This week and the month, then one
-   card; no Today anywhere, also not in the Add form's For row.] Tap the month pill, leave the
-   app, force stop it, open Goals again. [The month card is still the one shown.] Add a goal
-   for This week while the month shows. [The view moves to This week and shows Will add.]
+10. Periods (223, 223b): open Goals. [The 2026 card without its key twice, then one card with a
+   This week | month switch on top like Left/Done/Goals; no Today and no For row anywhere.] Switch
+   to the month, force stop the app, open Goals again. [The month is still on.] Tap + Add a goal
+   in the year card, type, Add. [The field closes, Will add shows in that card, Apply counts 1;
+   the other card has no field open.] Undo. With TalkBack, the switch says which is selected.
 11. Ask Julz "set me a goal for today: read the DNS chapter". [She offers a todo in daily, a
    card to sign, not a goal; signed, it shows on Todos.]
 

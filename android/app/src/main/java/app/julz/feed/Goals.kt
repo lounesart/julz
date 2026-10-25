@@ -44,6 +44,9 @@ object GoalsData {
      *  keeps it for itself and never sends it; read back as month, else week. */
     fun viewOf(stored: String?) = if (stored == "month") "month" else "week"
 
+    /** A card's key beside its label, only when it says something the label does not (223b). */
+    fun keyShown(p: GoalPeriod) = p.key != p.label
+
     /** The cards on the Goals tab: the year always, then the picked week or month. */
     fun shown(periods: List<GoalPeriod>, view: String) =
         periods.filter { kindOf(it.key) == "year" } + periods.filter { kindOf(it.key) == view }
