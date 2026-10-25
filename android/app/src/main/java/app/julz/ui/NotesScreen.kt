@@ -93,9 +93,10 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
                 fun find(target: String) = notes.firstOrNull { it.name.equals(target, true) }
                     ?: notes.firstOrNull { it.note.removeSuffix(".md").endsWith(target, true) }
                 Column(Modifier.fillMaxWidth().glass().padding(J.inset)) {
-                    MarkdownView(remember(n) { app.julz.feed.ObsidianMd.parse(text!!) }) { target ->
+                    // By name: a trailing lambda would bind to link, the web link handler
+                    MarkdownView(remember(n) { app.julz.feed.ObsidianMd.parse(text!!) }, opens = { target ->
                         find(target)?.let { x -> { note = x; folder = x.note.substringBeforeLast('/') } }
-                    }
+                    })
                 }
                 // Cut only at the 4000 character limit; size is in bytes, and Cyrillic takes two a letter
                 if (text!!.length >= 4000) Text("The rest is in Obsidian: only the first 4000 characters travel.",
