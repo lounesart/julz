@@ -7,7 +7,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class ChatSummary(val id: String, val title: String, val updated: Long)
-data class ChatMessage(val id: String, val user: Boolean, val text: String, val done: Boolean, val time: Long, val error: String?)
+/** Why an answer ended, from julz-chat (26k): the window filled, or the model stopped */
+enum class End { LENGTH, STOP }
+
+data class ChatMessage(val id: String, val user: Boolean, val text: String, val done: Boolean, val time: Long, val error: String?,
+                       val end: End? = null)
 data class ChatView(val id: String, val title: String, val busy: Boolean, val messages: List<ChatMessage>,
                     val archived: Boolean = false, val mode: String = "")
 data class Sent(val chat: String, val message: String)
@@ -68,8 +72,9 @@ object ChatApi {
         val user = when (m.opt("role")) { "user" -> true; "assistant" -> false; else -> return null }
         val id = (m.opt("id") as? String)?.takeIf { MESSAGE_ID.matches(it) } ?: return null
         val error = (m.opt("error") as? String)?.take(MAX_ERROR)
+        val end = when (m.opt("end")) { "length" -> End.LENGTH; "stop" -> End.STOP; else -> null }
         return ChatMessage(id, user, m.optString("text", "").take(MAX_ANSWER), m.optBoolean("done", true),
-            (m.opt("time") as? Number)?.toLong() ?: 0L, error)
+            (m.opt("time") as? Number)?.toLong() ?: 0L, error, end)
     }
 
     fun parseView(raw: String): ChatView? {
@@ -199,10 +204,11 @@ object ChatLogic {
     /** A finished answer whose last line is prose that ends in a letter, digit or comma: cut off
      *  (26k, a long chat ran out of context and stopped mid sentence, marked done). Lists,
      *  tables, headings and code end however they like. A whole answer of a few words ("OK",
-     *  "three") is a reply, not a cut: those were marked (found 24 Oct). The model's finish reason
-     *  would be the sure sign; julz-chat does not pass it on yet (26k) */
+     *  "three") is a reply, not a cut: those were marked (found 24 Oct). julz-chat's end word is the
+     *  sure sign and wins; the guess is for answers without one (older ones, an older laptop) */
     fun cutOff(m: ChatMessage): Boolean {
         if (m.user || !m.done) return false
+        m.end?.let { return it == End.LENGTH }
         val whole = m.text.trim()
         if ('\n' !in whole && whole.split(Regex("\\s+")).size < SHORT_WORDS) return false
         val last = m.text.trimEnd().substringAfterLast('\n').trim()

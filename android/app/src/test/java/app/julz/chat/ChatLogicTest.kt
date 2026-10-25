@@ -80,6 +80,15 @@ class ChatLogicTest {
         assertFalse(ChatLogic.cutOff(answer("", true)))
     }
 
+    /** 26k: julz-chat's end word is the sure sign; the punctuation guess only when it is unknown */
+    @Test fun theEndWordBeatsTheGuess() {
+        val cut = "Here is how a resolver works, step by step, and then"
+        assertTrue(ChatLogic.cutOff(answer("Done.", true).copy(end = End.LENGTH)))
+        assertFalse(ChatLogic.cutOff(answer(cut, true).copy(end = End.STOP)))
+        assertTrue(ChatLogic.cutOff(answer(cut, true)))  // unknown: still guessed
+        assertFalse(ChatLogic.cutOff(answer("Done.", false).copy(end = End.LENGTH)))  // running
+    }
+
     @Test fun aChatTitleIsNeverEmpty() {
         assertEquals("New chat", ChatLogic.title(""))
         assertEquals("New chat", ChatLogic.title("New Chat"))
