@@ -32,6 +32,11 @@ MODEL = "julz:latest"
 OLLAMA = "http://127.0.0.1:11434/api/chat"
 CASES = ROOT / "eval" / "tools.json"
 PASS_SHARE = 0.9  # PLAN's 27 of 30, kept as a share so cases can be added
+# Tools that change something when picked, with no click or with one; the rest only read
+WRITES = {"create_note", "append_note", "edit_note", "move_note", "delete_note", "tick_task",
+          "mark_reviewed", "resolve_feedback", "save_feedback", "pocket_drop", "delegate_to_claude"}
+READS = {"search_notes", "read_note", "list_notes", "due_notes", "show_folders", "recent_notes",
+         "show_todos", "done_tasks", "show_feedback", "claude_status"}
 
 # open_webui/config.py, DEFAULT_TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE, v0.11.4; its one trailing
 # space is \x20 so an editor cannot strip it
@@ -146,18 +151,30 @@ def picked(content):
     return [(c.get("name"), c.get("parameters") or {}) for c in calls if isinstance(c, dict)]
 
 
-def judge(case, calls, names):
+def first_pick(calls, names):
     """The first call to a tool that exists is the pick; an unknown name runs nothing."""
-    known = [(n, p) for n, p in calls if n in names]
+    return next(((n, p) for n, p in calls if n in names), None)
+
+
+def wanted(case):
     want = case["tool"]
-    if want is None:
-        return not known
-    if not known:
-        return False
-    name, params = known[0]
-    if name not in (want if isinstance(want, list) else [want]):
+    return [] if want is None else want if isinstance(want, list) else [want]
+
+
+def judge(case, calls, names):
+    pick = first_pick(calls, names)
+    if pick is None:
+        return case["tool"] is None
+    name, params = pick
+    if name not in wanted(case):
         return False
     return all(re.search(rx, str(params.get(arg, "")), re.I) for arg, rx in case.get("args", {}).items())
+
+
+def unasked_write(case, calls, names):
+    """A pick that changes something the case did not ask for: the miss that costs me."""
+    pick = first_pick(calls, names)
+    return pick is not None and pick[0] in WRITES and pick[0] not in wanted(case)
 
 
 def ask(body):
@@ -171,26 +188,31 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--only", default="", help="cases whose request contains this word")
+    ap.add_argument("--cases", type=Path, default=CASES,
+                    help="another case file, such as my real chats kept outside the repo")
     a = ap.parse_args()
     specs = all_specs()
     names = {s["name"] for s in specs}
-    cases = [c for c in json.loads(CASES.read_text()) if a.only.lower() in c["q"].lower()]
+    cases = [c for c in json.loads(a.cases.read_text(encoding="utf-8")) if a.only.lower() in c["q"].lower()]
     print(f"{len(specs)} tools, {len(payload(specs, '')['messages'][0]['content'])} characters of specs and template")
-    totals = []
+    totals, writes = [], []
     for run in range(1, a.runs + 1):
-        good = 0
+        good = bad_writes = 0
         for i, c in enumerate(cases, 1):
             out = ask(payload(specs, c["q"], c.get("history", ())))
             calls = picked(out)
             ok = judge(c, calls, names)
             good += ok
+            bad_writes += unasked_write(c, calls, names)
             if not ok:
                 got = ", ".join(f"{n}({json.dumps(p, ensure_ascii=False)})" for n, p in calls) or "no tool"
                 print(f"FAIL {run}.{i} want {c['tool']} got {got}: {c['q']}")
         totals.append(good)
-        print(f"run {run}: {good}/{len(cases)}")
+        writes.append(bad_writes)
+        print(f"run {run}: {good}/{len(cases)}, {bad_writes} unasked writes")
     mark = math.ceil(PASS_SHARE * len(cases))
-    print(f"\n{' '.join(map(str, totals))} of {len(cases)} with {MODEL} (pass mark {mark} every run)")
+    print(f"\n{' '.join(map(str, totals))} of {len(cases)} with {MODEL} (pass mark {mark} every run); "
+          f"unasked writes {' '.join(map(str, writes))}")
     sys.exit(0 if all(t >= mark for t in totals) else 1)
 
 
