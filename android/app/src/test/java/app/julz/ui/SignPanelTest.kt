@@ -64,7 +64,7 @@ class SignPanelTest {
 
     @Test
     fun panelStaysAboveTheSheet() {
-        // Measured 25 Oct on the Redmi (uiautomator): the sheet starts at y 1262 of 2712, the
+        // Measured 25 Oct on the phone (uiautomator): the sheet starts at y 1262 of 2712, the
         // status bar ends at 110, 520 dpi. The panel sits under the status bar plus its margin
         val px = 2712; val status = 110; val margin = (12 * 3.25).toInt()
         assertTrue(status + margin + SignPanel.ABOVE * px < 1262 - 40)
