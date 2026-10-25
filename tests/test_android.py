@@ -260,5 +260,22 @@ class TrojanSourceTest(unittest.TestCase):
             with self.subTest(f=str(f.relative_to(ROOT))):
                 self.assertIsNone(self.HIDDEN.search(f.read_text(encoding="utf-8", errors="replace")))
 
+
+class MarkdownViewCallTest(unittest.TestCase):
+    """MarkdownView(blocks, opens, link): a trailing lambda binds to link, the web link handler,
+    not opens. NotesScreen did that: every wikilink drew as "no such note" and web links became
+    tappable (119). Handlers go by name."""
+    TRAILING = re.compile(r"MarkdownView\(.*\)\s*\{\s*\w+\s*->")
+
+    def test_handlers_are_passed_by_name(self):
+        files = [p for p in (APP / "app" / "src" / "main").rglob("*.kt")]
+        calls = 0
+        for f in files:
+            for n, line in enumerate(f.read_text().splitlines(), 1):
+                if "MarkdownView(" in line and "fun MarkdownView" not in line:
+                    calls += 1
+                    self.assertIsNone(self.TRAILING.search(line), f"{f.name}:{n}")
+        self.assertGreater(calls, 2)
+
 if __name__ == "__main__":
     unittest.main()
