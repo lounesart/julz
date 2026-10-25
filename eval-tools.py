@@ -9,8 +9,11 @@ docstrings and arguments do. This script builds the same specs from tools/*.py (
 never imported, so no tool code runs), sends the same request to Ollama and reads the answer
 the way Open WebUI does. No tool is ever called: the pick is the measure.
 
-What it does not see: a task model, a tools prompt or model params set on Open WebUI's admin
-page (they would change the request), and my Open WebUI account's tool access.
+It skips Open WebUI, so it must copy what Open WebUI adds; checked on the admin pages 25 Oct:
+Task Model and the tools prompt are default, the julz model's Advanced Params all Default but
+think (Ollama) Off, sent here too. Check them again after an upgrade or a change there. Not
+copied: a System Prompt on the julz model's page (Open WebUI would add it to this call too) and
+my account's tool access.
 
 Usage: ./eval-tools.py [--runs N] [--only WORD]   (julz:latest; pass mark 90% every run)
 """
@@ -123,8 +126,11 @@ def payload(specs, query, history=()):
     recent = list(history)[-4:]
     past = "\n".join(f'{role.upper()}: """{text}"""' for role, text in recent)
     prompt = f"History:\n{past}\nQuery: {query}" if past else f"Query: {query}"
+    # think off: the julz model's Advanced Params in Open WebUI, which routers/ollama.py applies
+    # to the task call too (checked 25 Oct; everything else there is Default)
     return {"model": MODEL, "messages": [{"role": "system", "content": system},
-                                         {"role": "user", "content": prompt}], "stream": False}
+                                         {"role": "user", "content": prompt}],
+            "stream": False, "think": False}
 
 
 def picked(content):

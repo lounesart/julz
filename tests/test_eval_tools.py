@@ -120,6 +120,7 @@ class PayloadTest(unittest.TestCase):
         self.assertEqual(body["messages"][1], {"role": "user", "content": "Query: read my dhcp note"})
         self.assertEqual(len(body["messages"]), 2)
         self.assertIs(body["stream"], False)
+        self.assertIs(body["think"], False)  # the julz model's think (Ollama): Off
         self.assertEqual(body["model"], ev.MODEL)
 
     def test_history_keeps_the_last_four(self):
