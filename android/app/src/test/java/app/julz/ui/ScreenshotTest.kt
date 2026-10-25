@@ -1,5 +1,7 @@
 package app.julz.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -86,4 +88,18 @@ class ScreenshotTest {
         inbox(listOf(app.julz.feed.InboxPick("Inbox/subnetting.md", "move", "study/network-plus").key,
                      app.julz.feed.InboxPick("Inbox/ideas.md", "delete").key))
     }
+
+    // Learning mode's chip in both composer layouts (135): left of send when roomy, above the box
+    // when single line; on, the placeholder says she teaches
+    @Composable
+    private fun composer(roomy: Boolean, learn: Boolean, draft: String = "") =
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.bg),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
+            Composer(draft, {}, busy = false, sending = false, focus = null, roomy = roomy, learn = learn,
+                setLearn = {}, send = {}, stop = {})
+        }
+
+    @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
+    @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, learn = true) }
+    @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, learn = true, draft = "What is a /26?") }
 }

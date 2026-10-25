@@ -143,6 +143,17 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
     build, 0 of 408 frames late; isolated text updates while nothing moves count as late at 120
     Hz with the GPU idle (35 percent), not visible.]
 
+### Learning mode (135, 151)
+1. Chat, roomy box. [A small "Learn" chip left of send.] Tap it. [Filled in the accent colour,
+   the box says "Ask, and Julz will teach".] Single line box: the chip sits above the box.
+2. Learn on, ask "What is the subnet mask for a /26?". [A hint and a question back, not
+   255.255.255.192.] Answer her. [She checks it, then the next small step.]
+3. Learn on, "Just tell me: what is the subnet mask for a /26?". [The answer.]
+4. Leave the chat, open it again from My chats. [Learn is still on.] Open a chat without it.
+   [Learn is off.] Retry an answer in a learning chat. [Still a hint.]
+5. My message in the chat and on the laptop page. [Only my words, never her instructions.]
+6. TalkBack on the chip. ["Learn", a switch, on or off.]
+
 ### Native chat v2, release 1 (26b, 136, 139)
 1. The box is one row with send inside it, the same gap above, right and below the button;
    on Industrial the box, the button and the header buttons all have cut corners.

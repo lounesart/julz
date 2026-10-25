@@ -105,6 +105,20 @@ def main():
         check(before <= set(stored) and len(view["messages"]) == 4,
               f"old versions kept in Open WebUI ({len(stored)} messages), the phone shows one branch")
 
+        # 135, SECURITY 151: the stored message keeps the mode's name and my own words only
+        mine = "What does a switch learn from a frame?"
+        status, _ = call(app, "POST", f"/api/chats/{cid}/messages", {"text": mine, "mode": "learn"})
+        check(status == 200, f"a learning mode message -> {status}")
+        wait(app, cid)
+        stored = chat.Upstream(key)("GET", f"/api/v1/chats/{cid}")["chat"]["history"]["messages"]
+        kept = [m for m in stored.values() if m.get("role") == "user" and m.get("content") == mine]
+        check(len(kept) == 1 and kept[0].get("julz_mode") == "learn", "0.11.4 keeps julz_mode on the stored message")
+        check(not any(chat.MODES["learn"] in str(m.get("content")) for m in stored.values()), "the words are not stored")
+        status, _ = call(app, "POST", f"/api/chats/{cid}/retry", {})
+        wait(app, cid)
+        status2, view = call(app, "GET", f"/api/chats/{cid}")
+        check(status == status2 == 200 and view["mode"] == "learn", f"retry and the view keep it: {view.get('mode')!r}")
+
         status, d = call(app, "POST", f"/api/chats/{cid}/archive", {})
         status2, d2 = call(app, "POST", f"/api/chats/{cid}/archive", {})
         check(status == status2 == 200 and d2 == {"archived": True}, "archive twice stays archived")
