@@ -750,7 +750,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     val shape = if (roomy || lines > 1) J.rL else J.pill
     val field = @Composable { modifier: Modifier ->
         BasicTextField(value, { if (it.text.length <= ChatApi.MAX_TEXT) { value = it; setDraft(it.text) } },
-            modifier.focusRequester(requester), textStyle = J.bodyText, maxLines = 6,
+            modifier.focusRequester(requester).keepsKeyboard(), textStyle = J.bodyText, maxLines = 6,
             cursorBrush = SolidColor(J.acc), onTextLayout = { lines = it.lineCount },
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
@@ -761,7 +761,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             })
     }
     val sendButton = @Composable { modifier: Modifier ->
-        Box(modifier) {
+        Box(modifier.keepsKeyboard()) {  // typing goes on after Send (228)
             IconButton(if (busy) Icons.stop else Icons.send, if (busy) "Stop the answer" else "Send",
                 if (busy || can) J.acc else J.raise, if (busy || can) J.onAcc else J.faint, enabled = busy || can,
                 line = false) { if (busy) stopNow() else sendNow() }

@@ -275,13 +275,13 @@ fun FirstRun(message: String?, save: (String, String, String) -> String?) {
         Spacer(Modifier.height(J.sp6))
         Text("Julz", style = J.tl)
         Text("Connect to the push server on the laptop.", style = J.bodyText.copy(color = J.muted))
-        OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth(), label = { Text("Server") },
+        OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth().keepsKeyboard(), label = { Text("Server") },
             singleLine = true, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false))
-        OutlinedTextField(topic, { topic = it }, Modifier.fillMaxWidth(), label = { Text("Topic") },
+        OutlinedTextField(topic, { topic = it }, Modifier.fillMaxWidth().keepsKeyboard(), label = { Text("Topic") },
             singleLine = true, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = false))
-        OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth(), label = { Text("Phone token") },
+        OutlinedTextField(token, { token = it }, Modifier.fillMaxWidth().keepsKeyboard(), label = { Text("Phone token") },
             singleLine = true, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false))

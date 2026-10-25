@@ -82,7 +82,7 @@ fun FeedbackScreen(origins: Origins, draft: String, setDraft: (String) -> Unit, 
         }
         Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
             Segmented(listOf("Bug", "Idea", "Change"), kind) { if (!busy) setKind(it) }
-            OutlinedTextField(draft, { if (it.length <= FeedbackList.MAX_TEXT) setDraft(it) }, Modifier.fillMaxWidth(),
+            OutlinedTextField(draft, { if (it.length <= FeedbackList.MAX_TEXT) setDraft(it) }, Modifier.fillMaxWidth().keepsKeyboard(),
                 label = { Text("What should change?") }, minLines = 3, maxLines = 10, colors = colors, shape = fieldShape(oneLine = false), textStyle = J.bodyText,
                 enabled = !busy, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 supportingText = { Text("Plain words, no links · ${draft.length} / ${FeedbackList.MAX_TEXT}") })
