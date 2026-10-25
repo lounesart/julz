@@ -20,9 +20,11 @@ version: 0.1.0
 import json
 
 # Characters, not tokens: 2.75 characters a token measured on my docs, Russian runs denser.
-# 8000 keeps tool picking (about 3800 tokens of specs) under 8192 and leaves the answer about
-# 1500 tokens beside her prompt (about 2400) and retrieved notes.
-HISTORY_CHARS = 8_000
+# With num_ctx 16384 (25 Oct: 100% GPU, 4803 MiB beside bge-m3), 12000 leaves the answer about
+# 7000 tokens beside her prompt (about 2400) and retrieved notes, and keeps tool picking (about
+# 3800 tokens of specs) far under the window. Not more: once trimming starts the history is
+# prefilled again each turn (11k tokens took 16 s).
+HISTORY_CHARS = 12_000
 
 
 def size(m: dict) -> int:

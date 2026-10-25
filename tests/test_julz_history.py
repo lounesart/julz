@@ -159,5 +159,32 @@ class InletTest(unittest.TestCase):
             self.assertEqual(self.f.inlet(copy.deepcopy(b)), b)
 
 
+class WindowTest(unittest.TestCase):
+    # The budget and julz's num_ctx move together (26k, measured 25 Oct): her prompt 2160
+    # tokens, retrieved notes about 2000 at Top K 6, history at its densest 2.75 characters a
+    # token; what is left is the room for her answer.
+    SYSTEM_TOKENS, NOTES_TOKENS = 2400, 2000
+
+    def num_ctx(self):
+        for line in (ROOT / "modelfiles" / "julz.Modelfile").read_text().splitlines():
+            if line.startswith("PARAMETER num_ctx"):
+                return int(line.split()[2])
+
+    def test_build_script_agrees(self):
+        # build-models.sh writes the Modelfiles from its table; one left at 8192 undoes the other
+        rows = (ROOT / "build-models.sh").read_text().splitlines()
+        julz = next(r.split() for r in rows if r.strip().startswith('"julz '))
+        self.assertEqual(int(julz[2]), self.num_ctx())
+
+    def test_answer_has_room(self):
+        history = hist.HISTORY_CHARS / 2.75
+        self.assertGreaterEqual(self.num_ctx() - self.SYSTEM_TOKENS - self.NOTES_TOKENS - history, 6000)
+
+    def test_history_kept_short_enough_to_reprocess(self):
+        # Once trimming starts, the window slides and the whole history is prefilled again each
+        # turn: 11k tokens took 16 s, so the history stays near 4400 tokens
+        self.assertLessEqual(hist.HISTORY_CHARS / 2.75, 4500)
+
+
 if __name__ == "__main__":
     unittest.main()
