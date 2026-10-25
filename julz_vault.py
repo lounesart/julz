@@ -655,6 +655,10 @@ INLINE_TAG = re.compile(r"(?<!\S)#([\w/-]+)")
 CODE = re.compile(r"```.*?(```|\Z)|`[^`\n]*`", re.S)
 MAX_NOTE_TAGS = 10
 MAX_TAGS = 200
+# The most notes.json can hold: 300 notes of 4000 characters, 6 bytes a letter once JSON
+# escapes it, plus room for names and keys and the most tags (149). Its readers cap at this,
+# less and a full vault reads as empty (148) or cut (213)
+MAX_NOTES_JSON = MAX_NOTES_SHOWN * (MAX_NOTE_TEXT * 6 + 1000 + MAX_NOTE_TAGS * (MAX_TAG_CHARS * 6 + 4))
 
 
 def is_tag(t) -> bool:

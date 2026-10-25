@@ -66,11 +66,8 @@ NOTE_KEYS = {"name", "note", "size", "modified", "text", "tags"}
 # One note by its id: the SHA-256 of its path, looked up in notes.json, never a path (148)
 NOTE_BY_ID = re.compile(r"/api/notes/([0-9a-f]{64})")
 NOTES_FOLDER = re.compile(r"(study|daily|Inbox|Claude|Outbox|feedback)(/\w[\w .-]{0,99})*")
-# From the snapshot's own caps: 300 notes of 4000 characters, 6 bytes a letter once JSON
-# escapes it, plus room for names and keys and the most tags (149). Less, and a full vault
-# reads as empty (148)
-MAX_NOTES_BYTES = vault.MAX_NOTES_SHOWN * (vault.MAX_NOTE_TEXT * 6 + 1000
-                                           + vault.MAX_NOTE_TAGS * (vault.MAX_TAG_CHARS * 6 + 4))
+# From the snapshot's own caps (148, 149)
+MAX_NOTES_BYTES = vault.MAX_NOTES_JSON
 
 MAX_BODY = 16_000
 MAX_SHOWN = 3
