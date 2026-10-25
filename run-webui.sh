@@ -36,6 +36,9 @@ docker run --rm --user 0 --entrypoint chown -v open-webui:/app/backend/data \
 # Pocket: only the public key (ro) and the drop folder (rw) go in. The private key and
 # ~/Private are never mounted, so Julz can encrypt drops but never read them.
 # The vault's .git is covered by an empty tmpfs: its history holds notes I deleted (threat 69).
+# So is feedback/eval: her own wrong answers kept as test cases, never read back (threat 153).
+# Docker cannot make that mount point inside the read only bind, so it is made first, as me.
+sudo -u "$ME" mkdir -p "$USER_HOME/Documents/julz-mem/feedback/eval"
 docker run -d \
   --name open-webui \
   --network host \
@@ -59,6 +62,7 @@ docker run -d \
   -v "$USER_HOME/Documents/julz-mem":/data/julz-mem:ro \
   -v "$USER_HOME/Documents/julz-mem/Inbox":/data/julz-mem/Inbox:rw \
   --mount type=tmpfs,destination=/data/julz-mem/.git,tmpfs-size=1m,tmpfs-mode=0500 \
+  --mount type=tmpfs,destination=/data/julz-mem/feedback/eval,tmpfs-size=1m,tmpfs-mode=0500 \
   -v "$USER_HOME/.local/state/julz":/data/julz-log:rw \
   -v "$USER_HOME/.config/julz/pocket.pub.jwk":/data/pocket.pub.jwk:ro \
   -v "$USER_HOME/.pocket-drop":/data/pocket-drop:rw \
