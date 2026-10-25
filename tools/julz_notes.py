@@ -67,6 +67,8 @@ NUMBERS = re.compile(r"\s*\d+(?:\s*(?:,|and|&|\s)\s*\d+)*\s*")
 # My own message that solves feedback: "solved 1, 3", nothing else on its first line
 SOLVED = re.compile(r"\s*solved\s+(" + NUMBERS.pattern + ")", re.I)
 FEEDBACK_SHOWN = 120
+# Bad answers kept as eval cases (threat 153): her own wrong words, never read back to her
+KEPT_CASES = ("feedback", "eval")
 MAX_RECENT = 20
 ROLES = {"Inbox": "julz drafts, not reviewed", "study": "your study notes",
          "daily": "your real life notes", "Claude": "kept from Claude, read only",
@@ -355,6 +357,8 @@ class Tools:
             raise ValueError("path is outside the vault")
         if any(part.startswith(".") for part in target.relative_to(root).parts):
             raise ValueError("hidden files and folders are off limits")
+        if target.relative_to(root).parts[:2] == KEPT_CASES:
+            raise ValueError("kept bad answers are off limits")
         if target.suffix != ".md":
             raise ValueError("only .md notes")
         return target
@@ -362,7 +366,7 @@ class Tools:
     def _notes(self):
         for p in sorted(self.vault.rglob("*.md")):
             rel = p.relative_to(self.vault)
-            if any(part.startswith(".") for part in rel.parts):
+            if any(part.startswith(".") for part in rel.parts) or rel.parts[:2] == KEPT_CASES:
                 continue
             if p.is_symlink() or not p.resolve().is_relative_to(self.vault):
                 continue

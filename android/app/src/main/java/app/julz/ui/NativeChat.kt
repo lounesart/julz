@@ -70,6 +70,7 @@ import app.julz.chat.ChatMessage
 import app.julz.chat.ChatSummary
 import app.julz.chat.ChatView
 import app.julz.chat.End
+import app.julz.chat.KeepCase
 import app.julz.chat.SaveToNotes
 import app.julz.feed.ObsidianMd
 import kotlinx.coroutines.Dispatchers
@@ -317,6 +318,15 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         }
     }
 
+    /** A bad answer with my question into feedback/eval/ through the approver, signed (155, 153) */
+    fun keep(v: ChatView, m: ChatMessage) {
+        val q = ChatLogic.questionFor(v, m) ?: return
+        val body = KeepCase.body(q, m.text, ChatLogic.modeFor(v, m)) ?: return
+        signWithDevice(context, scope, origins, "case", body, "Keep as a bad answer", { signing = it }) { word, why ->
+            note = if (word != null) "Kept as a test case. It waits on the laptop for you." else why
+        }
+    }
+
     // The tab bar floats over the screen (22i) and the keyboard slides over the bar: the box sits
     // on whichever is higher, frame by frame, so it never drops before rising (127)
     Column(Modifier.fillMaxSize().windowInsetsPadding(
@@ -469,7 +479,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     val mode = sheet
     when {
         signed != null -> JulzSheet(onDismiss = {}) {
-            SheetTitle("Save to notes", "Your fingerprint signs the text below, nothing else.")
+            SheetTitle(if (signed.action == "case") "Keep as a bad answer" else "Save to notes",
+                "Your fingerprint signs the text below, nothing else.")
             Column(Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
                 Text(signed.text.trimEnd(), style = J.sec.copy(fontFamily = J.mono, color = J.text))
                 Text("You are signing exactly this.", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)))
@@ -494,6 +505,11 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
                     val saveable = held.done && held.text.isNotBlank()
                     MenuRow(Icons.folder, "Save to notes", "Into Inbox, signed with your fingerprint", enabled = saveable) {
                         menu = null; save(held)
+                    }
+                    val keepable = ChatLogic.questionFor(v, held) != null
+                    MenuRow(Icons.bad, "Bad answer", if (keepable) "Kept with your question as a test case, signed"
+                        else "Only a finished answer to a message of yours", enabled = keepable) {
+                        menu = null; keep(v, held)
                     }
                 }
             }

@@ -123,15 +123,16 @@ def hidden(text: str) -> bool:
 
 # ---------- paths ----------
 
-def check_path(note, roots) -> list[str]:
+def check_path(note, roots, case: bool = False) -> list[str]:
     """The parts of a note path julz may use: a root, at most one safe folder (study/ and
-    daily/ only), a safe name ending in .md."""
+    daily/ only, or exactly feedback/eval/ for a new eval case, 153), a safe name ending in .md."""
     if not isinstance(note, str) or not note or len(note) > 200 or "\x00" in note:
         raise Refused("bad note path")
     parts = note.split("/")
     if note.startswith("/") or parts[0] not in roots or len(parts) < 2:
         raise Refused("not in a folder julz may change")
-    if len(parts) > (3 if parts[0] in SUBFOLDERS_IN else 2):
+    deep = parts[0] in SUBFOLDERS_IN or (case and tuple(parts[:2]) == CASE_FOLDER)
+    if len(parts) > (3 if deep else 2):
         raise Refused("folder too deep")
     if any(not FOLDER.fullmatch(p) for p in parts[1:-1]):
         raise Refused("bad folder name")
@@ -159,9 +160,9 @@ def target_of(vault: Path, note, roots=(MINE,)) -> Path:
     return path
 
 
-def new_target(vault: Path, note, roots) -> Path:
+def new_target(vault: Path, note, roots, case: bool = False) -> Path:
     """A path for a new note: nothing there yet, every existing folder on the way real."""
-    parts = check_path(note, roots)
+    parts = check_path(note, roots, case)
     for i in range(1, len(parts)):
         p = vault.joinpath(*parts[:i])
         if os.path.lexists(p) and (os.path.islink(p) or not p.is_dir()):
@@ -320,7 +321,7 @@ def move(vault: Path, path: Path, req: dict) -> Path:
 
 def create(vault: Path, req: dict) -> Path:
     text = checked_text(req["text"], MAX_CREATE_CHARS)
-    dest = new_target(vault, req["note"], OPS["create"][1])
+    dest = new_target(vault, req["note"], OPS["create"][1], case=True)
     dest.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
     with os.fdopen(fd, "wb") as f:
@@ -862,6 +863,61 @@ def save_request(signed: str, now) -> dict:
     return {"op": "create", "note": f"Inbox/{day} {slug} {now:%H%M%S}.md",
             "text": f"---\ntags:\n  - chat\ncreated: {day}\nfrom: julz chat\n---\n\n"
                     f"# Saved from the chat {day}\n\n{body}\n"}
+
+
+# ---------- a bad answer kept as an eval case (threat 153) ----------
+
+CASE_HEAD = "case: bad answer"
+CASE_MODES = ("none", "learn", "unknown")
+CASE_FOLDER = ("feedback", "eval")
+MAX_CASE_Q = 1200
+MAX_CASE_A = 2400
+CASE_CUT = "(cut here: the whole text stays in the chat)"
+CASE_LEN = re.compile(r"[1-9][0-9]{0,4}")
+
+
+def _case_part(text, cap: int) -> str:
+    if not isinstance(text, str):
+        raise Refused("text is not a string")
+    body = defang(text).strip()
+    if len(body) > cap:
+        body = body[:cap].rstrip() + "\n\n" + CASE_CUT
+    return checked_text(body, cap + 2 + len(CASE_CUT))
+
+
+def case_text(question, answer, mode) -> str:
+    """The text I sign to keep a bad answer as an eval case (153): a fixed head, the mode as a
+    fixed word, my question with its length, her answer; each defanged, checked, cut at its cap."""
+    if mode not in CASE_MODES:
+        raise Refused("unknown mode")
+    q, a = _case_part(question, MAX_CASE_Q), _case_part(answer, MAX_CASE_A)
+    return f"{CASE_HEAD}\nmode: {mode}\nquestion: {len(q)}\n{q}\nanswer:\n{a}\n"
+
+
+def case_request(signed: str, now) -> dict:
+    """The vault's own create request for a signed case: a new note in feedback/eval/, never
+    synced into Julz's knowledge, named by the time and the question's first words."""
+    if not isinstance(signed, str) or not signed.endswith("\n"):
+        raise Refused("not a case text")
+    lines = signed.split("\n", 3)
+    if len(lines) != 4 or lines[0] != CASE_HEAD or not lines[1].startswith("mode: ") \
+            or lines[1][6:] not in CASE_MODES or not lines[2].startswith("question: ") \
+            or not CASE_LEN.fullmatch(lines[2][10:]):
+        raise Refused("not a case text")
+    mode, n, rest = lines[1][6:], int(lines[2][10:]), lines[3]
+    q, a = rest[:n], rest[n:]
+    if not a.startswith("\nanswer:\n"):
+        raise Refused("not a case text")
+    q = checked_text(q, MAX_CASE_Q + 2 + len(CASE_CUT))
+    a = checked_text(a[9:-1], MAX_CASE_A + 2 + len(CASE_CUT))
+    if q != q.strip() or a != a.strip():
+        raise Refused("not a case text")
+    slug = "-".join(re.findall(r"[a-z0-9]+", q.lower())[:5])[:40] or "case"
+    day = now.strftime("%Y-%m-%d")
+    return {"op": "create", "note": f"{'/'.join(CASE_FOLDER)}/{day} {slug} {now:%H%M%S}.md",
+            "text": f"---\ntags:\n  - eval-case\ncreated: {day}\nfrom: phone\nmode: {mode}\n"
+                    f"state: new\nquestion_chars: {n}\n---\n\n# Bad answer {day}\n\n"
+                    f"## Question\n\n{q}\n\n## Answer\n\n{a}\n"}
 
 
 def feedback_snapshot(vault: Path) -> dict:

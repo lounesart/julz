@@ -1,0 +1,13 @@
+[
+ {
+  "q": "show me how to list my firewall rules with nft, as a bash block",
+  "mode": "none",
+  "expect": [
+   "list ruleset"
+  ],
+  "avoid": [
+   "iptables -L"
+  ],
+  "case": "found in session 36, 25 Oct"
+ }
+]

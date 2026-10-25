@@ -914,6 +914,62 @@ class SaveWebTest(DeviceBase):
         self.assertEqual(self.written(), [])
 
 
+class CaseWebTest(DeviceBase):
+    """Threat 153: a bad answer kept as an eval case in feedback/eval/, signed with the device key."""
+
+    def setUp(self):
+        super().setUp()
+        base = Path(self.tmp.name)
+        self.app.requests = base / "julz-mem" / "Inbox" / ".requests"
+        self.app.requests.mkdir(parents=True)
+
+    def send(self, question, answer, mode="none", sha=None, finish_as=None):
+        if sha is None:
+            sha = gate.sha256(question + "\x00" + answer)
+        body = {"action": "case", "question": question, "answer": answer, "mode": mode,
+                "via": "device", "sha256": sha}
+        status, _, begun = self.post("/api/begin", body)
+        if status != 200:
+            return status, begun, None
+        status, _, data = self.post("/api/finish", {"action": finish_as or "case", "nonce": begun["nonce"],
+                                                    "signature": self.sign(begun)})
+        return status, data, begun
+
+    def written(self):
+        return [json.loads(p.read_text()) for p in self.app.requests.iterdir()]
+
+    def test_one_fingerprint_keeps_one_case(self):
+        status, data, begun = self.send("Which nft command lists rules?", "sudo iptables -L", "learn")
+        self.assertEqual(status, 200, data)
+        self.assertEqual(begun["text"], "case: bad answer\nmode: learn\nquestion: 30\n"
+                                        "Which nft command lists rules?\nanswer:\nsudo iptables -L\n")
+        req, = self.written()
+        self.assertEqual(req["op"], "create")
+        self.assertRegex(req["note"], r"^feedback/eval/\d{4}-\d{2}-\d{2} which-nft-command-lists-rules \d{6}\.md$")
+        log = [json.loads(l) for l in self.dirs.log.read_text().splitlines()]
+        self.assertIn("case-signed", [e["action"] for e in log])
+
+    def test_refused_at_begin(self):
+        for q, a, mode in (("", "a", "none"), ("q", "", "none"), ("a\u202eb", "a", "none"),
+                           (None, "a", "none"), ("q", 5, "none"), ("q", "a", "solve"), ("q", "a", None)):
+            with self.subTest(q=str(q)[:20], a=str(a)[:20], mode=mode):
+                status, _, _ = self.send(q, a, mode, sha="0" * 64)
+                self.assertEqual(status, 400)
+        self.assertEqual(self.written(), [])
+
+    def test_another_text_than_the_hash_is_refused(self):
+        for sha in (gate.sha256("q\x00something else"), gate.sha256("qa"), gate.sha256("a\x00q")):
+            status, _, _ = self.send("q", "a", sha=sha)
+            self.assertEqual(status, 409)
+        self.assertEqual(self.written(), [])
+
+    def test_a_case_signature_is_nothing_else(self):
+        for other in ("approve", "feedback", "save"):
+            status, _, _ = self.send("q", "a", finish_as=other)
+            self.assertEqual(status, 403, other)
+        self.assertEqual(self.written(), [])
+
+
 class IntegrationsWebTest(Base):
     """Threat 122: the Links tab's list, fixed words and numbers only."""
 

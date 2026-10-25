@@ -152,8 +152,40 @@ object SaveToNotes {
     }
 }
 
+/** A bad answer kept as an eval case through the approver, signed (SECURITY.md 153): my
+ *  question, her answer, the mode as a fixed word, and the hash of question NUL answer; the
+ *  laptop builds what I sign and cuts each again (1200 and 2400) with a line saying so. */
+object KeepCase {
+    const val MAX_Q = 1_300
+    const val MAX_A = 2_600
+    val MODES = setOf("none", "learn", "unknown")
+
+    fun body(question: String, answer: String, mode: String): org.json.JSONObject? {
+        val q = question.trim().take(MAX_Q)
+        val a = answer.trim().take(MAX_A)
+        if (q.isEmpty() || a.isEmpty() || mode !in MODES) return null
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest("$q\u0000$a".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return org.json.JSONObject().put("action", "case").put("question", q).put("answer", a)
+            .put("mode", mode).put("sha256", sha).put("via", "device")
+    }
+}
+
 /** The screen's rules, without the screen. */
 object ChatLogic {
+    /** My message that a finished answer replies to, for an eval case (155); null when there
+     *  is none, as for an answer with no question of mine before it. */
+    fun questionFor(v: ChatView, m: ChatMessage): String? {
+        val i = v.messages.indexOf(m)
+        if (i < 1 || m.user || !m.done || m.text.isBlank()) return null
+        return v.messages[i - 1].takeIf { it.user && it.text.isNotBlank() }?.text
+    }
+
+    /** The mode an answer ran in, as the case states it: the view knows only the current
+     *  branch's, so an older answer says unknown and I name it at the desk. */
+    fun modeFor(v: ChatView, m: ChatMessage): String =
+        if (v.messages.lastOrNull() != m) "unknown" else if (v.mode == "") "none" else v.mode
+
     /** How long to wait before the next poll of /last; null when nothing is running. Fast at
      *  first, so words appear as they come; slower for a long answer. */
     fun pollDelay(busy: Boolean, sinceSendMs: Long): Long? = when {

@@ -65,6 +65,51 @@ class ChatApiTest {
         assertNull(SaveToNotes.body("   "))
     }
 
+    /** A bad answer goes to the approver, signed (153): both texts, the mode, the hash of q NUL a. */
+    @Test fun aCaseBodyCarriesBothTextsTheModeAndTheirHash() {
+        val b = KeepCase.body("  Which nft command? ", "sudo iptables -L\n", "learn")!!
+        assertEquals("case", b.getString("action"))
+        assertEquals("device", b.getString("via"))
+        assertEquals("Which nft command?", b.getString("question"))
+        assertEquals("sudo iptables -L", b.getString("answer"))
+        assertEquals("learn", b.getString("mode"))
+        val sha = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("Which nft command?\u0000sudo iptables -L".toByteArray()).joinToString("") { "%02x".format(it) }
+        assertEquals(sha, b.getString("sha256"))
+        val long = KeepCase.body("q".repeat(KeepCase.MAX_Q + 9), "a".repeat(KeepCase.MAX_A + 9), "none")!!
+        assertEquals(KeepCase.MAX_Q, long.getString("question").length)
+        assertEquals(KeepCase.MAX_A, long.getString("answer").length)
+        assertNull(KeepCase.body(" ", "a", "none"))
+        assertNull(KeepCase.body("q", " ", "none"))
+        assertNull(KeepCase.body("q", "a", "solve"))
+        assertNull(KeepCase.body("q", "a", ""))
+    }
+
+    /** The question is my message just before a finished answer; the mode only for the last one. */
+    @Test fun aCaseTakesMyQuestionAndTheModeItKnows() {
+        val q = ChatMessage("1", true, "Which nft command?", true, 0, null)
+        val a = ChatMessage("2", false, "iptables", true, 0, null)
+        val q2 = ChatMessage("3", true, "And IPv6?", true, 0, null)
+        val a2 = ChatMessage("4", false, "ip6tables", true, 0, null)
+        val v = ChatView("c", "t", false, listOf(q, a, q2, a2), mode = "learn")
+        assertEquals("Which nft command?", ChatLogic.questionFor(v, a))
+        assertEquals("And IPv6?", ChatLogic.questionFor(v, a2))
+        assertNull(ChatLogic.questionFor(v, q))
+        assertNull(ChatLogic.questionFor(v, a2.copy(id = "9")))  // not in the view
+        val running = a2.copy(done = false)
+        assertNull(ChatLogic.questionFor(v.copy(messages = listOf(q, a, q2, running)), running))
+        val blank = a2.copy(text = " ")
+        assertNull(ChatLogic.questionFor(v.copy(messages = listOf(q, a, q2, blank)), blank))
+        // Two answers in a row: the second has no question of mine before it
+        assertNull(ChatLogic.questionFor(v.copy(messages = listOf(q, a, a2)), a2))
+        assertNull(ChatLogic.questionFor(v.copy(messages = listOf(a)), a))
+        // My message after another of mine is not an answer to keep
+        assertNull(ChatLogic.questionFor(v.copy(messages = listOf(q, q2)), q2))
+        assertEquals("learn", ChatLogic.modeFor(v, a2))
+        assertEquals("unknown", ChatLogic.modeFor(v, a))
+        assertEquals("none", ChatLogic.modeFor(v.copy(mode = ""), a2))
+    }
+
     @Test fun listPages() {
         assertEquals("/api/chats?page=1", ChatApi.list(1))
         assertEquals("/api/chats?page=20", ChatApi.list(20))
