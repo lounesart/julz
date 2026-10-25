@@ -1,7 +1,11 @@
 package app.julz.ui
 
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
@@ -42,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -177,7 +182,8 @@ fun IconButton(icon: ImageVector, description: String?, fill: Color, tint: Color
 }
 
 /** Tabs in a pill. With [position] (a pager's page plus its offset) the light slides along with a
- *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. */
+ *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. Without one it
+ *  glides to a tapped option as the tab bar does (320 ms, J.ease), and jumps with animations off. */
 @Composable
 fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = null, modifier: Modifier = Modifier,
               onSelect: (Int) -> Unit) {
@@ -185,15 +191,18 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
     val labelStyle = J.sec.copy(fontWeight = J.ts.fontWeight)
     val pillShape = J.pill
     val textSize = rememberRowSize(options, labelStyle, (maxWidth - J.sp1 * (options.size + 1)) / options.size - J.sp1 * 2)
+    val glide by androidx.compose.animation.core.animateFloatAsState(selected.toFloat(),
+        if (stillMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(320, easing = J.ease),
+        label = "segment")
+    val at = position ?: { glide }
     Row(Modifier.fillMaxWidth().glass(J.pill).padding(J.sp1).drawBehind {
-            if (position == null) return@drawBehind
             val gap = J.sp1.toPx()
             val w = (size.width - gap * (options.size - 1)) / options.size
             val stroke = 1.dp.toPx()
             // Outlined: a 1 dp accent line, drawn inside the light's bounds
             // The light in the pill token's own shape, round or cut (22d: it stayed round with Industrial)
             val light = androidx.compose.ui.geometry.Size(w, size.height)
-            translate(left = (w + gap) * position()) {
+            translate(left = (w + gap) * at()) {
                 val o = pillShape.createOutline(light, layoutDirection, this)
                 if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
                 else drawOutline(o, J.text)
@@ -202,12 +211,12 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
         options.forEachIndexed { i, label ->
             val on = i == selected
+            // The words light up as the light passes halfway, not on the first frame (223c)
+            val lit = if (position == null) kotlin.math.abs(glide - i) < 0.5f else on
             Box(Modifier.weight(1f).heightIn(min = J.tap).clip(J.pill)
-                .background(if (on && position == null && !J.outline) J.text else Color.Transparent)
-                .border(1.dp, if (on && position == null && J.outline) J.acc else Color.Transparent, J.pill)
                 .clickable(role = Role.Tab) { onSelect(i) }
                 .semantics { this.selected = on }, contentAlignment = Alignment.Center) {  // TalkBack says which is on (223b)
-                Text(label, style = labelStyle.copy(color = if (!on) J.muted else if (J.outline) J.accText else J.bg,
+                Text(label, style = labelStyle.copy(color = if (!lit) J.muted else if (J.outline) J.accText else J.bg,
                     fontSize = textSize), maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1))
             }
         }
@@ -278,6 +287,44 @@ fun fieldColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
     disabledContainerColor = J.surface, errorContainerColor = J.surface,
     focusedTextColor = J.text, unfocusedTextColor = J.text, disabledTextColor = J.muted,
     focusedLabelColor = J.accText, unfocusedLabelColor = J.muted, disabledLabelColor = J.faint, cursorColor = J.acc)
+
+/** A ghost row at the end of a list that turns into a field in place (223c; Trello's + Add a
+ *  card, Things' New To-Do): shaped like the list's rows, a + and the label; tapped, a focused
+ *  field with Add. Enter adds and stays open for the next one; an empty field closes when it
+ *  loses focus or on Back. The draft is the caller's, so it outlives a tab switch and reopens. */
+@Composable
+fun InlineAdd(label: String, draft: String, onDraft: (String) -> Unit, enabled: Boolean, max: Int = 120,
+              onAdd: (String) -> Unit) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(draft.isNotEmpty()) }
+    if (draft.isNotEmpty()) open = true
+    fun add() { draft.trim().takeIf { it.isNotEmpty() }?.let { onAdd(it); onDraft("") } }
+    if (!open) {
+        Row(Modifier.fillMaxWidth().heightIn(min = J.tap).clip(J.rM).border(1.dp, J.line, J.rM)
+            .clickable(role = Role.Button, enabled = enabled) { open = true }.padding(horizontal = J.sp3),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+            Text("+", style = J.sec.copy(color = J.accText, fontWeight = androidx.compose.ui.text.font.FontWeight(600)), modifier = Modifier.clearAndSetSemantics { })  // TalkBack: just the label
+            Text(label, style = J.sec.copy(color = J.muted))
+        }
+        return
+    }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var focused by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = draft.isBlank()) { open = false }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+        androidx.compose.material3.OutlinedTextField(draft, { if (it.length <= max) onDraft(it) },
+            Modifier.weight(1f).focusRequester(focus).onFocusChanged {
+                if (focused && !it.isFocused && draft.isBlank()) open = false
+                focused = it.isFocused
+            },
+            label = { Text(label) }, singleLine = true, enabled = enabled, colors = fieldColors(), shape = fieldShape(oneLine = true),
+            textStyle = J.bodyText,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { add() }))
+        Pill("Add", false, enabled && draft.isNotBlank()) { add() }
+    }
+    LaunchedEffect(Unit) { if (draft.isEmpty()) focus.requestFocus() }
+}
 
 /** Every screen's header (22f): back, the title, a line under it, one action. One title size;
  *  the buttons line up with the title's first line however many lines the words take (at 200
