@@ -5,14 +5,17 @@ A question passes when every expected keyword appears in the answer (case insens
 Exits 1 below the pass mark, so it can gate changes to the model, prompt or embeddings.
 A case with "tries" is asked that many times and passes only when every try has the
 keywords and cites the source: the model rewrites the question before retrieval, so one try
-of a cross language case is a coin flip (129).
+of a cross language case is a coin flip (129). A case with "forbid" fails a try whose answer
+holds any of those words, in every mode: a wrong fact beside the right note (118).
 
 --claude asks eval/recall-claude.json with only julz-claude attached (notes Claude wrote and
 I kept, PLAN-keep.md). There the hard pass is retrieval: the answer must draw on the right
 Claude__ file, every case. Keywords and how often julz says "Claude wrote" are measured and
 printed, not gated: the 4B model drops rules, and code cannot make it say the words
 (SECURITY.md threat 61).
-Usage: ./eval-recall.py [model] [--claude]   (default model: julz:latest)
+--chat attaches no collection, as julz-chat sends my messages: then only what the model itself
+has attached in Open WebUI (or her tools) can bring the note (118).
+Usage: ./eval-recall.py [model] [--claude] [--chat]   (default model: julz:latest)
 """
 import json
 import sys
@@ -39,12 +42,10 @@ def says_claude_wrote(answer: str) -> bool:
 
 
 def ask(key, model, kb, q):
-    resp = api(key, "POST", "/api/chat/completions", {
-        "model": model,
-        "messages": [{"role": "user", "content": q}],
-        "files": [{"type": "collection", "id": kb["id"]}],
-        "stream": False,
-    }, timeout=300)
+    body = {"model": model, "messages": [{"role": "user", "content": q}], "stream": False}
+    if kb is not None:  # None is --chat: what the model has attached, as julz-chat sends it
+        body["files"] = [{"type": "collection", "id": kb["id"]}]
+    resp = api(key, "POST", "/api/chat/completions", body, timeout=300)
     return resp["choices"][0]["message"]["content"], resp
 
 
@@ -56,18 +57,22 @@ def run_case(case, ask, claude=False):
     for _ in range(tries):
         answer, resp = ask(case["q"])
         missing = [k for k in case["expect"] if k.lower() not in answer.lower()]
+        # A wrong fact fails in every mode, --claude too (118: CPTS called PenTest+)
+        said = [k for k in case.get("forbid", []) if k.lower() in answer.lower()]
         cited = any(case["source"] in n for n in source_names(resp))
         cited_count += cited
         if claude or tries > 1:
             ok = cited and (claude or not missing)
         else:
             ok = not missing
+        ok = ok and not said
         good += ok
         if shown is None or (shown[0] and not ok):
-            shown = (ok, missing, answer)
-    _, missing, answer = shown
+            shown = (ok, missing, said, answer)
+    _, missing, said, answer = shown
     return {"ok": good == tries, "good": good, "tries": tries, "cited": cited_count == tries,
-            "missing": missing, "answer": answer, "credited": says_claude_wrote(answer)}
+            "missing": missing, "said": said, "answer": answer,
+            "credited": says_claude_wrote(answer)}
 
 
 def main():
@@ -80,6 +85,8 @@ def main():
     kb = find_kb(key, name)
     if kb is None:
         sys.exit(f"knowledge base {name} not found, run ./sync-knowledge.py first")
+    if "--chat" in sys.argv[1:]:
+        kb = None
 
     cases = json.loads((CLAUDE_EVAL_FILE if claude else EVAL_FILE).read_text())
     passed = keywords = credited = 0
@@ -94,7 +101,7 @@ def main():
         print(f"{'PASS' if r['ok'] else 'FAIL'} {i:2}{rate} cited={'yes' if cited else 'no '}"
               f"{extra} {case['q']}")
         if not r["ok"] or missing:
-            print(f"        missing {missing}; answer: {answer[:200]!r}")
+            print(f"        missing {missing}; said {r['said']}; answer: {answer[:200]!r}")
 
     n = len(cases)
     if claude:

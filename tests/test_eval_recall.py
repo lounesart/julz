@@ -73,6 +73,48 @@ class JudgeTest(unittest.TestCase):
         ask, _ = asker(reply("drop", "other.md"))
         self.assertFalse(recall.run_case(self.case(), ask, claude=True)["ok"])
 
+    def test_forbid_fails_a_try_that_says_the_wrong_thing(self):
+        # 118: right note, right word, and a wrong fact beside it (CPTS called PenTest+)
+        ask, _ = asker(reply("Policy drop, as in PenTest+.", NOTE))
+        result = recall.run_case(self.case(forbid=["pentest+"]), ask)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["said"], ["pentest+"])
+        ask, _ = asker(reply("Policy drop.", NOTE))
+        result = recall.run_case(self.case(forbid=["pentest+"]), ask)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["said"], [])
+
+    def test_forbid_gates_claude_mode_too(self):
+        ask, _ = asker(reply("nothing useful, PenTest+", NOTE))
+        self.assertFalse(recall.run_case(self.case(forbid=["PenTest+"]), ask, claude=True)["ok"])
+
+    def test_forbid_fails_one_bad_try_of_several(self):
+        ask, _ = asker(*[reply("drop", NOTE)] * 2, reply("drop PenTest+", NOTE))
+        result = recall.run_case(self.case(tries=3, forbid=["PenTest+"]), ask)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["good"], 2)
+        self.assertEqual(result["said"], ["PenTest+"])
+
+    def test_cpts_cases_cite_the_cpts_notes_and_forbid_pentest(self):
+        cases = json.loads(recall.CLAUDE_EVAL_FILE.read_text())
+        cpts = [c for c in cases if c["source"].startswith("Claude__cpts__")]
+        self.assertGreaterEqual(len(cpts), 4)
+        self.assertTrue(all("PenTest+" in c.get("forbid", []) for c in cpts))
+
+    def test_chat_mode_attaches_no_collection_as_julz_chat(self):
+        # 118: julz-chat sends no files, so --chat asks the way the app does
+        sent = []
+        real = recall.api
+        recall.api = lambda key, method, path, body, timeout: (
+            sent.append(body) or {"choices": [{"message": {"content": "x"}}]})
+        try:
+            recall.ask("k", "julz:latest", {"id": "kb1"}, "q?")
+            recall.ask("k", "julz:latest", None, "q?")
+        finally:
+            recall.api = real
+        self.assertEqual(sent[0]["files"], [{"type": "collection", "id": "kb1"}])
+        self.assertNotIn("files", sent[1])
+
     def test_cross_language_cases_are_asked_several_times(self):
         cases = json.loads(recall.EVAL_FILE.read_text())
         ru_note = [c for c in cases if c["source"] == NOTE]
