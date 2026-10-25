@@ -55,7 +55,7 @@ import app.julz.feed.Kind
 import app.julz.feed.Notice
 import app.julz.settings.ConfigStore
 
-private enum class Screen { FEED, TOOLS, SETTINGS, LICENSES, A11Y, LOOK, TODOS, CHAT, LOGS, APPROVE, ENROLL, INBOX, NOTES, FEEDBACK }
+internal enum class Screen { FEED, TOOLS, SETTINGS, LICENSES, A11Y, LOOK, TODOS, CHAT, LOGS, APPROVE, ENROLL, INBOX, NOTES, FEEDBACK }
 
 /** The whole app. [version] changes whenever the activity resumes, so the feed is read again. */
 @Composable
@@ -206,11 +206,7 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
         // edge and left a block of background around the capsule (found 19 Oct). It stays put
         // while the keyboard is up and the keyboard slides over it: hiding it in one step while
         // the keyboard moved frame by frame made the chat jump about 400 px (127, measured 24 Oct)
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        Row(Modifier.fillMaxSize()) {
-          if (wide) bar(true)
-          Box(Modifier.weight(1f)) {
-            Box(Modifier.fillMaxSize()) {
+        Shell(wide, bar) {
                 val d = detail
                 when {
                     d != null -> DetailScreen(d, back = { detail = null },
@@ -264,26 +260,37 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
                         feedback = { nav = nav.open(Screen.FEEDBACK) }, cleared = cleared,
                         setCleared = { cleared = it; ReadState.save(context, it, "cleared") })
                 }
-            }
-            if (!wide) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-                // Content slides out through a short fade, then the band the bar sits on is solid
-                // page colour: the glass showed the list through its icons (found 19 Oct). The
-                // page is this colour at the bottom, so the band has no seam
-                Box(Modifier.fillMaxWidth().height(J.sp6).background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(Color.Transparent, J.bg))))
-                // Under the keyboard the bar is out of sight, so TalkBack must not reach it either;
-                // only its semantics go, its place stays (a layout step made the chat jump, 127)
-                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-                val covered = androidx.compose.foundation.layout.WindowInsets.isImeVisible
-                Box(Modifier.fillMaxWidth().background(J.bg)
-                    .then(if (covered) Modifier.clearAndSetSemantics { } else Modifier)
-                    .onSizeChanged { J.barSpace = with(density) { it.height.toDp() } }) { bar(false) }
-            }
-          }
         }
         SheetLayer(sheets)
     }
 }
+}
+
+/** The screen with the tab bar over it (22i), or the rail beside it in landscape (22d). Its own
+ *  function so a screenshot test draws the real bar over a screen (184, 126). */
+@Composable
+internal fun Shell(wide: Boolean, bar: @Composable (Boolean) -> Unit, content: @Composable () -> Unit) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    Row(Modifier.fillMaxSize()) {
+      if (wide) bar(true)
+      Box(Modifier.weight(1f)) {
+        Box(Modifier.fillMaxSize()) { content() }
+        if (!wide) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            // Content slides out through a short fade, then the band the bar sits on is solid
+            // page colour: the glass showed the list through its icons (found 19 Oct). The
+            // page is this colour at the bottom, so the band has no seam
+            Box(Modifier.fillMaxWidth().height(J.sp6).background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(Color.Transparent, J.bg))))
+            // Under the keyboard the bar is out of sight, so TalkBack must not reach it either;
+            // only its semantics go, its place stays (a layout step made the chat jump, 127)
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            val covered = androidx.compose.foundation.layout.WindowInsets.isImeVisible
+            Box(Modifier.fillMaxWidth().background(J.bg)
+                .then(if (covered) Modifier.clearAndSetSemantics { } else Modifier)
+                .onSizeChanged { J.barSpace = with(density) { it.height.toDp() } }) { bar(false) }
+        }
+      }
+    }
 }
 
 private fun licenseText(context: Context): String =
@@ -292,7 +299,7 @@ private fun licenseText(context: Context): String =
     }
 
 @Composable
-private fun TabBar(section: Screen, waiting: Int, vertical: Boolean, feed: () -> Unit, chat: () -> Unit,
+internal fun TabBar(section: Screen, waiting: Int, vertical: Boolean, feed: () -> Unit, chat: () -> Unit,
                    approve: () -> Unit, tools: () -> Unit, settings: () -> Unit) {
     // 22i, asked 19 Oct ("too rigid, out of the theme"): a floating glass capsule like the app's
     // own switches, the active tab under the same light as Now, Messages, History (filled, or an

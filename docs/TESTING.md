@@ -8,12 +8,15 @@ is marked (finger): only I do those.
 
     cd ~/Projects/products/julz
     PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests     # all OK
-    (cd android && ./gradlew --offline -q testDebugUnitTest; ./gradlew --stop)
+    (cd android && ./gradlew --offline -q verifyPaparazziDebug; ./gradlew --stop)  # unit tests and screenshots
     ./deploy.py --dev && systemctl --user list-units 'julz*' --state=failed   # none
 
 - Every security check gets a mutation run on a copy (CLAUDE.md): a control copy must pass
   first, then each break must fail a test. A survivor is a gap until it is explained.
 - The Trojan Source test refuses hidden characters in code and tests.
+- Screenshots (184): a screen that changes on purpose gets its golden recorded again with
+  `./gradlew --offline recordPaparazziDebug`, and the new PNG is looked at before it is committed.
+  A golden that changed without a reason is the regression the test is there for.
 
 ## Phone checklist
 
