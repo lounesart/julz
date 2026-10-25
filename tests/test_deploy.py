@@ -162,13 +162,13 @@ class DeployTest(unittest.TestCase):
         self.commit("run-webui.sh", "docker run\n")
         self.git("tag", "v2")
         out = self.deploy()
-        self.assertIn("paste tools/julz_notes.py", out)
+        self.assertIn("tools/julz_notes.py changed: ./deploy.py --tools", out)
         self.assertIn("sudo", out)
         self.assertIn("run-webui.sh", out)
         self.commit("run.py", "print('v3')\n")
         self.git("tag", "v3")
         out = self.deploy()
-        self.assertNotIn("paste", out)
+        self.assertNotIn("--tools", out)
         self.assertNotIn("sudo", out)
 
     def test_new_unit_files_are_named_not_enabled(self):
@@ -206,6 +206,189 @@ class DeployTest(unittest.TestCase):
         self.assertTrue(oldest.is_dir())
         self.assertEqual(deploy.live(self.lib), oldest)
         self.assertEqual(len(list(releases.iterdir())), deploy.KEEP_RELEASES + 1)
+
+
+class FakeOpenWebUI:
+    """Open WebUI 0.11.4's tools, functions and auth routes, as deploy.py calls them."""
+    def __init__(self, store, password="right"):
+        self.store = store  # {"tools/julz_notes": {"name":..., "content":..., "meta":...}}
+        self.password = password
+        self.calls = []
+        self.tokens = set()
+        self.mangle = False  # the server stores something other than what was sent
+
+    def __call__(self, method, path, token=None, data=None):
+        self.calls.append((method, path, token, data))
+        if path == "/api/v1/auths/signin":
+            if data["password"] != self.password:
+                raise deploy.HttpError(400, "wrong password")
+            self.tokens.add("tok")
+            return {"token": "tok"}
+        if token not in self.tokens:
+            raise deploy.HttpError(401, "not signed in")
+        if path == "/api/v1/auths/signout":
+            self.tokens.discard(token)
+            return {"status": True}
+        kind, _, tid = path.removeprefix("/api/v1/").partition("/id/")
+        tid, _, action = tid.partition("/")
+        key = f"{kind}/{tid}"
+        if key not in self.store:
+            raise deploy.HttpError(404 if kind == "tools" else 401, "not found")
+        if method == "GET":
+            return {"id": tid, **self.store[key]}
+        content = data["content"] + ("#x" if self.mangle else "")
+        self.store[key] = {**self.store[key], "name": data["name"], "content": content,
+                           "meta": data["meta"]}
+        return {"id": tid, **self.store[key]}
+
+
+class PushToolsTest(unittest.TestCase):
+    """deploy.py --tools: plan then apply, from the release, checked by hash (threat 147)."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.release = base / "lib" / "releases" / "abc123abc123"
+        (self.release / "tools").mkdir(parents=True)
+        (self.release / "functions").mkdir()
+        (self.release / "tools" / "julz_notes.py").write_text("new notes\n")
+        (self.release / "tools" / "notes.fish").write_text("not a tool\n")
+        (self.release / "functions" / "julz_saves.py").write_text("saves\n")
+        self.lib = base / "lib"
+        meta = {"description": "d", "manifest": {"title": "t"}}
+        self.owui = FakeOpenWebUI({
+            "tools/julz_notes": {"name": "Notes", "content": "old notes\n", "meta": meta,
+                                 "access_grants": [{"group": "phone"}]},
+            "functions/julz_saves": {"name": "Saves", "content": "saves\n", "meta": meta},
+        })
+        self.asked = []
+        self.answer = True
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def confirm(self, name, diff):
+        self.asked.append((name, diff))
+        return self.answer
+
+    def push(self, password="right"):
+        return deploy.push_tools(self.release, self.lib, self.owui, "me@julz.local", password,
+                                 self.confirm)
+
+    def updates(self):
+        return [c for c in self.owui.calls if c[1].endswith("/update")]
+
+    def test_changed_tool_is_pushed_after_a_yes(self):
+        out = self.push()
+        self.assertEqual(self.owui.store["tools/julz_notes"]["content"], "new notes\n")
+        self.assertEqual([a[0] for a in self.asked], ["tools/julz_notes"])
+        self.assertIn("-old notes", self.asked[0][1])
+        self.assertIn("+new notes", self.asked[0][1])
+        self.assertIn("pushed: tools/julz_notes", out)
+        self.assertIn("same: functions/julz_saves", out)
+
+    def test_same_hash_pushes_nothing_and_asks_nothing(self):
+        (self.release / "tools" / "julz_notes.py").write_text("old notes\n")
+        self.push()
+        self.assertEqual(self.updates(), [])
+        self.assertEqual(self.asked, [])
+
+    def test_a_no_keeps_the_live_copy(self):
+        self.answer = False
+        out = self.push()
+        self.assertEqual(self.updates(), [])
+        self.assertEqual(self.owui.store["tools/julz_notes"]["content"], "old notes\n")
+        self.assertIn("kept live: tools/julz_notes", out)
+
+    def test_name_and_meta_go_back_as_they_are_and_grants_are_never_sent(self):
+        self.push()
+        (_, path, token, data), = self.updates()
+        self.assertEqual(path, "/api/v1/tools/id/julz_notes/update")
+        self.assertEqual(data["name"], "Notes")
+        self.assertEqual(data["meta"], {"description": "d", "manifest": {"title": "t"}})
+        self.assertEqual(data["id"], "julz_notes")
+        self.assertNotIn("access_grants", data)
+
+    def test_only_python_files_are_tools(self):
+        out = self.push()
+        self.assertFalse(any(c[1].startswith("/api/v1/tools/id/notes") for c in self.owui.calls))
+        self.assertNotIn("tools/notes", out)
+
+    def test_sign_in_without_a_token_is_refused(self):
+        def no_token(method, path, token=None, data=None):
+            self.owui.calls.append((method, path, token, data))
+            return {"id": "u1"} if path == "/api/v1/auths/signin" else self.fail(path)
+        with self.assertRaises(deploy.DeployError):
+            deploy.push_tools(self.release, self.lib, no_token, "me@julz.local", "right",
+                              self.confirm)
+        self.assertEqual(len(self.owui.calls), 1)
+
+    def test_a_server_error_stops_instead_of_reading_as_unknown(self):
+        real = self.owui.__call__
+        def broken(method, path, token=None, data=None):
+            if path.startswith("/api/v1/functions/id/"):
+                raise deploy.HttpError(500, "boom")
+            return real(method, path, token, data)
+        with self.assertRaises(deploy.HttpError):
+            deploy.push_tools(self.release, self.lib, broken, "me@julz.local", "right",
+                              self.confirm)
+        self.assertEqual(self.owui.tokens, set())
+
+    def test_unknown_id_is_refused_and_the_rest_goes_on(self):
+        (self.release / "tools" / "julz_new.py").write_text("brand new\n")
+        (self.release / "functions" / "julz_new2.py").write_text("brand new\n")
+        out = self.push()
+        self.assertIn("not in Open WebUI: tools/julz_new", out)
+        self.assertIn("not in Open WebUI: functions/julz_new2", out)
+        self.assertNotIn("tools/julz_new", self.owui.store)
+        self.assertEqual(self.owui.store["tools/julz_notes"]["content"], "new notes\n")
+
+    def test_rewritten_import_is_refused_before_sign_in(self):
+        for bad in ("from utils.misc import x\n", "from config import y\n",
+                    "from apps.z import q\n", "from main import app\n"):
+            (self.release / "functions" / "julz_saves.py").write_text(bad)
+            self.owui.calls.clear()
+            with self.assertRaises(deploy.DeployError):
+                self.push()
+            self.assertEqual(self.owui.calls, [])
+
+    def test_hash_mismatch_after_the_push_stops_and_signs_out(self):
+        self.owui.mangle = True
+        with self.assertRaises(deploy.DeployError) as e:
+            self.push()
+        self.assertIn("does not match", str(e.exception))
+        self.assertEqual(self.owui.calls[-1][1], "/api/v1/auths/signout")
+        self.assertEqual(self.owui.tokens, set())
+
+    def test_failed_sign_in_is_refused(self):
+        with self.assertRaises(deploy.DeployError):
+            self.push(password="wrong")
+        self.assertEqual(self.updates(), [])
+
+    def test_sign_out_runs_after_an_error(self):
+        def boom(name, diff):
+            raise KeyboardInterrupt
+        with self.assertRaises(KeyboardInterrupt):
+            deploy.push_tools(self.release, self.lib, self.owui, "me@julz.local", "right", boom)
+        self.assertEqual(self.owui.calls[-1][1], "/api/v1/auths/signout")
+        self.assertEqual(self.owui.tokens, set())
+
+    def test_push_is_logged_without_the_password_and_not_in_the_deploy_log(self):
+        self.push()
+        log = (self.lib / "tools.log").read_text()
+        entry = json.loads(log.splitlines()[-1])
+        self.assertEqual(entry["tool"], "tools/julz_notes")
+        self.assertEqual(entry["commit"], "abc123abc123")
+        self.assertEqual(len(entry["sha256"]), 64)
+        self.assertNotIn("right", log)
+        self.assertFalse((self.lib / "deploys.log").exists())
+
+    def test_tools_come_from_the_live_release(self):
+        self.assertEqual(deploy.tools_release(self.lib), None)
+        deploy.switch(self.lib, self.release)
+        self.assertEqual(deploy.tools_release(self.lib), self.release)
+
+    def test_only_localhost(self):
+        self.assertTrue(deploy.OWUI.startswith("http://127.0.0.1:"))
 
 
 class UnitsRunTheReleaseTest(unittest.TestCase):

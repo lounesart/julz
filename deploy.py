@@ -7,14 +7,19 @@ Usage:
   ./deploy.py --dev       deploy HEAD of any branch, untagged; still clean and tested
   ./deploy.py --rollback  go back to the release before the live one (one step)
   ./deploy.py --status    what is live
+  ./deploy.py --tools     push the live release's tools and functions to Open WebUI: signs in
+                          with my password, shows each diff, asks, checks the hash (threat 147)
 
 Steps: refuse uncommitted changes, export HEAD with git archive (tracked files only, no
 .git, no stray key files), run the whole suite inside the export, copy changed unit files,
 switch the current link in one rename, reload systemd, restart the approver. Afterwards it
-names what it cannot do itself: a tool to paste into Open WebUI, models to rebuild, a sudo step.
+names what it cannot do itself: tools to push with --tools, models to rebuild, a sudo step.
 """
+import difflib
 import fcntl
 import filecmp
+import getpass
+import hashlib
 import io
 import json
 import os
@@ -22,6 +27,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.error
+import urllib.request
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,13 +38,22 @@ LIB = Path.home() / ".local" / "lib" / "julz"
 UNITS = Path.home() / ".config" / "systemd" / "user"
 KEEP_RELEASES = 5
 LONG_RUNNING = ("julz-approver.service", "julz-chat.service")
-PASTE = ("tools/", "functions/")  # Open WebUI keeps its own copy: I paste these by hand
+PASTE = ("tools/", "functions/")  # Open WebUI keeps its own copy: --tools pushes them (147)
+OWUI = "http://127.0.0.1:3100"
+# 0.11.4's replace_imports rewrites these before storing, so the hash check could never pass
+REWRITTEN = ("from utils", "from apps", "from main", "from config")
 REBUILD = ("modelfiles/",)  # build-models.sh may pull a model, an install: I run it
 SUDO = ("run-webui.sh", "run-searxng.sh", "run-speaches.sh", "systemd/ollama-limits.conf")
 
 
 class DeployError(Exception):
     pass
+
+
+class HttpError(DeployError):
+    def __init__(self, code: int, detail: str):
+        super().__init__(f"HTTP {code}: {detail[:200]}")
+        self.code = code
 
 
 def git(repo: Path, *args, check=True) -> str:
@@ -125,7 +141,7 @@ def _changed(old: Path | None, new: Path, prefixes) -> list[str]:
 
 
 def reminders(old: Path | None, new: Path, new_units: list[str]) -> list[str]:
-    lines = [f"paste {rel} into Open WebUI (Workspace, Tools or Functions)"
+    lines = [f"{rel} changed: ./deploy.py --tools"
              for rel in _changed(old, new, PASTE) if (new / rel).exists()]
     if _changed(old, new, REBUILD):
         lines.append("modelfiles changed: run ./build-models.sh")
@@ -135,9 +151,9 @@ def reminders(old: Path | None, new: Path, new_units: list[str]) -> list[str]:
     return lines
 
 
-def _log(lib: Path, entry: dict):
+def _log(lib: Path, entry: dict, name: str = "deploys.log"):
     entry = {"time": datetime.now(timezone.utc).isoformat(timespec="seconds"), **entry}
-    with open(lib / "deploys.log", "a", encoding="utf-8") as f:
+    with open(lib / name, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
 
@@ -218,6 +234,88 @@ def rollback(lib: Path, units: Path, systemctl=default_systemctl) -> str:
     return f"live again: {target.name}"
 
 
+def default_http(method: str, path: str, token: str | None = None, data: dict | None = None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    body = json.dumps(data).encode() if data is not None else None
+    req = urllib.request.Request(OWUI + path, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read() or "null")
+    except urllib.error.HTTPError as e:
+        raise HttpError(e.code, e.read().decode(errors="replace")) from None
+    except urllib.error.URLError as e:
+        raise DeployError(f"Open WebUI did not answer: {e.reason}") from None
+
+
+def default_confirm(name: str, diff: str) -> bool:
+    print(diff)
+    return input(f"push {name} to Open WebUI? [y/N] ").strip().lower() == "y"
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def tools_release(lib: Path) -> Path | None:
+    """--tools pushes from the live release, never this working tree (79)."""
+    return live(lib)
+
+
+def push_tools(release: Path, lib: Path, http, email: str, password: str, confirm) -> str:
+    """Plan then apply: each tool or function that differs from Open WebUI's copy is shown and
+    pushed after my yes, then read back and checked by hash. SECURITY.md threat 147."""
+    items = [(f"{d}/{p.stem}", p) for d in ("tools", "functions")
+             for p in sorted((release / d).glob("*.py"))]
+    for name, p in items:
+        if any(x in p.read_text() for x in REWRITTEN):
+            raise DeployError(f"{name}: Open WebUI rewrites its imports, so the live copy "
+                              "could never match; nothing pushed")
+    token = (http("POST", "/api/v1/auths/signin", data={"email": email, "password": password})
+             or {}).get("token")
+    if not token:
+        raise DeployError("sign in gave no token")
+    out = []
+    try:
+        for name, p in items:
+            kind, tid = name.split("/")
+            src = p.read_text()
+            try:
+                current = http("GET", f"/api/v1/{kind}/id/{tid}", token)
+            except HttpError as e:
+                if e.code not in (401, 404):
+                    raise
+                current = None
+            if not current or current.get("content") is None:
+                out.append(f"not in Open WebUI: {name}, create it once by hand")
+                continue
+            if _sha(current["content"]) == _sha(src):
+                out.append(f"same: {name}")
+                continue
+            diff = "".join(difflib.unified_diff(current["content"].splitlines(True),
+                                                src.splitlines(True), "live", "release"))
+            if not confirm(name, diff):
+                out.append(f"kept live: {name}")
+                continue
+            # Name and meta as they are; no access_grants, so 0.11.4 leaves them alone
+            form = {"id": tid, "name": current["name"], "content": src,
+                    "meta": current.get("meta") or {}}
+            http("POST", f"/api/v1/{kind}/id/{tid}/update", token, data=form)
+            after = http("GET", f"/api/v1/{kind}/id/{tid}", token) or {}
+            if _sha(after.get("content") or "") != _sha(src):
+                raise DeployError(f"{name}: the live copy does not match the release after "
+                                  "the push; check it in Open WebUI")
+            _log(lib, {"tool": name, "commit": release.name, "sha256": _sha(src)}, "tools.log")
+            out.append(f"pushed: {name}")
+    finally:
+        try:
+            http("POST", "/api/v1/auths/signout", token)
+        except DeployError as e:
+            print(f"sign out failed: {e}", file=sys.stderr)
+    return "\n".join(out)
+
+
 def main():
     args = sys.argv[1:]
     try:
@@ -229,6 +327,14 @@ def main():
                 print(f"last: {last['time']} {last['label']} {last['commit'][:12]}")
         elif args == ["--rollback"]:
             print(rollback(LIB, UNITS))
+        elif args == ["--tools"]:
+            release = tools_release(LIB)
+            if release is None:
+                raise DeployError("nothing deployed yet")
+            print(f"tools from the live release {release.name}")
+            email = input("Open WebUI admin email: ").strip()
+            password = getpass.getpass("Open WebUI password (KeePassXC): ")
+            print(push_tools(release, LIB, default_http, email, password, default_confirm))
         elif args in ([], ["--dev"]):
             print(deploy(REPO, LIB, UNITS, dev=args == ["--dev"]))
         else:
