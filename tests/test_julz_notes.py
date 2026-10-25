@@ -16,6 +16,10 @@ def load_tool_module():
     return mod
 
 
+# My message asking for the save (threat 161)
+ASKED = [{"role": "user", "content": "save this"}]
+
+
 class JulzNotesTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -177,7 +181,7 @@ class JulzNotesTest(unittest.IsolatedAsyncioTestCase):
     # ----- create_note -----
 
     async def test_create_new_note_in_inbox_and_log_it(self):
-        out = await self.tools.create_note("vlan cheatsheet", "# VLANs\n802.1Q tags frames.")
+        out = await self.tools.create_note("vlan cheatsheet", "# VLANs\n802.1Q tags frames.", __messages__=ASKED)
         self.assertTrue(out.startswith("Saved"), out)
         self.assertEqual((self.inbox / "vlan cheatsheet.md").read_text(), "# VLANs\n802.1Q tags frames.")
         entry = self.log_entries()[-1]
@@ -265,8 +269,8 @@ class JulzNotesTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_rate_limit(self):
         for i in range(self.mod.MAX_WRITES_PER_MINUTE):
-            self.assertTrue((await self.tools.create_note(f"n{i}", "x")).startswith("Saved"))
-        out = await self.tools.create_note("one-too-many", "x")
+            self.assertTrue((await self.tools.create_note(f"n{i}", "x", __messages__=ASKED)).startswith("Saved"))
+        out = await self.tools.create_note("one-too-many", "x", __messages__=ASKED)
         self.assertTrue(out.startswith("Refused"), out)
 
 

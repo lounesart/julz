@@ -69,6 +69,14 @@ KINDS = ("todo", "thought", "concept", "lab")
 # Words a task may add to mine without making it up (threat 140)
 FILLERS = {"a", "an", "to", "of", "at", "in", "on", "my", "the", "and", "for", "with", "from", "into",
            "your", "our", "then"}
+# A new Inbox note is the one write with no click, so my last message must ask for it (threat 161)
+SAVE_WORD = re.compile(
+    r"\b(?:save[sd]?|saving|(?:make|take|create|new)\s+(?:a\s+)?(?:new\s+)?note|"
+    r"note\s+(?:this|that|it|down)|jot|write\s+(?:it\s+|this\s+|that\s+)?down|"
+    r"remember\s+(?:this|that)|keep\s+(?:this|that)|record|store|to-?dos?)\b|"
+    r"\b(?:сохран|запиш|записа|запомни|zapisz|zapisa|zanotuj|zachowaj|zapamiętaj)\w*|"
+    r"\b(?:сделай|создай|нов\w*)\s+(?:\w+\s+)?заметк\w*|"
+    r"\b(?:zrób|utwórz|now\w*)\s+(?:\w+\s+)?notatk\w*", re.I)
 # Open and done checkboxes. A tick by julz adds "(done <date>)", so done_tasks can tell when
 OPEN_TASK = re.compile(r"^\s*[-*] \[ \] (.+?)\s*$", re.M)
 DONE_TASK = re.compile(r"^\s*[-*] \[[xX]\] (.+?) \(done (\d{4}-\d{2}-\d{2})\)\s*$", re.M)
@@ -1328,6 +1336,12 @@ class Tools:
                                           f"was not confirmed.")
             action = "overwrite_note"
         else:
+            # Docstrings alone did not stop her saving her own answers (158)
+            if not SAVE_WORD.search(self._my_last_message(__messages__)):
+                self._log("create_note_refused", note=str(rel), reason="no save word")
+                return ("Refused: a new note is saved only when the user asks for it in their "
+                        "last message (save, note this, write down). Nothing was saved. Do not "
+                        "save your own answers; if the user wants this kept, they can say save.")
             action = "create_note"
 
         # O_NOFOLLOW: never write through a symlink swapped in after the checks above

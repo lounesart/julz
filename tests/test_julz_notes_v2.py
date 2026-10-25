@@ -16,6 +16,10 @@ def note(front: str, body: str) -> str:
     return f"---\n{front}\n---\n\n{body}" if front else body
 
 
+# My message asking for the save (threat 161)
+ASKED = [{"role": "user", "content": "save this"}]
+
+
 class NotesV2Test(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -73,7 +77,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
     async def test_create_answers_with_the_saved_text(self):
         # The user cannot see Inbox from the chat (asked for 2026-10-16), so the answer
         # carries the exact text, and the place to find it
-        out = await self.tools.create_note("physio", "I need to write a review to my physio.")
+        out = await self.tools.create_note("physio", "I need to write a review to my physio.", __messages__=ASKED)
         self.assertIn("Inbox/physio.md", out)
         self.assertIn("I need to write a review to my physio.", out)
 
@@ -238,7 +242,7 @@ class NotesV2Test(unittest.IsolatedAsyncioTestCase):
             return True
 
         for i in range(self.mod.MAX_WRITES_PER_MINUTE):
-            await self.tools.create_note(f"n{i}", "x")
+            await self.tools.create_note(f"n{i}", "x", __messages__=ASKED)
         out = await self.tools.append_note("dhcp", "x", __event_call__=confirm)
         self.assertTrue(out.startswith("Refused"), out)
 

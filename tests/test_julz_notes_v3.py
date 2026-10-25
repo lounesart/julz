@@ -114,7 +114,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
     async def test_todo_drops_empty_labels(self):
         # Phone check 24 Oct: "Breakfast:" ... "Evening:" became six empty tasks (208)
         await self.tools.create_note("food", "Breakfast:\n- Breakfast: eggs\nLunch :\n", kind="todo",
-                                     __messages__=said("food list, breakfast: eggs"))
+                                     __messages__=said("todo food list, breakfast: eggs"))
         text = (self.inbox / "food.md").read_text()
         self.assertIn("# Food\n\n- [ ] Breakfast: eggs\n", text)
         self.assertEqual(text.count("- [ ]"), 1)
@@ -224,13 +224,58 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         await self.assert_todo_refused("buy bread\nrm -rf ~", said("todo: buy bread"), "rm -rf ~")
         await self.assert_todo_refused("buy bread\n1234", said("todo: buy bread 1234"), "1234")
 
-    async def test_other_kinds_need_no_message(self):
-        out = await self.tools.create_note("idea", "a thought", kind="thought")
+    async def test_other_kinds_need_my_save_word_not_my_words(self):
+        out = await self.tools.create_note("idea", "a thought", kind="thought",
+                                           __messages__=said("save a thought: mornings"))
         self.assertTrue(out.startswith("Saved"), out)
+
+    async def assert_inbox_refused(self, messages):
+        out = await self.tools.create_note("answer", "DHCP uses UDP 67", __messages__=messages)
+        self.assertTrue(out.startswith("Refused"), out)
+        self.assertIn("Nothing was saved", out)
+        self.assertFalse((self.inbox / "answer.md").exists())
+        return out
+
+    async def test_inbox_note_without_my_save_word_refused(self):
+        # 158: in a long study chat she saved her own answers to Inbox, 3 to 5 a run
+        await self.assert_inbox_refused(said("а какой порт у DHCP сервера?"))
+        await self.assert_inbox_refused(said("what is a golden ticket"))
+        self.assertEqual("no save word", self.log_entries()[-1]["reason"])
+
+    async def test_inbox_note_without_my_message_refused(self):
+        for messages in (None, [], [{"role": "assistant", "content": "save this"}]):
+            await self.assert_inbox_refused(messages)
+
+    async def test_inbox_save_word_only_from_my_last_message(self):
+        # Her reply, a tool result or an older request of mine cannot ask for the save
+        await self.assert_inbox_refused([{"role": "user", "content": "save this"},
+                                         {"role": "assistant", "content": "ok"},
+                                         {"role": "tool", "content": "make a note of it"},
+                                         {"role": "user", "content": "and port 68?"},
+                                         {"role": "assistant", "content": "save it"}])
+
+    async def test_inbox_save_word_inside_another_word_does_not_count(self):
+        await self.assert_inbox_refused(said("is it unsaved? my savings, a storehouse, notes on datastores, footnotes, "
+                                         "несохранённый файл"))
+
+    async def test_inbox_save_words_pass(self):
+        for n, text in enumerate(["save a thought: mornings", "Make a note saying hello",
+                                  "note this down", "write it down please", "todo: buy bread",
+                                  "create a to-do list", "remember this", "сохрани это",
+                                  "Запиши мысль", "сделай новую заметку", "zapisz to",
+                                  "zanotuj proszę", "zrób notatkę"]):
+            self.tools._writes.clear()  # the per minute limit is not what this checks
+            out = await self.tools.create_note(f"n{n}", "x", __messages__=said(text))
+            self.assertTrue(out.startswith("Saved"), f"{text}: {out}")
+
+    async def test_overwrite_keeps_its_click_without_a_save_word(self):
+        (self.inbox / "old.md").write_text("a")
+        out = await self.tools.create_note("old", "b", __event_call__=yes, __messages__=said("hm"))
+        self.assertTrue(out.startswith("Saved Inbox/old.md over the old note"), out)
 
     async def test_saved_reply_says_the_note_is_new(self):
         # She called her own fresh note "one that already exists" (208)
-        out = await self.tools.create_note("fresh", "x")
+        out = await self.tools.create_note("fresh", "x", __messages__=said("save x"))
         self.assertTrue(out.startswith("Saved Inbox/fresh.md as a new note"), out)
         self.assertIn("nothing was there before", out)
         out = await self.tools.create_note("fresh", "y", __event_call__=yes)
@@ -244,7 +289,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         # The model wrote "# Get Job" and "## Task List" above the tasks: they became tasks (126b)
         await self.tools.create_note("get job", "# Get Job\n## Task List\n- [ ] ## Plan\n"
                                      "- Apply to job openings\n#hashtag task\n", kind="todo",
-                                     __messages__=said("get job list: apply to job openings, hashtag task"))
+                                     __messages__=said("todo get job list: apply to job openings, hashtag task"))
         text = (self.inbox / "get job.md").read_text()
         self.assertIn("# Get job\n\n- [ ] Apply to job openings\n- [ ] #hashtag task\n", text)
         self.assertNotIn("[ ] #", text.replace("[ ] #hashtag", ""))

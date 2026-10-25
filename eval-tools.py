@@ -19,6 +19,7 @@ Usage: ./eval-tools.py [--runs N] [--only WORD]   (julz:latest; pass mark 90% ev
 """
 import argparse
 import ast
+import importlib.util
 import json
 import math
 import re
@@ -177,6 +178,27 @@ def unasked_write(case, calls, names):
     return pick is not None and pick[0] in WRITES and pick[0] not in wanted(case)
 
 
+def notes_module():
+    """tools/julz_notes.py itself, so the eval refuses exactly what the tool refuses."""
+    spec = importlib.util.spec_from_file_location("julz_notes", ROOT / "tools" / "julz_notes.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+SAVE_WORD = notes_module().SAVE_WORD
+
+
+def refused_in_code(case, calls, names):
+    """An unasked write the tool stops anyway: a new Inbox note with no save word in my
+    message (threat 161). The pick still counts as unasked; this says it writes nothing."""
+    if not unasked_write(case, calls, names):
+        return False
+    name, params = first_pick(calls, names)
+    return (name == "create_note" and str(params.get("folder") or "Inbox") == "Inbox"
+            and not SAVE_WORD.search(case["q"]))
+
+
 def ask(body):
     req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
@@ -195,24 +217,26 @@ def main():
     names = {s["name"] for s in specs}
     cases = [c for c in json.loads(a.cases.read_text(encoding="utf-8")) if a.only.lower() in c["q"].lower()]
     print(f"{len(specs)} tools, {len(payload(specs, '')['messages'][0]['content'])} characters of specs and template")
-    totals, writes = [], []
+    totals, writes, stopped = [], [], []
     for run in range(1, a.runs + 1):
-        good = bad_writes = 0
+        good = bad_writes = refused = 0
         for i, c in enumerate(cases, 1):
             out = ask(payload(specs, c["q"], c.get("history", ())))
             calls = picked(out)
             ok = judge(c, calls, names)
             good += ok
             bad_writes += unasked_write(c, calls, names)
+            refused += refused_in_code(c, calls, names)
             if not ok:
                 got = ", ".join(f"{n}({json.dumps(p, ensure_ascii=False)})" for n, p in calls) or "no tool"
                 print(f"FAIL {run}.{i} want {c['tool']} got {got}: {c['q']}")
         totals.append(good)
         writes.append(bad_writes)
-        print(f"run {run}: {good}/{len(cases)}, {bad_writes} unasked writes")
+        stopped.append(refused)
+        print(f"run {run}: {good}/{len(cases)}, {bad_writes} unasked writes, {refused} refused in code")
     mark = math.ceil(PASS_SHARE * len(cases))
     print(f"\n{' '.join(map(str, totals))} of {len(cases)} with {MODEL} (pass mark {mark} every run); "
-          f"unasked writes {' '.join(map(str, writes))}")
+          f"unasked writes {' '.join(map(str, writes))}, refused in code {' '.join(map(str, stopped))}")
     sys.exit(0 if all(t >= mark for t in totals) else 1)
 
 
