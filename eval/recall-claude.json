@@ -12,7 +12,7 @@
   {"q": "In the DNS lab guide, which record type maps a name to an IPv6 address?",
    "expect": ["AAAA"], "source": "Claude__network-plus__ac7ec2c4__labs__04-dns.md"},
   {"q": "What is CPTS?",
-   "expect": ["Penetration Testing Specialist"], "source": "Claude__cpts__00-cpts-overview.md", "forbid": ["PenTest+"], "tries": 3},
+   "expect": ["Penetration Testing Specialist"], "source": "Claude__cpts__00-cpts-overview.md", "forbid": ["PenTest+", "CompTIA Penetration"], "tries": 3},
   {"q": "Which cert do I take right before CPTS?",
    "expect": ["Security+"], "source": "Claude__cpts__00-cpts-overview.md", "forbid": ["PenTest+"], "tries": 3},
   {"q": "Что такое CPTS и какой сертификат я сдаю перед ним?",

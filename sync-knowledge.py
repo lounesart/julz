@@ -8,16 +8,23 @@ Two collections, never mixed (SECURITY.md threat 58):
 Diff sync, make before break (BACKLOG 129, SECURITY.md 143): notes are matched by name and the
 SHA-256 of their bytes; new and changed ones are added first, stale copies removed only after
 every add worked. The old full resync removed first and left her 4 of 32 notes on 20 Oct.
+Chunk headers (BACKLOG 133, SECURITY.md 163): the uploaded copy gets a line under each heading
+naming its note and part, since Open WebUI splits at headings and a chunk lost both. The vault
+file is never changed; the hash covers what is uploaded, so a change here re-uploads each note once.
 Usage: ./sync-knowledge.py            both collections (by hand)
        ./sync-knowledge.py --claude   julz-claude only (julz-keep-sync.service, after a Keep)
 """
 import hashlib
+import re
 import sys
+import unicodedata
 from pathlib import Path
 
 from owui import CLAUDE_KB_NAME, KB_NAME, api, find_kb, kb_files, load_key, upload_file
 
 VAULT = (Path.home() / "Documents" / "julz-mem").resolve()
+HEADER_MAX = 200  # a long heading would be repeated into every chunk under it (163)
+HEADING = re.compile(r"^(#{1,3})[ \t]+(.*)$")
 
 
 def _notes(root: Path, suffixes: tuple[str, ...]):
@@ -53,6 +60,41 @@ def claude_notes(root=VAULT / "Claude"):
     yield from _notes(root.resolve(), (".md", ".txt"))
 
 
+def _clean(text: str) -> str:
+    # Hidden characters in a heading would ride into every chunk under it (163, CWE-1007)
+    text = re.sub(r"\s+", " ", text)
+    text = "".join(c for c in text if unicodedata.category(c) not in ("Cc", "Cf"))
+    return re.sub(r"\s+#+$", "", re.sub(r" +", " ", text).strip()).strip()
+
+
+def with_headers(text: str, folder: Path) -> str:
+    """The note as uploaded: under each #, ## and ### heading a line "In folder > title > part"."""
+    lines = text.split("\n")
+    out, path, fence, start = [], [], None, 0
+    if lines and lines[0].strip() == "---":  # front matter is not the note's text
+        end = next((i for i, line in enumerate(lines[1:], 1) if line.strip() in ("---", "...")), None)
+        if end is not None:
+            out, start = lines[:end + 1], end + 1
+    root = [] if str(folder) == "." else [str(folder)]
+    for line in lines[start:]:
+        out.append(line)
+        mark = line.lstrip()[:3]
+        if fence:
+            fence = None if mark == fence else fence
+            continue
+        if mark in ("```", "~~~"):
+            fence = mark
+            continue
+        m = HEADING.match(line)
+        title = _clean(m.group(2)) if m else ""
+        if not title:
+            continue
+        level = len(m.group(1))
+        path = path[:level - 1] + [title]
+        out.append(("In " + " > ".join(root + path))[:HEADER_MAX])
+    return "\n".join(out)
+
+
 def upload_name(rel: Path, claude: bool) -> str:
     # Keep the folder in the name so the source of a recalled fact is clear
     name = str(rel).replace("/", "__")
@@ -67,8 +109,10 @@ def sync(key, name: str, description: str, notes, claude: bool) -> int:
         print(f"created knowledge base {name}")
     kb_id = kb["id"]
 
-    want = [(path, rel, upload_name(rel, claude), hashlib.sha256(path.read_bytes()).hexdigest())
-            for path, rel in notes]
+    want = []
+    for path, rel in notes:
+        data = with_headers(path.read_text(errors="replace"), rel.parent).encode()
+        want.append((data, rel, upload_name(rel, claude), hashlib.sha256(data).hexdigest()))
     old = kb_files(key, kb_id)  # the whole listing, or it exits before any change
     if not want and old:
         # An unreadable vault looks like "every note deleted": never empty her memory on it
@@ -78,11 +122,11 @@ def sync(key, name: str, description: str, notes, claude: bool) -> int:
     for f in old:
         have.setdefault((f["filename"], (f.get("meta") or {}).get("file_hash")), f["id"])
     keep = set()
-    for path, rel, uname, digest in want:
+    for data, rel, uname, digest in want:
         if (uname, digest) in have:
             keep.add(have[(uname, digest)])
             continue
-        uploaded = upload_file(key, path, uname)
+        uploaded = upload_file(key, data, uname)
         api(key, "POST", f"/api/v1/knowledge/{kb_id}/file/add", {"file_id": uploaded["id"]})
         print(f"added {rel}")
 

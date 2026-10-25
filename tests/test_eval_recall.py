@@ -115,6 +115,27 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(sent[0]["files"], [{"type": "collection", "id": "kb1"}])
         self.assertNotIn("files", sent[1])
 
+    def test_fact_in_chunk_needs_the_words_in_a_chunk_of_the_note(self):
+        # 133: cited meant the file came back, not the chunk with the fact; she guessed CPTS
+        def resp(*chunks):
+            return {"sources": [{"document": [d for _, d in chunks],
+                                 "metadata": [{"name": f"study__linux__{n}"} for n, _ in chunks]}]}
+        case = self.case(expect=["drop", "policy"])
+        self.assertTrue(recall.fact_in_chunk(resp((NOTE, "The Policy is DROP.")), case))
+        self.assertFalse(recall.fact_in_chunk(resp((NOTE, "policy only"), (NOTE, "drop only")), case))
+        self.assertFalse(recall.fact_in_chunk(resp(("other.md", "policy drop"), (NOTE, "nothing")), case))
+        self.assertFalse(recall.fact_in_chunk({}, case))
+
+    def test_fact_counts_every_try_and_does_not_gate(self):
+        hit = ("drop", {"sources": [{"document": ["drop"], "metadata": [{"name": NOTE}]}]})
+        miss = ("drop", {"sources": [{"document": ["other"], "metadata": [{"name": NOTE}]}]})
+        ask, _ = asker(hit, miss, hit)
+        result = recall.run_case(self.case(tries=3), ask)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["found"], 2)
+        ask, _ = asker(hit)
+        self.assertEqual(recall.run_case(self.case(), ask)["found"], 1)
+
     def test_cross_language_cases_are_asked_several_times(self):
         cases = json.loads(recall.EVAL_FILE.read_text())
         ru_note = [c for c in cases if c["source"] == NOTE]

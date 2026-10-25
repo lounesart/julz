@@ -43,8 +43,8 @@ def api(key, method, path, data=None, body=None, content_type=None, timeout=120)
         sys.exit(f"{method} {path} -> HTTP {e.code}: {e.read().decode()[:300]}")
 
 
-def upload_file(key, path, filename):
-    """Upload one file and wait until it is embedded (process_in_background=false)."""
+def upload_file(key, data: bytes, filename):
+    """Upload one file's bytes and wait until it is embedded (process_in_background=false)."""
     if any(c in filename for c in '"\r\n'):
         raise ValueError(f"unsafe file name: {filename!r}")
     ctype = "text/plain" if filename.endswith(".txt") else "text/markdown"
@@ -53,7 +53,7 @@ def upload_file(key, path, filename):
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
         f"Content-Type: {ctype}\r\n\r\n"
-    ).encode() + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+    ).encode() + data + f"\r\n--{boundary}--\r\n".encode()
     return api(key, "POST", "/api/v1/files/?process=true&process_in_background=false",
                body=body, content_type=f"multipart/form-data; boundary={boundary}")
 
