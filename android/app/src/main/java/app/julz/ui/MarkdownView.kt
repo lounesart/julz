@@ -53,6 +53,9 @@ import app.julz.feed.MdQuote
 import app.julz.feed.MdRule
 import app.julz.feed.MdTable
 import app.julz.feed.Span
+import app.julz.feed.Highlight
+import app.julz.feed.Piece
+import app.julz.feed.Tok
 
 private val CODE_BG get() = J.raise
 
@@ -98,14 +101,20 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
             .padding(J.sp4), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
             // Its own Copy (26b): a command out of an answer without the words around it
             val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(b.lang, style = J.monoCap, modifier = Modifier.weight(1f))
+            val pieces = androidx.compose.runtime.remember(b) { Highlight.pieces(b.lang, b.text) }
+            val system = Highlight.system(b.lang)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+                Text(b.lang, style = J.monoCap)
+                // Where it runs (204), so a PowerShell line never passes for bash
+                if (system != null) Text(system, style = J.cap.copy(color = J.muted), modifier = Modifier.clip(J.rS)
+                    .border(1.dp, J.line, J.rS).padding(horizontal = J.sp2))
+                Box(Modifier.weight(1f))
                 Text("Copy", style = J.cap.copy(color = J.accText, fontWeight = FontWeight(700)),
                     modifier = Modifier.clip(J.pill).clickable(role = androidx.compose.ui.semantics.Role.Button,
                         onClickLabel = "Copy the code") { clipboard.setText(AnnotatedString(b.text)) }
                         .padding(horizontal = J.sp3, vertical = J.sp2))
             }
-            Text(b.text, style = J.monoCap.copy(color = J.text),
+            Text(if (pieces == null) AnnotatedString(b.text) else coloured(pieces), style = J.monoCap.copy(color = J.text),
                 softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
         }
         is MdTable -> Table(b, opens, link, tags)
@@ -167,6 +176,12 @@ private fun Chart(c: MdChart) {
             }
         }
     }
+}
+
+/** Code in its colours (204); the text is the pieces joined, exactly the block */
+private fun coloured(pieces: List<Piece>): AnnotatedString = buildAnnotatedString {
+    for (p in pieces) withStyle(SpanStyle(color = J.code(p.tok),
+        fontStyle = if (p.tok == Tok.COMMENT) FontStyle.Italic else FontStyle.Normal)) { append(p.text) }
 }
 
 /** Spans as styled text; only a wikilink to a known note gets a tap. */

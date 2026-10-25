@@ -37,6 +37,12 @@ class PaletteTest {
                 val under = mix(p.bg, tint, 0.16)  // the tag's own background
                 assertTrue("${k.name} tag on ${p.name}: ${Palette.contrast(tint, under)}", Palette.contrast(tint, under) >= 4.5)
             }
+            // Code colours on the code box, raise (8% white) over the page (204)
+            val box = mix(p.bg, 0xFFFFFFFF.toInt(), 0x14 / 255.0)
+            for (t in app.julz.feed.Tok.entries) {
+                val ink = J.code(t).toArgb()
+                assertTrue("${t.name} code on ${p.name}: ${Palette.contrast(ink, box)}", Palette.contrast(ink, box) >= 4.5)
+            }
             assertTrue("grey text on ${p.name}", Palette.contrast(0xFFABA4AC.toInt(), p.bg) >= 4.5)
             assertTrue("faint text on ${p.name}: ${Palette.contrast(0xFF7E777F.toInt(), p.bg)}", Palette.contrast(0xFF7E777F.toInt(), p.bg) >= 3.0)
         }
