@@ -93,11 +93,20 @@ object Notifier {
                 .putExtra(EXTRA_KIND, kind.name),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
+    /** Android 14 and later let me swipe even an ongoing service notice away (201): the swipe
+     *  starts the running service again, which posts it back. Explicit and immutable (CWE-927);
+     *  the service is not exported. Android sends this only on my swipe, never when the app
+     *  cancels it, so a wipe or a refused token stays stopped (and the loop stops again
+     *  without a config). */
+    private fun repost(context: Context): PendingIntent = PendingIntent.getService(context, 0,
+        Intent(context, JulzService::class.java), PendingIntent.FLAG_IMMUTABLE)
+
     fun listening(context: Context): Notification =
         Notification.Builder(context, SERVICE_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_julz)
             .setContentTitle("Julz is listening")
             .setContentIntent(openApp(context))
+            .setDeleteIntent(repost(context))
             .setOngoing(true)
             .build()
 
