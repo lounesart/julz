@@ -2,6 +2,7 @@ package app.julz
 
 import app.julz.feed.Kind
 
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -34,6 +35,8 @@ class JulzService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Opening the app and a swipe of the notice both land here, not in onCreate (201)
+        getSystemService(NotificationManager::class.java).notify(Notifier.SERVICE_ID, Notifier.listening(this))
         if (worker?.isAlive != true) {
             running = true
             AppLog.add("service: started")
