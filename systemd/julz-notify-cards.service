@@ -1,0 +1,20 @@
+[Unit]
+Description=julz: notify about cards waiting for my signature
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-notify.py --cards
+UMask=0077
+# Sandbox: reads card names (never a card), the topic and its own state, posts to my own ntfy
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+TemporaryFileSystem=%h:ro
+BindReadOnlyPaths=%h/.local/lib/julz
+BindReadOnlyPaths=%h/.config/julz/notify
+BindReadOnlyPaths=%h/Documents/julz-mem/Inbox/.proposals
+BindPaths=%h/.local/share/julz/notify
+# Unix sockets only: posts go to julz-ntfy's socket, seccomp refuses any internet socket (132)
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+LockPersonality=yes

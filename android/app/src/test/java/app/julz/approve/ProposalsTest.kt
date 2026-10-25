@@ -16,6 +16,15 @@ class ProposalsTest {
 
     private fun list(vararg cards: JSONObject) = JSONObject().put("proposals", JSONArray(cards.toList())).toString()
 
+    @Test fun theBadgeAddsTheCards() {  // 221, threat 160
+        val s = ApproverState(emptyList(), null, needs = 1, keeps = 1, queued = 4, running = true)
+        val two = Proposals.parse(list(card(), card("1760000001-0000000a.json")))!!
+        assertEquals(4, Proposals.badge(s, two))
+        assertEquals(2, Proposals.badge(s, null))  // cards not loaded: specs only, as before
+        assertEquals(0, Proposals.badge(ApproverState(emptyList(), null), emptyList()))
+        assertNull(Proposals.badge(null, two))  // no state: the notices count, as before
+    }
+
     @Test fun theListParses() {
         val l = Proposals.parse(list(card(), card("1760000001-0000000a.json", "Julz asks to delete Inbox/x.md\n\ngit keeps a copy on the laptop.\n")))!!
         assertEquals(listOf("1760000000-00000001.json", "1760000001-0000000a.json"), l.map { it.id })

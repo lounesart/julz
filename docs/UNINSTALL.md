@@ -27,7 +27,7 @@ systemctl --user disable --now julz-keep.path julz-keep.timer
 systemctl --user disable --now julz-keep-sync.path julz-keep-sync.timer
 systemctl --user disable --now julz-mem-sync.path julz-mem-sync.timer
 systemctl --user disable --now julz-vault.path julz-vault.timer
-systemctl --user disable --now julz-vault-refresh.path julz-notify-notes.path
+systemctl --user disable --now julz-vault-refresh.path julz-notify-notes.path julz-notify-cards.path
 systemctl --user disable --now julz-notify-weekly.timer julz-notify-due.timer
 systemctl --user disable --now julz-ntfy.service julz-webproxy.service julz-notify-todos.path julz-memlog.timer
 loginctl disable-linger

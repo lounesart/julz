@@ -20,6 +20,7 @@ Usage:
   ./julz-notify.py --due         "N notes due for review" when 3 or more, daily (julz-notify-due.timer)
   ./julz-notify.py --todos       my open tasks to my own server only, when they changed (threat 100)
   ./julz-notify.py --notes       "N new notes" when one lands in Inbox/ or daily/ (209, threat 142)
+  ./julz-notify.py --cards       "N cards waiting" when Julz asks for a change (221, threat 160)
 """
 import fcntl
 import hashlib
@@ -64,6 +65,13 @@ INBOX_EVERY = 300
 NOTES_FILE = HOME / ".local" / "share" / "julz" / "vault" / "notes.json"
 NOTES_EVERY = 60
 MAX_LOG_READ = 1_000_000
+# Cards Julz asks for (221, threat 160): the container writes these names, so only the ones
+# Approve would show are counted, with the approver's limits (a test keeps them equal)
+CARDS = NOTES_INBOX / ".proposals"
+MAX_PROPOSALS = 10
+MAX_PROPOSAL_SCAN = 200
+PROPOSAL_TTL = 86_400
+PROPOSAL_SKEW = 300
 
 
 class Notice:
@@ -91,6 +99,12 @@ def short(digest) -> str:
 def inbox_notice(count: int) -> Notice:
     word = "spec" if count == 1 else "specs"
     return Notice(f"Julz: {count} {word} waiting", "Read it in Approve in Julz before you approve.",
+                  tags="inbox_tray", kind="approval")
+
+
+def cards_notice(count: int) -> Notice:
+    word = "card" if count == 1 else "cards"
+    return Notice(f"Julz: {count} {word} waiting", "Read it in Approve in Julz before you sign.",
                   tags="inbox_tray", kind="approval")
 
 
@@ -477,6 +491,30 @@ def check_inbox(inbox: Path, state: dict, now: float, send):
     state["inbox_count"] = count
 
 
+def count_cards(folder: Path, now: float) -> int:
+    """The cards Approve can show, by name only: the file is never opened (threat 160)."""
+    try:
+        with os.scandir(folder) as it:
+            entries = sorted(it, key=lambda e: e.name)[:MAX_PROPOSAL_SCAN]
+    except OSError:
+        return 0
+    count = 0
+    for e in entries:
+        if (vault.REQUEST_NAME.fullmatch(e.name) and e.is_file(follow_symlinks=False)
+                and -PROPOSAL_SKEW <= now - int(e.name[:10]) <= PROPOSAL_TTL):
+            count += 1
+    return min(count, MAX_PROPOSALS)
+
+
+def check_cards(folder: Path, state: dict, now: float, send):
+    """Ring when the count rises, at most once per INBOX_EVERY; my own signing never rings."""
+    count = count_cards(folder, now)
+    if count > state.get("cards_count", 0) and now - state.get("cards_sent", 0) >= INBOX_EVERY:
+        send(cards_notice(count))
+        state["cards_sent"] = now
+    state["cards_count"] = count
+
+
 def _send_lines(path: Path, state: dict, send) -> bool:
     """Send notices from state["log_offset"] on. True when the end of the file was reached."""
     with open(path, "rb") as f:
@@ -625,7 +663,7 @@ def main():
                 check_todos(TODOS_FILE, state, load_local(LOCAL_ENV), load_topic(TOPIC_FILE))
                 save_state(STATE_FILE, state)
             return
-        if mode not in ("--test", "--inbox", "--log", "--weekly", "--due", "--notes"):
+        if mode not in ("--test", "--inbox", "--log", "--weekly", "--due", "--notes", "--cards"):
             sys.exit(__doc__)
         send = make_sender(load_topic(TOPIC_FILE), load_local(LOCAL_ENV))
         if mode == "--test":
@@ -645,6 +683,8 @@ def main():
                     check_inbox(INBOX, state, time.time(), send)
                 elif mode == "--notes":
                     check_notes(NOTES_FILE, state, time.time(), send)
+                elif mode == "--cards":
+                    check_cards(CARDS, state, time.time(), send)
                 else:
                     check_log(LOG, state, send)
             finally:

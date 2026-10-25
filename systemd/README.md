@@ -17,6 +17,7 @@
 | `julz-vault.path`, `.service` and `.timer` | Applies julz's confirmed note changes, commits the vault every 15 minutes, counts due notes |
 | `julz-vault-refresh.path` and `.service` | A save in `Inbox/` or `daily/` rebuilds the phone's snapshots within seconds, vault read only, no commit |
 | `julz-notify-notes.path` and `.service` | New notes in the snapshot, then "N new notes" in the Feed (counts only, once a minute at most) |
+| `julz-notify-cards.path` and `.service` | A card Julz asks for in `Inbox/.proposals`, then "N cards waiting" (counts by name only, never opens a card, threat 160) |
 | `julz-notify-weekly.timer` and `.service` | Sundays 18:00, "N notes in Inbox" |
 | `julz-notify-due.timer` and `.service` | Daily 19:00, "N notes due for review" when 3 or more |
 | `julz-memlog.timer` and `.service` | Every 10 minutes, RAM per group to `~/.local/state/julz-memlog/rss.csv`; `julz-memlog.py --report` shows growth per hour |
@@ -79,6 +80,10 @@ A save in Inbox or daily shows on the phone within seconds, with a "N new notes"
     cp systemd/julz-vault-refresh.* systemd/julz-notify-notes.* ~/.config/systemd/user/
     systemctl --user daemon-reload
     systemctl --user enable --now julz-vault-refresh.path julz-notify-notes.path
+
+A card Julz asks for in the native chat rings the phone (221). `./deploy.py` installs the units, then:
+
+    systemctl --user enable --now julz-notify-cards.path
 
 A push every Sunday at 18:00 says how many notes wait in Inbox (the count, never names).
 
