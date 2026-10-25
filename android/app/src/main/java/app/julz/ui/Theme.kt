@@ -76,6 +76,17 @@ object J {
         Kind.WARNING -> warn
     }
 
+    /** Code colours (204), from the semantic hues: each at least 4.5:1 on the code box (raise) on
+     *  every theme, PaletteTest. A comment and a prompt are grey, so the command stands out */
+    fun code(t: app.julz.feed.Tok) = when (t) {
+        app.julz.feed.Tok.KEYWORD -> tint(Kind.APPROVAL)
+        app.julz.feed.Tok.STRING -> good
+        app.julz.feed.Tok.NUMBER -> caution
+        app.julz.feed.Tok.VARIABLE -> info
+        app.julz.feed.Tok.COMMENT, app.julz.feed.Tok.PROMPT -> muted
+        app.julz.feed.Tok.PLAIN -> text
+    }
+
     // Spacing, steps of 4 (System board)
     val sp1: Dp = 4.dp; val sp2: Dp = 8.dp; val sp3: Dp = 12.dp; val sp4: Dp = 16.dp
     val sp5: Dp = 20.dp; val sp6: Dp = 24.dp; val sp8: Dp = 32.dp

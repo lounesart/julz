@@ -154,6 +154,15 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 5. My message in the chat and on the laptop page. [Only my words, never her instructions.]
 6. TalkBack on the chip. ["Learn", a switch, on or off.]
 
+### Code colours (204, 119)
+1. Ask "show me how to list my firewall rules with nft, as a bash block". [Keywords pink,
+   strings green, a # comment grey and slanted, $ prompts grey; bash and a "Linux, macOS" chip.]
+2. Ask for the same in PowerShell. [A "Windows" chip, PS C:\> grey, $env:PATH cyan.]
+3. Copy on a coloured block, paste it in the box. [Exactly the block, prompt included.]
+4. A note in the notes browser with a ```python block. [Coloured the same way.] A block with no
+   language or one not listed. [Plain, as before.]
+5. A wide block scrolls sideways as before, the colours stay put.
+
 ### Native chat v2, release 1 (26b, 136, 139)
 1. The box is one row with send inside it, the same gap above, right and below the button;
    on Industrial the box, the button and the header buttons all have cut corners.

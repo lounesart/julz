@@ -2,6 +2,7 @@ package app.julz.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -102,4 +103,16 @@ class ScreenshotTest {
     @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
     @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, learn = true) }
     @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, learn = true, draft = "What is a /26?") }
+
+    // Code colours and the system label (204): bash and PowerShell side by side, an unknown
+    // language stays plain
+    @Test fun codeBlocks() = paparazzi.snapshot {
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.bg)
+            .padding(J.gutter)) {
+            MarkdownView(app.julz.feed.ObsidianMd.parse("List the rules:\n\n```bash\n\$ sudo nft list ruleset # all tables\n" +
+                "if [ -f \"\$HOME/.ssh/id_ed25519\" ]; then echo ok; fi\n```\n\nOn Windows:\n\n```powershell\n" +
+                "PS C:\\> Get-NetFirewallRule -Enabled True | Select -First 5\n<# the first five #>\n\$env:PATH\n```\n\n" +
+                "```text\nplain 42 \"stays\" # plain\n```", links = true))
+        }
+    }
 }
