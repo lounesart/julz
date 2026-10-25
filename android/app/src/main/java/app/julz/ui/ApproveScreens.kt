@@ -252,7 +252,7 @@ private fun SpecCard(spec: SpecItem, note: String, setNote: (String) -> Unit, bu
         // Plain text only (34); while signing, the server's exact text is in the sign panel (109, 219)
         Text(spec.text, style = J.sec.copy(fontFamily = J.mono, color = J.text),
             modifier = Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4))
-        OutlinedTextField(note, { if (it.length <= Note.MAX) setNote(it) }, Modifier.fillMaxWidth(),
+        OutlinedTextField(note, { if (it.length <= Note.MAX) setNote(it) }, Modifier.fillMaxWidth().keepsKeyboard(),
             label = { Text("Note for Claude · optional") }, singleLine = true, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText,
             enabled = !busy, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = true),
             supportingText = { Text(Note.problem(note) ?: "Plain text, sent with your approval. No links.") },
@@ -290,7 +290,7 @@ fun EnrollScreen(origins: Origins, back: () -> Unit) {
         Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
             Text("On the laptop run\n./julz-approve-web.py --enroll-device\nand type the code here. A new key replaces any old one.",
                 style = J.bodyText)
-            OutlinedTextField(code, { code = it.take(40) }, Modifier.fillMaxWidth(), label = { Text("Code from the terminal") },
+            OutlinedTextField(code, { code = it.take(40) }, Modifier.fillMaxWidth().keepsKeyboard(), label = { Text("Code from the terminal") },
                 singleLine = true, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText.copy(fontFamily = J.mono),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false))
             GlowButton(if (busy) "Enrolling" else "Enroll this phone") {

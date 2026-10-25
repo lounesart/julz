@@ -126,7 +126,7 @@ private fun NeedCard(n: NeedItem, busy: Boolean, text: String, go: (String) -> U
             + "the same question again ends it.", style = J.sec.copy(color = J.warn))
         Signed(text)
         val colors = fieldColors()
-        OutlinedTextField(answer, { if (it.length <= WorkBodies.MAX_ANSWER) answer = it }, Modifier.fillMaxWidth(),
+        OutlinedTextField(answer, { if (it.length <= WorkBodies.MAX_ANSWER) answer = it }, Modifier.fillMaxWidth().keepsKeyboard(),
             label = { Text(if (n.stopped) "Tell Claude something, or leave empty" else "Answer, or leave empty for Continue") },
             singleLine = true, enabled = !busy, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
@@ -170,7 +170,7 @@ private fun KeepCard(k: KeepItem, topics: List<String>, busy: Boolean, keep: (St
             verticalArrangement = Arrangement.spacedBy(J.sp2)) {
             for (t in topics) Pill(if (t == topic) "$t \u2713" else t, t == topic, !busy) { topic = if (t == topic) "" else t }
         }
-        OutlinedTextField(topic, { topic = it.lowercase().take(40) }, Modifier.fillMaxWidth(),
+        OutlinedTextField(topic, { topic = it.lowercase().take(40) }, Modifier.fillMaxWidth().keepsKeyboard(),
             label = { Text(if (topics.isEmpty()) "Topic, like network-plus" else "Or a new topic") },
             singleLine = true, enabled = !busy, colors = colors, shape = fieldShape(oneLine = true), textStyle = J.bodyText.copy(fontFamily = J.mono),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, autoCorrectEnabled = false),

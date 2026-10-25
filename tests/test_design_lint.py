@@ -52,7 +52,26 @@ def pinned_under_bar(sources: dict[str, str] | None = None) -> list[str]:
     return [name for name, text in sources.items() for m in PINNED.finditer(text) if "barClear()" not in m.group(1)]
 
 
+# A text field keeps the keyboard when tapped (228): Shell ends editing on a tap outside every
+# keepsKeyboard() area, so a field without it would lose focus on its own tap and flicker
+FIELD = re.compile(r"\b(?:OutlinedTextField|BasicTextField)\(")
+
+
+def fields_without_keep(sources: dict[str, str] | None = None) -> list[str]:
+    if sources is None:
+        sources = {f.name: f.read_text() for f in sorted(UI.glob("*.kt"))}
+    return [f"{name}:{text.count(chr(10), 0, m.start()) + 1}" for name, text in sources.items()
+            for m in FIELD.finditer(text) if "keepsKeyboard()" not in text[m.end():m.end() + 300]]
+
+
 class DesignLintTest(unittest.TestCase):
+    def test_every_field_keeps_the_keyboard(self):
+        self.assertEqual(fields_without_keep(), [], "\nAdd .keepsKeyboard() to the field's modifier (228)")
+
+    def test_the_field_lint_catches_what_it_should(self):
+        bad = "OutlinedTextField(x, { x = it }, Modifier.fillMaxWidth(), label = { Text(\"X\") })\n"
+        good = "OutlinedTextField(x, { x = it }, Modifier.fillMaxWidth().keepsKeyboard(), label = { Text(\"X\") })\n"
+        self.assertEqual(fields_without_keep({"X.kt": bad, "Y.kt": good}), ["X.kt:1"])
     def test_screens_use_the_tokens(self):
         self.assertEqual(findings(), [], "\nUse a token from Theme.kt, or allow it here with a reason")
 

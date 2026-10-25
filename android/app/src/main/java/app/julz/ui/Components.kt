@@ -312,7 +312,7 @@ fun InlineAdd(label: String, draft: String, onDraft: (String) -> Unit, enabled: 
     androidx.activity.compose.BackHandler(enabled = draft.isBlank()) { open = false }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
         androidx.compose.material3.OutlinedTextField(draft, { if (it.length <= max) onDraft(it) },
-            Modifier.weight(1f).focusRequester(focus).onFocusChanged {
+            Modifier.weight(1f).keepsKeyboard().focusRequester(focus).onFocusChanged {
                 if (focused && !it.isFocused && draft.isBlank()) open = false
                 focused = it.isFocused
             },
@@ -321,7 +321,7 @@ fun InlineAdd(label: String, draft: String, onDraft: (String) -> Unit, enabled: 
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done,
                 capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { add() }))
-        Pill("Add", false, enabled && draft.isNotBlank()) { add() }
+        Box(Modifier.keepsKeyboard()) { Pill("Add", false, enabled && draft.isNotBlank()) { add() } }  // the next one follows (228)
     }
     LaunchedEffect(Unit) { if (draft.isEmpty()) focus.requestFocus() }
 }

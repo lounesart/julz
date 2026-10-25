@@ -323,7 +323,7 @@ private fun GoalRow(period: String, g: GoalItem, ui: GoalsUi, todos: List<app.ju
             }
             if (targeting) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
                 OutlinedTextField(ui.targets[key].orEmpty(), { v -> if (v.length <= 4 && v.all { it.isDigit() }) ui.targets[key] = v },
-                    Modifier.weight(1f), label = { Text("Target, like 10") }, singleLine = true, enabled = !busy, colors = fieldColors(),
+                    Modifier.weight(1f).keepsKeyboard(), label = { Text("Target, like 10") }, singleLine = true, enabled = !busy, colors = fieldColors(),
                     shape = fieldShape(oneLine = true), textStyle = J.bodyText, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
                 val n = ui.targets[key].orEmpty()
@@ -335,7 +335,7 @@ private fun GoalRow(period: String, g: GoalItem, ui: GoalsUi, todos: List<app.ju
             if (estimating) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
                 val k = "est$key"
                 OutlinedTextField(ui.targets[k].orEmpty(), { v -> if (v.length <= 6 && v.all { it.isDigit() || it == '.' }) ui.targets[k] = v },
-                    Modifier.weight(1f), label = { Text("Hours, like 6 or 1.5") }, singleLine = true, enabled = !busy, colors = fieldColors(),
+                    Modifier.weight(1f).keepsKeyboard(), label = { Text("Hours, like 6 or 1.5") }, singleLine = true, enabled = !busy, colors = fieldColors(),
                     shape = fieldShape(oneLine = true), textStyle = J.bodyText, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
                 val h = ui.targets[k].orEmpty()

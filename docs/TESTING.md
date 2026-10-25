@@ -87,6 +87,9 @@ Expected results in brackets.
    to the month, force stop the app, open Goals again. [The month is still on.] Tap + Add a goal
    in the year card, type, Add. [The field closes, Will add shows in that card, Apply counts 1;
    the other card has no field open.] Undo. With TalkBack, the switch says which is selected.
+   With the keyboard up in an Add field, tap the month switch. [One tap: the keyboard goes and the
+   view changes.] Type, tap Add. [The keyboard stays, Will add shows.] In chat, Send keeps it; a
+   suggestion fills the box and the keyboard goes (228).
    Switch week and month a few times. [The light glides, the words light as it passes halfway,
    the card body slides the same way and fades, no empty frame; with animations off in
    Developer options, all of it jumps.] Tap an empty part of the screen with the keyboard up.
