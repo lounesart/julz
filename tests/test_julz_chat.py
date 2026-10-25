@@ -259,7 +259,7 @@ class ViewTest(Base):
                          [("user", "what is DORA"), ("assistant", "Discover, Offer, Request, Ack")])
         self.assertEqual(set(data), {"id", "title", "busy", "archived", "mode", "messages"})
         for m in data["messages"]:
-            self.assertEqual(set(m) - {"error"}, {"id", "role", "text", "done", "time"})
+            self.assertEqual(set(m) - {"error", "end"}, {"id", "role", "text", "done", "time"})
         self.assertNotIn("SECRET NOTE", json.dumps(data))
 
     def test_only_the_current_branch(self):
@@ -301,6 +301,50 @@ class ViewTest(Base):
         self.owui.chats[C1]["secret"] = "x"
         data = self.req("GET", "/api/chats")[1]
         self.assertEqual(set(data["chats"][0]), {"id", "title", "updated"})
+
+
+class EndTest(Base):
+    """Why an answer ended (26k): 0.11.4 drops Ollama's done_reason and keeps its counters, so
+    a full window means cut. Measured 25 Oct: done_reason length came with prompt_eval_count
+    plus eval_count equal to num_ctx, cached prefix or not."""
+
+    def end(self, model="julz:latest", usage=None, **extra):
+        self.setUp()  # a fresh chat each call: nothing left from the case before
+        self.listed()
+        h = self.owui.chats[C1]["chat"]["history"]
+        a = h["messages"][h["currentId"]]
+        a.update(model=model, **extra)
+        if usage is not None:
+            a["usage"] = usage
+        status, data, _ = self.req("GET", f"/api/chats/{C1}/last")
+        self.assertEqual(status, 200)  # unknown means left out, never a failed request
+        return data.get("end")
+
+    def test_window_reached_is_length(self):
+        self.assertEqual(self.end(usage={"prompt_eval_count": 15000, "eval_count": 1384}), "length")
+        self.assertEqual(self.end(usage={"prompt_eval_count": 16000, "eval_count": 900}), "length")
+
+    def test_under_the_window_is_stop(self):
+        self.assertEqual(self.end(usage={"prompt_eval_count": 15000, "eval_count": 1383}), "stop")
+        self.assertEqual(self.end(usage={"prompt_eval_count": 2166, "eval_count": 0}), "stop")
+
+    def test_unknown_is_left_out(self):
+        for usage in (None, "x", {}, {"prompt_eval_count": 16384}, {"eval_count": 16384},
+                      {"prompt_eval_count": "15000", "eval_count": 1384},
+                      {"prompt_eval_count": True, "eval_count": 16384},
+                      {"prompt_eval_count": 17000, "eval_count": -1},
+                      {"prompt_eval_count": 15000.0, "eval_count": 1384}):
+            self.assertIsNone(self.end(usage=usage), usage)
+        full = {"prompt_eval_count": 15000, "eval_count": 1384}
+        self.assertIsNone(self.end(model="julz-sec:latest", usage=full))
+        self.assertIsNone(self.end(model=None, usage=full))
+        self.assertIsNone(self.end(usage=full, error={"content": "model crashed"}))
+        self.assertIsNone(self.end(usage=full, done=False, timestamp=int(self.clock())))  # running
+
+    def test_the_window_is_the_modelfile(self):
+        for line in (ROOT / "modelfiles" / "julz.Modelfile").read_text().splitlines():
+            if line.startswith("PARAMETER num_ctx"):
+                self.assertEqual(chat.WINDOWS[chat.MODEL], int(line.split()[2]))
 
 
 class SendTest(Base):

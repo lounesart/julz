@@ -134,6 +134,16 @@ class ChatApiTest {
         assertNull(ChatApi.parseMessage("""{"id": "a1", "role": "tool", "text": "x", "done": true, "time": 1}"""))
     }
 
+    /** 26k: why an answer ended is one of two words; anything else is unknown, never shown */
+    @Test fun theEndIsAClosedWord() {
+        fun end(v: String) = ChatApi.parseMessage("""{"id": "a1", "role": "assistant", "text": "x", "done": true, "time": 1, "end": $v}""")!!.end
+        assertEquals(End.LENGTH, end("\"length\""))
+        assertEquals(End.STOP, end("\"stop\""))
+        for (v in listOf("\"LENGTH\"", "\"cut\"", "\"\"", "1", "true", "null", "{}"))
+            assertNull(v, end(v))
+        assertNull(ChatApi.parseMessage("""{"id": "a1", "role": "assistant", "text": "x", "done": true, "time": 1}""")!!.end)
+    }
+
     @Test fun aSendReplyNeedsTwoGoodIds() {
         val m = "a1000000-0000-4000-8000-000000000000"
         assertEquals(Sent(c1, m), ChatApi.parseSent("""{"chat": "$c1", "message": "$m"}"""))

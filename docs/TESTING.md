@@ -187,7 +187,8 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
     solid "Julz is writing" button at the bottom; tapping it follows the answer again.]
 13. Settings, Chat, Roomy message box. [On: the text over the whole width, send in a row
     under it. Off: one row with send inside. Both grow to six lines.]
-14. An answer that stops mid sentence. ["This answer stops mid sentence." with Retry.]
+14. "Count from 1 to 20000, one number per line, nothing else." [It fills the window: "This
+    answer ran out of room." with Retry. An ordinary answer under it shows no line.]
 15. A new chat. ["Ask Julz anything" in the display font, centred, four equal starts in a 2 by 2
     grid; a start fills the box and sends nothing.]
 16. An answer with a table, a chart, a tip and a warning (after `./build-models.sh`, ask "Compare

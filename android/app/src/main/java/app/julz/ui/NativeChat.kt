@@ -69,6 +69,7 @@ import app.julz.chat.ChatLogic
 import app.julz.chat.ChatMessage
 import app.julz.chat.ChatSummary
 import app.julz.chat.ChatView
+import app.julz.chat.End
 import app.julz.chat.SaveToNotes
 import app.julz.feed.ObsidianMd
 import kotlinx.coroutines.Dispatchers
@@ -699,10 +700,10 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, retry: ()
             MarkdownView(blocks, link = { LinkCheck.open(context, Uri.parse(it)) })
         }
         m.error?.let { Text("Julz could not answer: $it", style = J.sec.copy(color = J.warn)) }
-        // 26k: stopped mid sentence though marked done (the chat ran out of room); say so
+        // 26k: cut by the window (julz-chat's end word), or guessed from a last line that stops mid sentence
         androidx.compose.animation.AnimatedVisibility(ChatLogic.cutOff(m), enter = androidx.compose.animation.fadeIn(),
             exit = androidx.compose.animation.fadeOut()) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp3)) {
-            Text("This answer stops mid sentence.", style = J.sec.copy(color = J.caution), modifier = Modifier.weight(1f, fill = false))
+            Text(if (m.end == End.LENGTH) "This answer ran out of room." else "This answer stops mid sentence.", style = J.sec.copy(color = J.caution), modifier = Modifier.weight(1f, fill = false))
             Text("Retry", style = J.sec.copy(color = J.accText, fontWeight = FontWeight(700)),
                 modifier = Modifier.heightIn(min = J.tap).clickable(role = Role.Button, onClick = retry).padding(horizontal = J.sp2, vertical = J.sp3))
         } }

@@ -40,6 +40,8 @@ TOKEN_FILE = HOME / ".config" / "julz" / "ntfy" / "phone-token"
 BACKEND = "http://127.0.0.1:3100"
 
 MODEL = "julz:latest"
+# Each model's num_ctx (26k): an answer whose prompt and output fill it was cut by the window
+WINDOWS = {MODEL: 16_384}
 # Deny by default (137): Open WebUI runs only the tools a request names, so this is the set
 TOOLS = ("julz_notes", "julz_pocket", "julz_delegate")
 # The phone names a mode, julz-chat owns its words (151). They go as Open WebUI's regeneration
@@ -272,7 +274,21 @@ class App:
         err = m.get("error")
         if isinstance(err, dict) and err.get("content"):
             out["error"] = str(err["content"])[:500]
+        elif out["done"] and (end := self.end_of(m)):
+            out["end"] = end
         return out
+
+    @staticmethod
+    def end_of(m: dict) -> str:
+        """Why the answer ended, or "" when unknown (26k). 0.11.4 drops Ollama's done_reason and
+        stores its counters, editable in the web page: plain ints only, a closed word out."""
+        usage, window = m.get("usage"), WINDOWS.get(m.get("model"))
+        if not window or not isinstance(usage, dict):
+            return ""
+        counts = [usage.get("prompt_eval_count"), usage.get("eval_count")]
+        if not all(type(n) is int and n >= 0 for n in counts):
+            return ""
+        return "length" if sum(counts) >= window else "stop"
 
     @staticmethod
     def mode_of(m: dict) -> str:
