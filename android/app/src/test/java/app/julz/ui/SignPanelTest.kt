@@ -23,6 +23,26 @@ class SignPanelTest {
         for (px in listOf(1, 40, 5000)) assertEquals(SignPanel.Step.READ, SignPanel.step(px))
     }
 
+    private val hash = "741af55b4ec085a58dfd86cafdc21e8cea5779638953e3d10ca753559857dd3b"
+
+    @Test
+    fun aHashShowsShort() {
+        // 219b: nobody compares 64 hex by eye; the signature still covers it whole
+        assertEquals("inbox: 741af55b4ec0…\ndelete: Inbox/cottage-pie-recipe.md\n",
+            SignPanel.shown("inbox: $hash\ndelete: Inbox/cottage-pie-recipe.md\n"))
+        assertEquals("a 741af55b4ec0… b 741af55b4ec0…", SignPanel.shown("a $hash b $hash"))
+    }
+
+    @Test
+    fun onlyAWholeHashIsShortened() {
+        // Anything else stays whole, so nothing can hide behind the rule
+        for (t in listOf(hash.dropLast(1), hash + "0", hash.uppercase(), "x$hash", "${hash}x",
+                         hash.replaceRange(30, 31, "g"), "move: Inbox/a.md -> study/a.md")) {
+            assertEquals(t, SignPanel.shown(t))
+        }
+        assertEquals("tick: 741af55b4ec0…\n- Review nmap flags", SignPanel.shown("tick: $hash\n- Review nmap flags"))
+    }
+
     @Test
     fun anOldSigningCannotTouchANewOne() {
         // A late callback of a finished signing must not close or cancel the one now shown
@@ -60,7 +80,7 @@ class SignPanelTest {
             .map { it.name }.toList()
         assertEquals(emptyList<String>(), offenders)
         val panel = File(ui, "ui/SignPanel.kt").readText()
-        assertTrue("You are signing exactly this." in panel)
+        assertTrue("Your fingerprint signs this, nothing else." in panel)
         assertTrue("Signs the text shown above" in panel)
     }
 
