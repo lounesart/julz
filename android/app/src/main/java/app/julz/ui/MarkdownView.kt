@@ -58,6 +58,8 @@ import app.julz.feed.Piece
 import app.julz.feed.Tok
 
 private val CODE_BG get() = J.raise
+/** The code box as one solid colour (raise over the page), for the fades inside it (217) */
+private val CODE_UNDER get() = androidx.compose.ui.graphics.lerp(J.bg, Color.White, 0x14 / 255f)
 
 /** A note drawn in the app's own styles (SECURITY.md 119). Nothing here loads anything: the
  *  blocks come from ObsidianMd, a wikilink is tappable only when `opens` knows the note, a
@@ -114,8 +116,12 @@ private fun Block(b: MdBlock, read: androidx.compose.ui.text.TextStyle, opens: (
                         onClickLabel = "Copy the code") { clipboard.setText(AnnotatedString(b.text)) }
                         .padding(horizontal = J.sp3, vertical = J.sp2))
             }
-            Text(if (pieces == null) AnnotatedString(b.text) else coloured(pieces), style = J.monoCap.copy(color = J.text),
-                softWrap = false, modifier = Modifier.horizontalScroll(rememberScrollState()))
+            val scroll = rememberScrollState()
+            Box {
+                Text(if (pieces == null) AnnotatedString(b.text) else coloured(pieces), style = J.monoCap.copy(color = J.text),
+                    softWrap = false, modifier = Modifier.horizontalScroll(scroll))
+                EdgeFades(scroll, CODE_UNDER)
+            }
         }
         is MdTable -> Table(b, opens, link, tags)
         is MdChart -> Chart(b)
@@ -311,9 +317,20 @@ private fun Table(t: MdTable, opens: ((String) -> (() -> Unit)?)?, link: ((Strin
                 if (r < t.rows.size - 1) Box(Modifier.width(widths.fold(0.dp) { a, w -> a + w }).height(1.dp).background(J.line))
             }
         }
-        if (scroll.canScrollForward) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
-            Box(Modifier.fillMaxHeight().width(J.sp8).background(androidx.compose.ui.graphics.Brush.horizontalGradient(
-                listOf(Color.Transparent, J.bg))))
-        }
+        EdgeFades(scroll, J.bg)
+    }
+}
+
+/** Fades at the edges of a sideways scroll, into [under] (26e, 217): on the right while more is
+ *  hidden there, on the left once scrolled. The usual sign that a box scrolls; a code block had none */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.EdgeFades(scroll: androidx.compose.foundation.ScrollState, under: Color) {
+    if (scroll.canScrollBackward) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxHeight().width(J.sp8).background(androidx.compose.ui.graphics.Brush.horizontalGradient(
+            listOf(under, Color.Transparent))))
+    }
+    if (scroll.canScrollForward) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.fillMaxHeight().width(J.sp8).background(androidx.compose.ui.graphics.Brush.horizontalGradient(
+            listOf(Color.Transparent, under))))
     }
 }
