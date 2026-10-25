@@ -9,10 +9,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,6 +44,7 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
     var reloads by remember { mutableIntStateOf(0) }
     var folder by remember { mutableStateOf(start) }
     var note by remember { mutableStateOf<VaultNote?>(null) }
+    var tag by remember { mutableStateOf<String?>(null) }  // the notes with a tapped #tag (212)
     var text by remember { mutableStateOf<String?>(null) }
     var noteProblem by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(reloads) {
@@ -65,21 +67,31 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
         else noteProblem = if (reply.first == 404) "This note changed on the laptop. Go back and reload."
                            else unreadable(reply.first, "This note is too big to show")
     }
-    // Up one level: a note to its folder, a folder to the one around it, then the overview
+    // Up one level: a note to its folder or tag, a tag to the folder of the note it was tapped
+    // in, a folder to the one around it, then the overview
     fun up() {
         val f = folder
         when {
             note != null -> note = null
+            tag != null -> tag = null
             f != null && f != start -> folder = if ('/' in f) f.substringBeforeLast('/') else null
             else -> back()
         }
     }
     BackHandler { up() }
+    // A scroll state per view (211): back finds the list where I left it, a note opens at its top
+    val places = remember { NotesScroll() }
+    val place = NotesScroll.key(folder, note?.id, tag)
+    val scroll = remember(place) { ScrollState(places.at(place)) }
+    DisposableEffect(place) { onDispose { places.keep(place, scroll.value) } }
     val f = all?.firstOrNull { it.folder == folder }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
+    Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = J.gutter)
         .padding(bottom = J.end), verticalArrangement = Arrangement.spacedBy(J.gap)) {
-        ScreenHeader(note?.name ?: folder?.substringAfterLast('/') ?: "Notes",
-            note?.let { "${it.note} · ${it.modified}" } ?: folder ?: "your vault, read only", ::up,
+        val t = tag
+        val tagged = if (t != null && all != null) VaultNotes.withTag(all!!, t) else emptyList()
+        ScreenHeader(note?.name ?: t?.let { "#$it" } ?: folder?.substringAfterLast('/') ?: "Notes",
+            note?.let { "${it.note} · ${it.modified}" } ?: t?.let { if (tagged.size == 1) "1 note" else "${tagged.size} notes" }
+                ?: folder ?: "your vault, read only", ::up,
             action = if (note == null) ({ RoundButton(Icons.reload, "Reload") { reloads++ } }) else null)
         val n = note
         when {
@@ -93,14 +105,24 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
                 fun find(target: String) = notes.firstOrNull { it.name.equals(target, true) }
                     ?: notes.firstOrNull { it.note.removeSuffix(".md").endsWith(target, true) }
                 Column(Modifier.fillMaxWidth().glass().padding(J.inset)) {
-                    // By name: a trailing lambda would bind to link, the web link handler
+                    // By name: a trailing lambda would bind to link, the web link handler. A #tag
+                    // some listed note has opens the notes with it
                     MarkdownView(remember(n) { app.julz.feed.ObsidianMd.parse(text!!) }, opens = { target ->
-                        find(target)?.let { x -> { note = x; folder = x.note.substringBeforeLast('/') } }
+                        find(target)?.let { x -> { note = x; folder = x.note.substringBeforeLast('/'); tag = null } }
+                    }, tags = { raw ->
+                        VaultNotes.tagKey(raw)?.takeIf { k -> notes.any { k in it.tags } }?.let { k -> { tag = k; note = null } }
                     })
                 }
                 // Cut only at the 4000 character limit; size is in bytes, and Cyrillic takes two a letter
                 if (text!!.length >= 4000) Text("The rest is in Obsidian: only the first 4000 characters travel.",
                     style = J.cap.copy(color = J.muted))
+            }
+            t != null -> {
+                // The notes with this tag, across folders, each with its folder
+                if (tagged.isEmpty()) Text("No notes with #$t now.", style = J.bodyText)
+                else Column(Modifier.fillMaxWidth().glass().padding(horizontal = J.inset)) {
+                    for (x in tagged) ListRow(x.name, x.note.substringBeforeLast('/'), onClick = { note = x })
+                }
             }
             folder != null -> {
                 // A folder shows the folders inside it, then its own notes
@@ -136,6 +158,29 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+/** Where each list view of the notes browser (overview, folder, tag) was scrolled to (211). A
+ *  note is not kept, so it always opens at its top; at most MAX views, the oldest goes first. */
+class NotesScroll {
+    private val kept = LinkedHashMap<String, Int>()
+    val size get() = kept.size
+    fun at(key: String) = kept[key] ?: 0
+    fun keep(key: String, value: Int) {
+        if (key.startsWith("n:")) return
+        kept.remove(key)
+        kept[key] = value
+        while (kept.size > MAX) kept.remove(kept.keys.first())
+    }
+    companion object {
+        const val MAX = 64
+        fun key(folder: String?, note: String?, tag: String? = null) = when {
+            note != null -> "n:$note"
+            tag != null -> "t:$tag"
+            folder != null -> "f:$folder"
+            else -> "o"
         }
     }
 }

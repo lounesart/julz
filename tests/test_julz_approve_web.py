@@ -660,7 +660,8 @@ class InboxWebTest(DeviceBase):
     def write_notes(self, data):
         (self.app.todos_file.parent / "notes.json").write_text(data if isinstance(data, str) else json.dumps(data))
 
-    DNS = {"name": "dns", "note": "study/network-plus/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n"}
+    DNS = {"name": "dns", "note": "study/network-plus/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n",
+           "tags": ["net"]}
 
     def test_notes_are_served_without_their_text(self):
         # 206: the list stays small; one note's text comes by id when it is opened
@@ -668,7 +669,20 @@ class InboxWebTest(DeviceBase):
         status, _, data = self.request("GET", "/api/notes")
         listed = {k: v for k, v in self.DNS.items() if k != "text"}
         listed["id"] = hashlib.sha256(b"study/network-plus/dns.md").hexdigest()
-        self.assertEqual((status, data), (200, {"folders": [{"folder": "study/network-plus", "notes": [listed]}]}))
+        listed["tags"] = [0]
+        self.assertEqual((status, data), (200, {"folders": [{"folder": "study/network-plus", "notes": [listed]}],
+                                               "tags": ["net"]}))
+
+    def test_tags_come_as_one_table_and_indexes(self):
+        # 212, threat 149: a sorted table, each note points into it
+        a = {**self.DNS, "tags": ["sec", "net"]}
+        b = {**self.DNS, "name": "osi", "note": "daily/osi.md", "tags": []}
+        c = {**self.DNS, "name": "ip", "note": "daily/ip.md", "tags": ["сеть", "net"]}
+        self.write_notes({"folders": [{"folder": "daily", "notes": [b, c]},
+                                      {"folder": "study/network-plus", "notes": [a]}]})
+        _, _, data = self.request("GET", "/api/notes")
+        self.assertEqual(data["tags"], ["net", "sec", "сеть"])
+        self.assertEqual([n["tags"] for f in data["folders"] for n in f["notes"]], [[], [2, 0], [1, 0]])
 
     # ----- one note by id (threat 148) -----
 
@@ -717,7 +731,10 @@ class InboxWebTest(DeviceBase):
 
     def test_300_full_notes_list_under_the_phone_limit(self):
         # The reason for 206: every Cyrillic letter escapes to 6 bytes, 300 x 4000 never fit
-        notes = [{**self.DNS, "name": f"n{i}", "note": f"study/n{i}.md", "text": "я" * 4000} for i in range(300)]
+        # 212: plus the most tags there may be, 200 different of 40 Cyrillic letters, 10 a note
+        table = [f"т{i:03d}" + "я" * 36 for i in range(200)]
+        notes = [{**self.DNS, "name": f"n{i}", "note": f"study/n{i}.md", "text": "я" * 4000,
+                  "tags": [table[(i * 10 + j) % 200] for j in range(10)]} for i in range(300)]
         self.write_notes({"folders": [{"folder": "study", "notes": notes}]})
         status, hdrs, raw = self.app.handle("GET", "/api/notes", {"Host": f"{HOST}:8443"}, b"")
         self.assertEqual(status, 200)
@@ -728,7 +745,8 @@ class InboxWebTest(DeviceBase):
         self.assertLess(len(raw), 256_000)
 
     def test_off_shape_notes_are_empty(self):
-        note = {"name": "dns", "note": "study/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n"}
+        note = {"name": "dns", "note": "study/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n", "tags": []}
+        many = [{**note, "note": f"study/m{i}.md", "tags": [f"t{i}x{j}" for j in range(10)]} for i in range(21)]
         for name, data in {"missing": None, "not json": "{",
                            "a template": {"folders": [{"folder": "Templates", "notes": [{**note, "note": "Templates/t.md"}]}]},
                            "spec folder": {"folders": [{"folder": "Inbox/claude", "notes": [{**note, "note": "Inbox/claude/s.md"}]}]},
@@ -737,14 +755,22 @@ class InboxWebTest(DeviceBase):
                            "hidden": {"folders": [{"folder": "study", "notes": [{**note, "text": "a\u202eb"}]}]},
                            "long": {"folders": [{"folder": "study", "notes": [{**note, "text": "y" * 4001}]}]},
                            "extra key": {"folders": [{"folder": "study", "notes": [{**note, "x": 1}]}]},
-                           "too many": {"folders": [{"folder": "study", "notes": [note] * 301}]}}.items():
+                           "too many": {"folders": [{"folder": "study", "notes": [note] * 301}]},
+                           **{f"tag {k}": {"folders": [{"folder": "study", "notes": [{**note, "tags": t}]}]} for k, t in {
+                               "missing": None, "not a list": "net", "not a string": [1], "space": ["a b"],
+                               "upper case": ["Net"], "number first": ["2026"], "dot": ["a.b"], "colon": ["x:y"],
+                               "hidden": ["a\u202eb"], "joiner": ["a\u200db"], "too long": ["l" * 41], "empty": [""],
+                               "duplicate": ["a", "a"], "eleven": [f"t{i}" for i in range(11)]}.items()},
+                           "tags missing": {"folders": [{"folder": "study", "notes": [
+                               {k: v for k, v in note.items() if k != "tags"}]}]},
+                           "201 different": {"folders": [{"folder": "study", "notes": many}]}}.items():
             with self.subTest(name=name):
                 p = self.app.todos_file.parent / "notes.json"
                 p.unlink(missing_ok=True)
                 if data is not None:
                     self.write_notes(data)
                 status, _, got = self.request("GET", "/api/notes")
-                self.assertEqual((status, got), (200, {"folders": []}), name)
+                self.assertEqual((status, got), (200, {"folders": [], "tags": []}), name)
 
     def test_notes_are_read_only(self):
         status, _, _ = self.post("/api/notes", {})

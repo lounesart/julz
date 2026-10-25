@@ -182,7 +182,7 @@ class NotesSnapshotTest(InboxBase):
         osi = f["Claude/network-plus/abc/labs"][0]
         self.assertEqual(osi["note"], "Claude/network-plus/abc/labs/01-osi.md")
         self.assertEqual(osi["text"], "# OSI\n")
-        self.assertEqual(set(osi), {"name", "note", "modified", "size", "text"})
+        self.assertEqual(set(osi), {"name", "note", "modified", "size", "text", "tags"})
 
     def test_templates_settings_specs_and_links_stay_out(self):
         (self.study / "link.md").symlink_to(self.outside)
@@ -203,6 +203,31 @@ class NotesSnapshotTest(InboxBase):
         for i in range(vault_mod.MAX_NOTES_SHOWN + 5):
             (self.study / f"n{i:03d}.md").write_text("y\n")
         self.assertEqual(sum(len(n) for n in self.folders().values()), vault_mod.MAX_NOTES_SHOWN)
+
+    def tags_of(self, text):
+        (self.study / "t.md").write_text(text)
+        return {n["name"]: n for n in self.folders()["study"]}["t"]["tags"]
+
+    def test_tags_from_front_matter_and_text(self):
+        # 212, threat 149: the tags a tap on the phone looks for
+        self.assertEqual(self.tags_of("---\ntags: [Net, study/dns]\n---\nAbout #dhcp and #Сеть, again #net.\n"),
+                         ["net", "study/dns", "dhcp", "сеть"])
+        self.assertEqual(self.tags_of("---\ntags:\n  - ccna\n  - '#lab'\n---\n#first line\n"), ["ccna", "lab", "first"])
+
+    def test_tags_skip_what_is_not_a_tag(self):
+        text = ("# Heading\n## Two\nhttp://x.org/a#frag a#b #2026 #_x #-y\n`#code` and\n```\n#block\n```\n"
+                "#a\u202eb #ok.\n")
+        self.assertEqual(self.tags_of(text), ["a", "ok"])  # the planted one stops at the bidi mark
+        self.assertEqual(self.tags_of("---\ntags: [a b, x:y, " + "l" * 41 + ", \u202eq]\n---\n"), [])
+        self.assertEqual(self.tags_of("#" + "l" * 41 + "\n"), [])
+
+    def test_tags_are_capped(self):
+        self.assertEqual(self.tags_of(" ".join(f"#t{i}" for i in range(15))),
+                         [f"t{i}" for i in range(vault_mod.MAX_NOTE_TAGS)])
+        for i in range(30):
+            (self.study / f"m{i:02d}.md").write_text(" ".join(f"#n{i}x{j}" for j in range(10)))
+        seen = {t for ns in self.folders().values() for n in ns for t in n["tags"]}
+        self.assertEqual(len(seen), vault_mod.MAX_TAGS)
 
     def test_run_writes_the_notes_snapshot(self):
         self.run_vault()
