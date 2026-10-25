@@ -2,6 +2,7 @@
 App.handle is driven like a browser would, with the software authenticator from
 test_julz_webauthn.py standing in for the phone. Every request and reply goes through JSON.
 Run: python3 -m unittest discover -s tests -v"""
+import hashlib
 import importlib.util
 import json
 import os
@@ -659,12 +660,72 @@ class InboxWebTest(DeviceBase):
     def write_notes(self, data):
         (self.app.todos_file.parent / "notes.json").write_text(data if isinstance(data, str) else json.dumps(data))
 
-    def test_notes_are_served(self):
-        notes = {"folders": [{"folder": "study/network-plus", "notes": [
-            {"name": "dns", "note": "study/network-plus/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n"}]}]}
-        self.write_notes(notes)
+    DNS = {"name": "dns", "note": "study/network-plus/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n"}
+
+    def test_notes_are_served_without_their_text(self):
+        # 206: the list stays small; one note's text comes by id when it is opened
+        self.write_notes({"folders": [{"folder": "study/network-plus", "notes": [self.DNS]}]})
         status, _, data = self.request("GET", "/api/notes")
-        self.assertEqual((status, data), (200, notes))
+        listed = {k: v for k, v in self.DNS.items() if k != "text"}
+        listed["id"] = hashlib.sha256(b"study/network-plus/dns.md").hexdigest()
+        self.assertEqual((status, data), (200, {"folders": [{"folder": "study/network-plus", "notes": [listed]}]}))
+
+    # ----- one note by id (threat 148) -----
+
+    def note_id(self, path):
+        return hashlib.sha256(path.encode()).hexdigest()
+
+    def test_a_listed_id_gives_its_text(self):
+        self.write_notes({"folders": [{"folder": "study/network-plus", "notes": [self.DNS]}]})
+        status, _, data = self.request("GET", "/api/notes/" + self.note_id(self.DNS["note"]))
+        self.assertEqual((status, data), (200, {"note": "study/network-plus/dns.md", "text": "# DNS\n"}))
+
+    def test_anything_but_a_listed_id_is_not_found_and_opens_no_file(self):
+        self.write_notes({"folders": [{"folder": "study/network-plus", "notes": [self.DNS]}]})
+        good = self.note_id(self.DNS["note"])
+        # A real spec on disk: julz-vault leaves it out of notes.json, so no id reaches it
+        (self.inbox / "s.md").write_text("spec\n")
+        read = []
+        real = web.gate.read_regular
+        def spy(path, *a, **k):
+            read.append(Path(path).name)
+            return real(path, *a, **k)
+        web.gate.read_regular = spy
+        self.addCleanup(setattr, web.gate, "read_regular", real)
+        near = good[:63] + ("1" if good[63] == "0" else "0")
+        for name, tail in {"unknown": "0" * 64, "one digit off": near, "short": good[:63], "long": good + "0",
+                           "upper case": good.upper(), "a path": "study/network-plus/dns.md",
+                           "dot dot": "../../.ssh/id_ed25519", "encoded slash": "study%2Fdns.md",
+                           "a query": good + "?x=1", "a trailing slash": good + "/",
+                           "a spec": self.note_id("Inbox/claude/s.md"), "empty": ""}.items():
+            with self.subTest(name=name):
+                status, _, data = self.request("GET", "/api/notes/" + tail)
+                self.assertEqual(status, 404, name)
+                self.assertNotIn("text", data)
+        self.assertTrue(set(read) <= {"notes.json"}, read)
+
+    def test_a_planted_snapshot_gives_no_note(self):
+        bad = {**self.DNS, "text": "a\u202eb"}
+        self.write_notes({"folders": [{"folder": "study/network-plus", "notes": [bad]}]})
+        status, _, _ = self.request("GET", "/api/notes/" + self.note_id(self.DNS["note"]))
+        self.assertEqual(status, 404)
+
+    def test_one_note_is_read_only(self):
+        self.write_notes({"folders": [{"folder": "study/network-plus", "notes": [self.DNS]}]})
+        status, _, _ = self.post("/api/notes/" + self.note_id(self.DNS["note"]), {})
+        self.assertEqual(status, 405)
+
+    def test_300_full_notes_list_under_the_phone_limit(self):
+        # The reason for 206: every Cyrillic letter escapes to 6 bytes, 300 x 4000 never fit
+        notes = [{**self.DNS, "name": f"n{i}", "note": f"study/n{i}.md", "text": "я" * 4000} for i in range(300)]
+        self.write_notes({"folders": [{"folder": "study", "notes": notes}]})
+        status, hdrs, raw = self.app.handle("GET", "/api/notes", {"Host": f"{HOST}:8443"}, b"")
+        self.assertEqual(status, 200)
+        self.assertLess(len(raw), 256_000)
+        self.assertEqual(len(json.loads(raw)["folders"][0]["notes"]), 300)
+        status, _, raw = self.app.handle("GET", "/api/notes/" + self.note_id("study/n7.md"), {"Host": f"{HOST}:8443"}, b"")
+        self.assertEqual((status, json.loads(raw)["text"]), (200, "я" * 4000))
+        self.assertLess(len(raw), 256_000)
 
     def test_off_shape_notes_are_empty(self):
         note = {"name": "dns", "note": "study/dns.md", "modified": "2026-10-16", "size": 20, "text": "# DNS\n"}

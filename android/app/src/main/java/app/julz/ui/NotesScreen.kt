@@ -33,8 +33,9 @@ import app.julz.feed.VaultNotes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** The notes browser (SECURITY.md 118), read only: folders, the notes in one, a note's text.
- *  Back goes up a level, then leaves. The text lives only in memory while this screen is open. */
+/** The notes browser (SECURITY.md 118, 148), read only: folders, the notes in one, a note's text.
+ *  The list has no text; a note's text is asked for by its id when it opens (206). Back goes up
+ *  a level, then leaves. The text lives only in memory while this screen is open. */
 @Composable
 fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
     var all by remember { mutableStateOf<List<VaultFolder>?>(null) }
@@ -42,14 +43,27 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
     var reloads by remember { mutableIntStateOf(0) }
     var folder by remember { mutableStateOf(start) }
     var note by remember { mutableStateOf<VaultNote?>(null) }
+    var text by remember { mutableStateOf<String?>(null) }
+    var noteProblem by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(reloads) {
         val reply = withContext(Dispatchers.IO) {
             try { ApproverApi.call(origins, ApproverApi.NOTES) } catch (e: Exception) { 0 to "" }
         }
         val parsed = if (reply.first == 200) VaultNotes.parse(reply.second) else null
         if (parsed != null) { all = parsed; problem = null }
-        else problem = if (reply.first == 0) "The approver is not reachable. Is the laptop on and Tailscale up?"
-                       else "The laptop answered oddly"
+        else problem = unreadable(reply.first, "Too many notes to show at once")
+    }
+    LaunchedEffect(note) {
+        text = null; noteProblem = null
+        val n = note ?: return@LaunchedEffect
+        val reply = withContext(Dispatchers.IO) {
+            try { ApproverApi.call(origins, ApproverApi.note(n.id)) } catch (e: Exception) { 0 to "" }
+        }
+        val got = if (reply.first == 200) VaultNotes.one(reply.second, n.note) else null
+        if (got != null) text = got
+        // 404: the snapshot moved on since the list came (the note was moved or renamed)
+        else noteProblem = if (reply.first == 404) "This note changed on the laptop. Go back and reload."
+                           else unreadable(reply.first, "This note is too big to show")
     }
     // Up one level: a note to its folder, a folder to the one around it, then the overview
     fun up() {
@@ -71,6 +85,7 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
         when {
             problem != null -> Text(problem!!, style = J.sec)
             all == null -> Text("Asking the laptop", style = J.sec)
+            n != null && text == null -> Text(noteProblem ?: "Asking the laptop", style = J.sec)
             n != null -> {
                 // Obsidian formatting in the app's style, nothing fetched (119); a wikilink opens a note
                 // that is in the snapshot, by its name or its path
@@ -78,12 +93,12 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
                 fun find(target: String) = notes.firstOrNull { it.name.equals(target, true) }
                     ?: notes.firstOrNull { it.note.removeSuffix(".md").endsWith(target, true) }
                 Column(Modifier.fillMaxWidth().glass().padding(J.inset)) {
-                    MarkdownView(remember(n) { app.julz.feed.ObsidianMd.parse(n.text) }) { target ->
+                    MarkdownView(remember(n) { app.julz.feed.ObsidianMd.parse(text!!) }) { target ->
                         find(target)?.let { x -> { note = x; folder = x.note.substringBeforeLast('/') } }
                     }
                 }
                 // Cut only at the 4000 character limit; size is in bytes, and Cyrillic takes two a letter
-                if (n.text.length >= 4000) Text("The rest is in Obsidian: only the first 4000 characters travel.",
+                if (text!!.length >= 4000) Text("The rest is in Obsidian: only the first 4000 characters travel.",
                     style = J.cap.copy(color = J.muted))
             }
             folder != null -> {
@@ -122,4 +137,11 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
             }
         }
     }
+}
+
+/** What a screen says when a reply cannot be read: not reachable, too big, or odd. */
+private fun unreadable(status: Int, tooBig: String) = when (status) {
+    0 -> "The approver is not reachable. Is the laptop on and Tailscale up?"
+    ApproverApi.TOO_BIG -> tooBig
+    else -> "The laptop answered oddly"
 }

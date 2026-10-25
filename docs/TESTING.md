@@ -80,11 +80,13 @@ Expected results in brackets.
    (finger). [Struck through while picked; after it the tag is gone from the line in Obsidian
    and the bar drops it.]
 
-### Inbox and notes (116 to 119)
+### Inbox and notes (116 to 119, 148)
 1. Inbox: Move a note, choose a folder in the sheet (finger). [The note leaves the Inbox; Notes
    shows it in that folder.] Delete one (finger). [Gone; git has it.]
 2. Browse all notes, open a note with a table and code. [Formatted; no image loads; a web link
    is not tappable; a [[wikilink]] to an existing note opens it.]
+3. Open a long Cyrillic note, go back, open another. [Asking the laptop, then the text; the list
+   comes back as it was. With the laptop off: the not reachable line in the note, not the list.]
 
 ### Feedback (120)
 1. Feed, the feedback button, send an idea (finger). [Under Open as new; Claude sorts it next
