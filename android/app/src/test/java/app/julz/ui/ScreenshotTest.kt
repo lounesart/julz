@@ -90,34 +90,34 @@ class ScreenshotTest {
                      app.julz.feed.InboxPick("Inbox/ideas.md", "delete").key))
     }
 
-    // While I sign, the text sits at the top, above where the system's fingerprint sheet comes up
-    // over the bottom half (219): here over the picked Inbox, whose Apply bar it must not need
-    @Test
-    fun signTopOverInbox() = paparazzi.snapshot {
-        androidx.compose.foundation.layout.Box {
-            inbox(listOf(app.julz.feed.InboxPick("Inbox/subnetting.md", "move", "study/network-plus").key,
-                         app.julz.feed.InboxPick("Inbox/ideas.md", "delete").key))
-            androidx.compose.foundation.layout.BoxWithConstraints {
-                SignTop("inbox: change 2 notes\nmove Inbox/subnetting.md to study/network-plus/\ndelete Inbox/ideas.md\n" +
-                    "snapshot ${"d".repeat(12)}", maxHeight * SignPanel.ABOVE, androidx.compose.foundation.rememberScrollState())
-            }
+    private val inboxHash = "741af55b4ec085a58dfd86cafdc21e8cea5779638953e3d10ca753559857dd3b"
+
+    @Composable
+    private fun signScreen(title: String, text: String, reading: Boolean) =
+        androidx.compose.foundation.layout.BoxWithConstraints {
+            SignScreen(SignPanel.Ask(title, text, {}, {}), maxHeight * SignPanel.ABOVE,
+                androidx.compose.foundation.rememberScrollState(), reading, {}, {})
         }
+
+    // While I sign: a screen of its own, the text in the top part, the hash short and quiet; the
+    // system's fingerprint sheet comes up over the empty bottom half (219, 219b)
+    @Test
+    fun signShort() = paparazzi.snapshot {
+        signScreen("Change 2 notes", "inbox: $inboxHash\nmove: Inbox/subnetting.md -> study/network-plus/subnetting.md\n" +
+            "delete: Inbox/ideas.md\n", reading = false)
     }
 
-    // After reading a long text, the top view keeps its cap: the sheet must not cover its end (219)
+    // After reading a long text, the top part keeps its cap: the sheet must not cover its end (219)
     @Test
     fun signTopCapped() = paparazzi.snapshot {
-        androidx.compose.foundation.layout.BoxWithConstraints(androidx.compose.ui.Modifier.fillMaxSize().background(J.page)) {
-            SignTop((1..40).joinToString("\n") { "Line $it of a long spec" }, maxHeight * SignPanel.ABOVE,
-                androidx.compose.foundation.rememberScrollState())
-        }
+        signScreen("Approve with Julz", (1..40).joinToString("\n") { "Line $it of a long spec" }, reading = false)
     }
 
     // Too long for the top: read whole first, Sign and Cancel at the bottom by the thumb (219)
     @Test
     fun signReadFirst() = paparazzi.snapshot {
-        SignRead(SignPanel.Ask("Save to notes", "save: Inbox/subnetting answer.md\n\n" +
-            (1..60).joinToString("\n") { "Line $it of the answer: a /26 gives 64 addresses, 62 hosts." }, {}, {}), {}, {})
+        signScreen("Save to notes", "save: Inbox/subnetting answer.md\n\n" +
+            (1..60).joinToString("\n") { "Line $it of the answer: a /26 gives 64 addresses, 62 hosts." }, reading = true)
     }
 
     // Learning mode's chip in both composer layouts (135): left of send when roomy, above the box

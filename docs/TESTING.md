@@ -109,9 +109,11 @@ Expected results in brackets.
    [The task ends with "Claude asked the same thing again", no third run.]
 
 ### What I sign stays in view (219, 109)
-1. Inbox: Delete on a note, Apply. [The text I sign at the top under "You are signing exactly
-   this", the fingerprint sheet below it, nothing of the text under the sheet. The prompt says
-   "Signs the text shown above".] Cancel. [Panel gone, the pick still there.]
+1. Inbox: Delete on a note, Apply. [A screen of its own in the app's look (219b): the title
+   "Change 1 note", "Your fingerprint signs this, nothing else.", a card with a short quiet
+   hash (12 characters and …) and the delete line; nothing of the Inbox list; the fingerprint
+   sheet below the card. The prompt says "Signs the text shown above".] Cancel. [Back on
+   Inbox, the pick still there.]
 2. Todos: tick a task with fingerprint; Goals: Apply. [Same: text at the top, sheet below.]
 3. Chat: Save to notes on a long answer (more than a screen). [First a full screen to read,
    "Sign with fingerprint" and Cancel at the bottom; Sign brings the sheet with the start of the
