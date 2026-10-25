@@ -693,6 +693,14 @@ class CardsTest(Base):
         (n.title + n.body + n.tags + n.priority).encode("ascii")
 
 
+class HashAnchorTest(unittest.TestCase):
+    """222: a hash with a trailing newline is no hash."""
+
+    def test_short(self):
+        self.assertEqual(notify.short("a" * 64), "aaaaaaaa")
+        self.assertEqual(notify.short("a" * 64 + "\n"), "?")
+
+
 class CardsUnitFileTest(unittest.TestCase):
     """160: its own unit pair, the cards folder read only and nothing else of the vault."""
 

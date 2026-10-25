@@ -59,7 +59,7 @@ LOCAL_TOKEN = re.compile(r"tk_[a-z0-9]{29}")
 # What the phone app groups and mutes by; it drops any other kind
 KINDS = ("approval", "todo", "inbox", "run", "review", "change", "warning")
 TOPIC = re.compile(r"^julz-[0-9a-f]{32}$")
-HASH = re.compile(r"^[0-9a-f]{64}$")
+HASH = gate.HEX64
 INBOX_EVERY = 300
 # New notes (209, threat 142): julz-vault writes notes.json, this counts names it has not seen
 NOTES_FILE = HOME / ".local" / "share" / "julz" / "vault" / "notes.json"

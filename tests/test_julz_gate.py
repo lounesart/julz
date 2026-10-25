@@ -1278,5 +1278,23 @@ class SandboxLayoutTest(unittest.TestCase):
             self.assertIn('"rotate"', dirs.log.read_text())
 
 
+class Hex64AnchorTest(unittest.TestCase):
+    """222: `$` also takes a trailing newline, so a hash or id with one passed every .match."""
+    H = "a" * 64
+
+    def test_newline_refused_by_match_and_fullmatch(self):
+        for bad in (self.H + "\n", self.H + "\r", self.H + "\n\n", "\n" + self.H, self.H.upper(), self.H[:-1]):
+            with self.subTest(bad=bad):
+                self.assertIsNone(gate.HEX64.match(bad))
+                self.assertIsNone(gate.HEX64.fullmatch(bad))
+        self.assertTrue(gate.HEX64.match(self.H) and gate.HEX64.fullmatch(self.H))
+
+    def test_task_path_refuses_a_newline(self):
+        dirs = gate.Dirs(Path(tempfile.mkdtemp()) / "gate")
+        self.assertEqual(gate.task_path(dirs, self.H).name, self.H + ".json")
+        with self.assertRaises(gate.SpecError):
+            gate.task_path(dirs, self.H + "\n")
+
+
 if __name__ == "__main__":
     unittest.main()
