@@ -15,6 +15,7 @@ Steps: refuse uncommitted changes, export HEAD with git archive (tracked files o
 switch the current link in one rename, reload systemd, restart the approver. Afterwards it
 names what it cannot do itself: tools to push with --tools, models to rebuild, a sudo step.
 """
+import ast
 import difflib
 import fcntl
 import filecmp
@@ -44,6 +45,8 @@ OWUI = "http://127.0.0.1:3100"
 REWRITTEN = ("from utils", "from apps", "from main", "from config")
 # Open WebUI made the id from the name I typed when I first pasted it; the rest match the file
 OWUI_IDS = {"functions/julz_saves": "julz_honest_saves"}
+# Shown above the diff when only layout or comments differ, so y is safe
+FORMAT_ONLY = "same code, only formatting or comments differ: y makes the hash match\n"
 REBUILD = ("modelfiles/",)  # build-models.sh may pull a model, an install: I run it
 SUDO = ("run-webui.sh", "run-searxng.sh", "run-speaches.sh", "systemd/ollama-limits.conf")
 
@@ -260,6 +263,15 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _same_code(a: str, b: str) -> bool:
+    """Equal syntax trees. ast drops comments and layout; a copy that does not parse counts
+    as a real change. Parsing never runs the code."""
+    try:
+        return ast.dump(ast.parse(a)) == ast.dump(ast.parse(b))
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+
+
 def tools_release(lib: Path) -> Path | None:
     """--tools pushes from the live release, never this working tree (79)."""
     return live(lib)
@@ -298,6 +310,8 @@ def push_tools(release: Path, lib: Path, http, email: str, password: str, confir
                 continue
             diff = "".join(difflib.unified_diff(current["content"].splitlines(True),
                                                 src.splitlines(True), "live", "release"))
+            if _same_code(current["content"], src):
+                diff = FORMAT_ONLY + diff
             if not confirm(name, diff):
                 out.append(f"kept live: {name}")
                 continue
