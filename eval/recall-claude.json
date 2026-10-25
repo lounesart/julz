@@ -10,5 +10,17 @@
   {"q": "Which handshake does WPA3 use, according to the Wi-Fi security lab?",
    "expect": ["SAE"], "source": "Claude__network-plus__ac7ec2c4__labs__11-wifi-security.md"},
   {"q": "In the DNS lab guide, which record type maps a name to an IPv6 address?",
-   "expect": ["AAAA"], "source": "Claude__network-plus__ac7ec2c4__labs__04-dns.md"}
+   "expect": ["AAAA"], "source": "Claude__network-plus__ac7ec2c4__labs__04-dns.md"},
+  {"q": "What is CPTS?",
+   "expect": ["Penetration Testing Specialist"], "source": "Claude__cpts__00-cpts-overview.md", "forbid": ["PenTest+"], "tries": 3},
+  {"q": "Which cert do I take right before CPTS?",
+   "expect": ["Security+"], "source": "Claude__cpts__00-cpts-overview.md", "forbid": ["PenTest+"], "tries": 3},
+  {"q": "Что такое CPTS и какой сертификат я сдаю перед ним?",
+   "expect": ["Security+"], "source": "Claude__cpts__00-cpts-overview.md", "forbid": ["PenTest+"], "tries": 3},
+  {"q": "In my CPTS methodology note, which phase comes first?",
+   "expect": ["pre-engagement"], "source": "Claude__cpts__01-methodology.md", "forbid": ["PenTest+"]},
+  {"q": "In my CPTS topic checklist, what is listed under proving impact?",
+   "expect": ["lateral"], "source": "Claude__cpts__02-topics.md", "forbid": ["PenTest+"]},
+  {"q": "In my CPTS report note, which part of the report must a manager be able to read?",
+   "expect": ["executive summary"], "source": "Claude__cpts__03-reporting.md", "forbid": ["PenTest+"]}
 ]
