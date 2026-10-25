@@ -63,7 +63,6 @@ class GoalsUi {
     var status by mutableStateOf<String?>(null)
     var open by mutableStateOf<String?>(null)       // the goal shown whole, by period and text
     val targets = mutableStateMapOf<String, String>()  // target numbers being typed, by goal
-    var adding by mutableStateOf<String?>(null)     // the period whose Add field is open (223b)
     var view by mutableStateOf<String?>(null)       // week or month under the year; null: the stored one (223)
     val active get() = status != null || picks.isNotEmpty()
 }
@@ -170,16 +169,9 @@ private fun PeriodCard(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app
             Pill("Undo", false, !busy) { ui.picks.remove(a) }
         }
         val draft = "new:${p.key}"
-        if (ui.adding == p.key) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-            OutlinedTextField(ui.drafts[draft].orEmpty(), { if (it.length <= 120) ui.drafts[draft] = it }, Modifier.weight(1f),
-                label = { Text("Add a goal") }, singleLine = true, enabled = !busy, colors = fieldColors(), shape = fieldShape(oneLine = true),
-                textStyle = J.bodyText)
-            Pill("Add", false, !busy && !ui.drafts[draft].isNullOrBlank()) {
-                ui.drafts[draft]?.trim()?.takeIf { it.isNotEmpty() }?.let { toggle(GoalPick("add", p.key, it)) }
-                ui.drafts.remove(draft); ui.adding = null
-            }
-        } else Text("+ Add a goal", style = J.sec.copy(color = J.accText, fontWeight = FontWeight(600)),
-            modifier = Modifier.minimumInteractiveComponentSize().clickable(role = Role.Button, enabled = !busy) { ui.adding = p.key })
+        androidx.compose.runtime.key(p.key) {  // the week and month cards share a place: one field each
+            InlineAdd("Add a goal", ui.drafts[draft].orEmpty(), { ui.drafts[draft] = it }, !busy) { toggle(GoalPick("add", p.key, it)) }
+        }
     }
 }
 

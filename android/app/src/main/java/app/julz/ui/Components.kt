@@ -1,7 +1,11 @@
 package app.julz.ui
 
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
@@ -42,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -278,6 +283,44 @@ fun fieldColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
     disabledContainerColor = J.surface, errorContainerColor = J.surface,
     focusedTextColor = J.text, unfocusedTextColor = J.text, disabledTextColor = J.muted,
     focusedLabelColor = J.accText, unfocusedLabelColor = J.muted, disabledLabelColor = J.faint, cursorColor = J.acc)
+
+/** A ghost row at the end of a list that turns into a field in place (223c; Trello's + Add a
+ *  card, Things' New To-Do): shaped like the list's rows, a + and the label; tapped, a focused
+ *  field with Add. Enter adds and stays open for the next one; an empty field closes when it
+ *  loses focus or on Back. The draft is the caller's, so it outlives a tab switch and reopens. */
+@Composable
+fun InlineAdd(label: String, draft: String, onDraft: (String) -> Unit, enabled: Boolean, max: Int = 120,
+              onAdd: (String) -> Unit) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(draft.isNotEmpty()) }
+    if (draft.isNotEmpty()) open = true
+    fun add() { draft.trim().takeIf { it.isNotEmpty() }?.let { onAdd(it); onDraft("") } }
+    if (!open) {
+        Row(Modifier.fillMaxWidth().heightIn(min = J.tap).clip(J.rM).border(1.dp, J.line, J.rM)
+            .clickable(role = Role.Button, enabled = enabled) { open = true }.padding(horizontal = J.sp3),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+            Text("+", style = J.ts.copy(color = J.accText), modifier = Modifier.clearAndSetSemantics { })  // TalkBack: just the label
+            Text(label, style = J.sec.copy(color = J.muted))
+        }
+        return
+    }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var focused by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(enabled = draft.isBlank()) { open = false }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+        androidx.compose.material3.OutlinedTextField(draft, { if (it.length <= max) onDraft(it) },
+            Modifier.weight(1f).focusRequester(focus).onFocusChanged {
+                if (focused && !it.isFocused && draft.isBlank()) open = false
+                focused = it.isFocused
+            },
+            label = { Text(label) }, singleLine = true, enabled = enabled, colors = fieldColors(), shape = fieldShape(oneLine = true),
+            textStyle = J.bodyText,
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { add() }))
+        Pill("Add", false, enabled && draft.isNotBlank()) { add() }
+    }
+    LaunchedEffect(Unit) { if (draft.isEmpty()) focus.requestFocus() }
+}
 
 /** Every screen's header (22f): back, the title, a line under it, one action. One title size;
  *  the buttons line up with the title's first line however many lines the words take (at 200

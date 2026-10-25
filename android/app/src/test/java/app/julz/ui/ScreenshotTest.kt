@@ -184,6 +184,16 @@ class ScreenshotTest {
         }
     }
     @Test fun goalsWeek() = goalCards("week")
+    // The ghost row open, with a kept draft (223c): the field and Add in the row's place
+    @Test fun inlineAddOpen() = paparazzi.snapshot {
+        shell(Screen.TODOS) {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().padding(horizontal = J.gutter),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(J.sp3)) {
+                InlineAdd("Add a goal", "Read the DNS chapter", {}, true) {}
+                InlineAdd("Add a goal", "", {}, true) {}
+            }
+        }
+    }
     @Test fun goalsMonth() = goalCards("month")
 
     @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
