@@ -91,6 +91,10 @@ Expected results in brackets.
    the card body slides the same way and fades, no empty frame; with animations off in
    Developer options, all of it jumps.] Tap an empty part of the screen with the keyboard up.
    [It goes; an empty Add field folds back into + Add a goal.]
+12. Goal page (227): tap a goal in Still open from before. [A sheet: its words, the percent large,
+   a bar, hours and due, Done and Left by name with a tick or a circle, counts for what the phone
+   cannot name; nothing to tap but Back.] Open a current goal, Overview: Details. [The same page;
+   after Back no change is picked.]
 11. Ask Julz "set me a goal for today: read the DNS chapter". [She offers a todo in daily, a
    card to sign, not a goal; signed, it shows on Todos.]
 

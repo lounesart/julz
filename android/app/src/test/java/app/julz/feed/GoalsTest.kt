@@ -195,4 +195,30 @@ class GoalsTest {
         assertNull(GoalsData.body("short", listOf(GoalPick("tick", "2026", "x"))))
         assertNull(GoalsData.body(ID, listOf(GoalPick("delete", "2026", "x"))))
     }
+
+    // A goal's page, HTB style (227): what is done and what is left, named from what the phone holds
+    @Test fun aGoalsPageNamesItsParts() {
+        val cpts = GoalItem("Pass CPTS #goal/cpts [due:: 2027-03-01]", false, null, "cpts", 2 to 5, rollup = 40, parts = 5,
+            due = "2027-03-01", est = 600, spent = 180, hours = 180 to 600)
+        val net = GoalItem("Net+ #goal/net [in:: cpts]", true, null, "net", null, parent = "cpts", rollup = 100)
+        val read = GoalItem("Kerberos chapter (1/3) [in:: cpts]", false, 1 to 3, null, null, parent = "cpts")
+        val periods = listOf(GoalPeriod("2026", "2026", listOf(cpts, net)), GoalPeriod("2026-W43", "This week", listOf(read)))
+        val tree = mapOf("cpts" to null, "net" to "cpts", "ad" to "cpts")  // ad lives in a note the phone has not
+        val todos = listOf(TodoList("study", 1, 3, listOf("Subnetting drill #goal/cpts", "unrelated #goal/cpts-old"),
+            doneItems = listOf("DNS lab #goal/cpts [spent:: 1h]"), doing = listOf("AD lab #goal/cptsx")))
+        val d = GoalsData.detail(cpts, periods, tree, todos)
+        assertEquals("Pass CPTS", d.title)
+        assertEquals(40, d.percent)
+        assertEquals(listOf("Net+" to "100%", "DNS lab" to null), d.done.map { it.text to it.progress })
+        assertEquals(listOf("Kerberos chapter" to "1/3", "Subnetting drill" to null), d.left.map { it.text to it.progress })
+        assertEquals(1, d.unnamedDone)   // linked 2 done, one named here: the other is in a finished list
+        assertEquals(2, d.unnamedLeft)   // linked 3 open, one named here (cpts-old and cptsx are other tags)
+        assertEquals(1, d.elsewhere)     // ad: a child goal in a note the phone has not
+        assertEquals(180 to 600, d.hours)
+        // A goal with no id has no tagged todos or child goals: just itself
+        val plain = GoalsData.detail(read, periods, tree, todos)
+        assertEquals(33, plain.percent)
+        assertTrue(plain.done.isEmpty() && plain.left.isEmpty() && plain.unnamedDone == 0 && plain.elsewhere == 0)
+        assertEquals(100, GoalsData.detail(net, periods, tree, emptyList()).percent)
+    }
 }

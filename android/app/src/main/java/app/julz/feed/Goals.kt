@@ -17,6 +17,14 @@ data class GoalsSnapshot(val id: String, val periods: List<GoalPeriod>, val tree
  *  give it a due date (extra = YYYY-MM-DD), an estimate or hours logged (extra = hours, 129). */
 data class GoalPick(val action: String, val period: String, val value: String, val extra: String = "", val list: String = "")
 
+/** One part of a goal on its page (227): a child goal or a linked todo, its words and, for a child
+ *  goal, its own progress as shown on its bar. */
+data class GoalPart(val text: String, val done: Boolean, val progress: String? = null)
+/** A goal's page, HTB style (227): its words, percent, hours and due date, then what is done and
+ *  what is left by name, and counts for parts the phone cannot name. Read only: nothing on it acts. */
+data class GoalDetail(val title: String, val percent: Int?, val hours: Pair<Int, Int>?, val due: String?,
+                      val done: List<GoalPart>, val left: List<GoalPart>, val unnamedDone: Int, val unnamedLeft: Int, val elsewhere: Int)
+
 /** Goals from the approver's /api/goals (SECURITY.md 123), checked again here, and what the app
  *  sends to begin a signed change. */
 object GoalsData {
@@ -46,6 +54,30 @@ object GoalsData {
 
     /** A card's key beside its label, only when it says something the label does not (223b). */
     fun keyShown(p: GoalPeriod) = p.key != p.label
+
+    /** A goal's page from what the phone holds (227): child goals from the periods it knows (current
+     *  and past) and the tree, linked todos from todos.json by their exact #goal/<id> tag. The
+     *  laptop's linked n/m counts every tagged todo, also in finished lists the phone never gets,
+     *  so the difference is shown as a count; a child goal in a note the phone has not is
+     *  "elsewhere". Words go through shownText, as on the cards (123). */
+    fun detail(g: GoalItem, periods: List<GoalPeriod>, tree: Map<String, String?>, todos: List<TodoList>): GoalDetail {
+        fun pct(x: GoalItem): Int? = x.rollup ?: x.progress?.takeIf { it.second > 0 }?.let { it.first * 100 / it.second } ?: if (x.done) 100 else null
+        val children = if (g.goal == null) emptyList() else periods.flatMap { it.goals }.filter { it.parent == g.goal }.distinct()
+        val named = children.mapNotNull { it.goal }.toSet()
+        val elsewhere = if (g.goal == null) 0 else tree.count { (id, parent) -> parent == g.goal && id !in named }
+        val tag = g.goal?.let { Regex("(?<!\\S)#goal/${Regex.escape(it)}(?![a-z0-9-])") }
+        fun tagged(items: List<String>) = if (tag == null) emptyList() else items.filter { tag.containsMatchIn(it) }
+        val doneTodos = todos.flatMap { tagged(it.doneItems) }.map { GoalPart(shownText(it), true) }
+        val leftTodos = todos.flatMap { tagged(it.open + it.doing) }.map { GoalPart(shownText(it), false) }
+        val parts = children.map { c ->
+            GoalPart(shownText(c.text).let { if (c.progress != null) it.replace(COUNT, "").trim() else it }, c.done,
+                c.rollup?.let { "$it%" } ?: c.progress?.let { "${it.first}/${it.second}" })
+        }
+        val (linkedDone, linkedTotal) = g.linked ?: (0 to 0)
+        return GoalDetail(title(g), pct(g), g.hours, g.due,
+            parts.filter { it.done } + doneTodos, parts.filterNot { it.done } + leftTodos,
+            maxOf(0, linkedDone - doneTodos.size), maxOf(0, linkedTotal - linkedDone - leftTodos.size), elsewhere)
+    }
 
     /** The cards on the Goals tab: the year always, then the picked week or month. */
     fun shown(periods: List<GoalPeriod>, view: String) =
