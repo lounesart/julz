@@ -1,5 +1,6 @@
-# Fallback for julz-keep-sync.path: a sync that failed (Open WebUI not running) keeps its stamp
-# and is tried again here. Without a stamp the service exits at once and never reads the key.
+# Fallback for julz-keep-sync.path: a sync that failed (Open WebUI not running) is tried again
+# here, and a kept note deleted by hand is noticed (13). With no stamp and Claude/ unchanged
+# the service exits at once and never reads the key (154).
 [Unit]
 Description=julz: retry the sync of kept notes every 10 minutes
 

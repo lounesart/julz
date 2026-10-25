@@ -1,5 +1,5 @@
-# Gives kept notes to julz (julz-keep-sync.py): rebuilds the julz-claude collection in
-# Open WebUI after a Keep. SECURITY.md threats 58 and 64. Started only by
+# Gives kept notes to julz (julz-keep-sync.py): keeps the julz-claude collection in Open WebUI
+# the same as Claude/. SECURITY.md threats 58, 64 and 154. Started only by
 # julz-keep-sync.path and julz-keep-sync.timer.
 [Unit]
 Description=julz: sync kept Claude notes into Open WebUI
@@ -10,6 +10,8 @@ ExecStart=/usr/bin/python3 -I %h/.local/lib/julz/current/julz-keep-sync.py
 UMask=0077
 TimeoutStartSec=10min
 Nice=10
+# Its last fingerprint, outside sync/ which julz-keep-sync.path watches (154)
+StateDirectory=julz-keepsync
 # Sandbox: the Open WebUI key and the kept notes read only, its stamp folder and the log.
 # It holds the key, so it is not the unit that writes the vault (julz-keep is, with no key).
 # Network: IPAddressDeny is ignored in user units (tested 2026-10-16), so it is not set here
