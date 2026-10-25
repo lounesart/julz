@@ -168,6 +168,22 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 5. My message in the chat and on the laptop page. [Only my words, never her instructions.]
 6. TalkBack on the chip. ["Learn", a switch, on or off.]
 
+### Changes Julz asks for (208, 156)
+1. Native chat: "add 'buy a USB hub' to my week list" (a note in daily/). [She says it is not
+   added yet and waits on Approve; no "done".] Approve. [A card "Julz asks in the chat" with
+   "Julz asks to add to daily/week.md:" and the line, then "Do it with fingerprint" and Drop.]
+2. Do it with fingerprint. [The sign panel shows the same text whole; after the fingerprint
+   "Sent." and the card is gone.] Open the note a few seconds later. [The line under a dated
+   heading.]
+3. Ask to move an Inbox note into daily, then Drop on its card with the fingerprint. ["Dropped.",
+   the note still in Inbox.]
+4. Ask for a new note in study/ with some text. [A card "Julz asks to create study/...", whole.]
+   Ask for an edit. [Before and After on the card.] Ask to delete a test note. [Its card says
+   git keeps a copy.]
+5. Ask for ten more changes in a row. [The eleventh is refused in the chat, nothing more on
+   Approve.] Leave the old cards a day. [They are gone from Approve.]
+6. Big text and landscape: the card text wraps, both buttons reachable.
+
 ### Code colours (204, 119)
 1. Ask "show me how to list my firewall rules with nft, as a bash block". [Keywords pink,
    strings green, a # comment grey and slanted, $ prompts grey; bash and a "Linux, macOS" chip.]

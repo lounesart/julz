@@ -35,6 +35,8 @@ import app.julz.approve.Begun
 import app.julz.approve.DeviceKey
 import app.julz.approve.DevicePayload
 import app.julz.approve.Note
+import app.julz.approve.Proposal
+import app.julz.approve.Proposals
 import app.julz.approve.SpecItem
 import java.util.Base64
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +52,14 @@ internal suspend fun loadState(origins: Origins): Pair<ApproverState?, app.julz.
     } catch (e: Exception) { null to null }
 }
 
+/** The changes Julz asked for in the native chat (208, SECURITY.md 156), or null when off. */
+internal suspend fun loadProposals(origins: Origins): List<Proposal>? = withContext(Dispatchers.IO) {
+    try {
+        val (code, body) = ApproverApi.call(origins, ApproverApi.PROPOSALS)
+        if (code == 200) Proposals.parse(body) else null
+    } catch (e: Exception) { null }
+}
+
 private fun localFingerprint(): String? = try { DeviceKey.publicDer()?.let { DevicePayload.fingerprint(it) } } catch (e: Exception) { null }
 
 /** Approve in the app with the Julz device key (SECURITY.md 107 to 111). What I sign is the
@@ -61,12 +71,17 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
     val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf<ApproverState?>(null) }
     var work by remember { mutableStateOf<app.julz.approve.WorkState?>(null) }
+    var proposals by remember { mutableStateOf<List<Proposal>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val local = remember { localFingerprint() }
     // Each load also sets the Approve badge, so it drops the moment a card is done (9b)
-    fun reload() = scope.launch { loadState(origins).let { (s, w) -> state = s; work = w; seen(s) }; loaded = true }
+    fun reload() = scope.launch {
+        loadState(origins).let { (s, w) -> state = s; work = w; seen(s) }
+        proposals = loadProposals(origins).orEmpty()
+        loaded = true
+    }
     // Fast after I act, so the run's Stop card shows while it goes (9b)
     var fastUntil by remember { mutableStateOf(0L) }
     // A notice this screen keeps out of the tray reloads it at once, not at the next tick
@@ -135,6 +150,17 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
         }
     }
 
+    // A change Julz asked for: the laptop's card text goes up in the sign panel as it is (156)
+    fun decide(p: Proposal, action: String) {
+        busy = true; status = null
+        signWithDevice(context, scope, origins, action, Proposals.body(p, action),
+            if (action == "change") "Change with Julz" else "Drop with Julz") { word, why ->
+            busy = false
+            status = why ?: word?.let { it.replaceFirstChar { c -> c.uppercase() } + "." }
+            reload()
+        }
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
         .padding(bottom = J.end), verticalArrangement = Arrangement.spacedBy(J.gap)) {
         ScreenHeader("Approve") { RoundButton(Icons.reload, "Reload") { status = null; reload() } }
@@ -156,7 +182,8 @@ fun ApproveScreen(origins: Origins, notes: Map<String, String>, setNote: (String
                 PlainButton("Open the approver page") { openTab(context, origins.approver) }
             }
             else -> {
-                if (s.specs.isEmpty() && s.elsewhere == 0) Text("Nothing waiting for you.", style = J.bodyText.copy(color = J.muted))
+                if (s.specs.isEmpty() && s.elsewhere == 0 && proposals.isEmpty()) Text("Nothing waiting for you.", style = J.bodyText.copy(color = J.muted))
+                for (p in proposals) ProposalCard(p, busy, sign = { decide(p, "change") }, drop = { decide(p, "drop") })
                 for (spec in s.specs) SpecCard(spec, notes[spec.name].orEmpty(), { setNote(spec.name, it) },
                     busy, approve = { sign(spec, "approve") }, deny = { sign(spec, "reject") })
                 // Claude's questions, the running job, queued runs and Keep, here in the app (121);
@@ -232,6 +259,18 @@ private fun SpecCard(spec: SpecItem, note: String, setNote: (String) -> Unit, bu
             isError = Note.problem(note) != null)
         GlowButton(if (busy) "Waiting for your fingerprint" else "Approve with fingerprint") { if (!busy) approve() }
         PlainButton("Deny", color = J.warn, border = J.warn.copy(alpha = 0.4f)) { if (!busy) deny() }
+    }
+}
+
+/** A change Julz asked for in the chat (208): the laptop's text, plain, then sign or drop it. */
+@Composable
+internal fun ProposalCard(p: Proposal, busy: Boolean, sign: () -> Unit, drop: () -> Unit) {
+    Column(Modifier.fillMaxWidth().assemble(key = "change-${p.sha256}").glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+        Text("Julz asks in the chat", style = J.ts)
+        Text(p.text, style = J.sec.copy(fontFamily = J.mono, color = J.text),
+            modifier = Modifier.fillMaxWidth().glass(J.rM).padding(J.sp4))
+        GlowButton(if (busy) "Waiting for your fingerprint" else "Do it with fingerprint") { if (!busy) sign() }
+        PlainButton("Drop", color = J.warn, border = J.warn.copy(alpha = 0.4f)) { if (!busy) drop() }
     }
 }
 

@@ -78,6 +78,11 @@ OPS = {
     "resolve": ({"op", "note"}, ("feedback",)),
 }
 MAX_ITEM = 200
+# What Julz may ask for on a card where no dialog shows (208, threat 156), and where. A new note
+# never needs one in Inbox, and never goes into feedback/eval
+PROPOSAL_OPS = {"append": EDITABLE, "replace": EDITABLE, "move": EDITABLE, "delete": EDITABLE,
+                "create": ("study", "daily", "feedback")}
+MAX_CARD = 4000  # the app shows the text I sign whole (153); the tool keeps the same cap
 LOG_ACTION = {"reviewed": "reviewed", "move": "note-move", "delete": "note-delete",
               "resolve": "feedback-solved", "tick": "tick", "start": "start", "goal": "goal", "progress": "goal",
               "target": "goal", "link": "goal", "nest": "goal", "due": "goal", "unlink": "goal", "est": "goal", "log": "goal"}
@@ -918,6 +923,37 @@ def case_request(signed: str, now) -> dict:
             "text": f"---\ntags:\n  - eval-case\ncreated: {day}\nfrom: phone\nmode: {mode}\n"
                     f"state: new\nquestion_chars: {n}\n---\n\n# Bad answer {day}\n\n"
                     f"## Question\n\n{q}\n\n## Answer\n\n{a}\n"}
+
+
+def proposal_card(raw: bytes) -> tuple[dict, str]:
+    """A change Julz asks for where no dialog can show (208, threat 156): the request and the
+    text I sign for it. The container wrote it, so it is checked as julz-vault would and the
+    words around its fields are fixed here."""
+    req = check_request(raw)
+    op = req["op"]
+    if op not in PROPOSAL_OPS:
+        raise Refused("not a change Julz may ask for")
+    check_path(req["note"], PROPOSAL_OPS[op])
+    if "sha256" in req and not (isinstance(req["sha256"], str) and gate.HEX64.fullmatch(req["sha256"])):
+        raise Refused("bad hash")
+    note = req["note"]
+    if op == "append":
+        card = f"Julz asks to add to {note}:\n\n{checked_text(req['text'], MAX_APPEND_CHARS)}"
+    elif op == "replace":
+        old = checked_text(req["old"], MAX_APPEND_CHARS)
+        new = checked_text(req["new"], MAX_APPEND_CHARS, allow_empty=True)
+        card = f"Julz asks to change {note}\n\nBefore:\n{old}\n\nAfter:\n{new or '(removed)'}"
+    elif op == "move":
+        check_path(req["to"], EDITABLE)
+        card = f"Julz asks to move {note} to {req['to']}"
+    elif op == "delete":
+        card = f"Julz asks to delete {note}\n\ngit keeps a copy on the laptop."
+    else:
+        card = f"Julz asks to create {note}:\n\n{checked_text(req['text'], MAX_CREATE_CHARS)}"
+    card = card.rstrip("\n") + "\n"
+    if len(card) > MAX_CARD:
+        raise Refused("too long to sign on the phone")
+    return req, card
 
 
 def feedback_snapshot(vault: Path) -> dict:

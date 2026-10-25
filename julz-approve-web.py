@@ -54,6 +54,13 @@ STATIC_DIR = Path(__file__).resolve().parent / "approver"
 # its requests into, which the container can write anyway
 TODOS_FILE = GATE_DIR / "vault" / "todos.json"
 REQUESTS = HOME / "Documents" / "julz-mem" / "Inbox" / ".requests"
+# Changes Julz asks for where no dialog shows (208, threat 156): written by the container, so
+# untrusted; a card shows at most MAX_PROPOSALS of them, none older than a day
+PROPOSALS = REQUESTS.parent / ".proposals"
+MAX_PROPOSALS = 10
+MAX_PROPOSAL_SCAN = 200
+PROPOSAL_TTL = 86_400
+PROPOSAL_SKEW = 300  # a name a little ahead of my clock still counts
 MAX_TODOS_BYTES = 64_000
 MAX_INBOX_BYTES = 256_000
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -129,7 +136,7 @@ class App:
         # 127.0.0.1. Anything else is DNS rebinding or a confused client (threat 36)
         self.hosts = {urlsplit(passkeys.origin).netloc, f"127.0.0.1:{port}"}
         self.names: dict[str, str] = {}  # nonce -> inbox file name, or task root for a need
-        self.todos_file, self.requests = TODOS_FILE, REQUESTS
+        self.todos_file, self.requests, self.proposals_dir = TODOS_FILE, REQUESTS, PROPOSALS
 
     # ---------- plumbing ----------
 
@@ -141,7 +148,8 @@ class App:
                 raise HTTPError(421, "wrong host")
             gets = {"/api/state": self.state, "/api/done": self.done_week, "/api/inbox": self.inbox_notes,
                     "/api/notes": self.all_notes, "/api/feedback": self.feedback_list,
-                    "/api/integrations": self.integrations, "/api/goals": self.goals}
+                    "/api/integrations": self.integrations, "/api/goals": self.goals,
+                    "/api/proposals": self.proposals}
             posts = {"/api/begin": self.begin, "/api/finish": self.finish,
                      "/api/enroll/begin": self.enroll_begin,
                      "/api/enroll/finish": self.enroll_finish,
@@ -570,6 +578,34 @@ class App:
                     return empty
         return data
 
+    def proposal(self, name) -> tuple[dict, str] | None:
+        """One change Julz asks for (208): the request and the card text, or None when the name,
+        its age, the file or its request is off. Read as untrusted on every call (threat 156)."""
+        if not isinstance(name, str) or not vault.REQUEST_NAME.fullmatch(name):
+            return None
+        age = self.pk.clock() - int(name[:10])
+        if not -PROPOSAL_SKEW <= age <= PROPOSAL_TTL:
+            return None
+        try:
+            return vault.proposal_card(vault._read_request(self.proposals_dir / name))
+        except (vault.Refused, OSError):
+            return None
+
+    def proposals(self) -> dict:
+        """The cards to sign, oldest first, for the app."""
+        try:
+            names = sorted(e.name for e in os.scandir(self.proposals_dir))[:MAX_PROPOSAL_SCAN]
+        except OSError:
+            return {"proposals": []}
+        out = []
+        for name in names:
+            found = self.proposal(name)
+            if found:
+                out.append({"id": name, "text": found[1], "sha256": gate.sha256(found[1])})
+                if len(out) == MAX_PROPOSALS:
+                    break
+        return {"proposals": out}
+
     def integrations(self) -> dict:
         """What Julz runs on its own, for the Links tab (122). The list and its words are fixed
         here; facts are those words with numbers and times from runner.log and julz-vault's
@@ -725,6 +761,11 @@ class App:
             except vault.Refused as e:
                 raise HTTPError(400, str(e)) from None
             key = match[0]["sha256"]
+        elif action in ("change", "drop"):
+            # A change Julz asked for (208): the text is the card built here from the proposal,
+            # among the ones listed now, so an old or extra one is never signed (threat 156)
+            key = data.get("id")
+            match = [p for p in self.proposals()["proposals"] if p["id"] == key]
         elif action == "goal":
             # As ticks: the app proves which goals it saw; the text is built here (123)
             snap = self.goals()
@@ -855,6 +896,19 @@ class App:
             vault.write_request(self.requests, req)
             gate.log(self.dirs, "case-signed", digest, "ok", channel)
             return {"done": "kept", "sha256": digest}
+        if action in ("change", "drop"):
+            # Read again: the card I signed must still be what the file says, or nothing happens
+            found = self.proposal(name)
+            if found is None or found[1] != text:
+                raise HTTPError(409, "changed since you saw it: reload")
+            if action == "change":
+                vault.write_request(self.requests, found[0])
+            try:
+                os.unlink(self.proposals_dir / name)
+            except FileNotFoundError:
+                pass
+            gate.log(self.dirs, "change-signed" if action == "change" else "change-dropped", digest, "ok", channel)
+            return {"done": "sent" if action == "change" else "dropped", "sha256": digest}
         if action == "goal":
             try:
                 reqs = vault.goal_requests(text, self.goals())

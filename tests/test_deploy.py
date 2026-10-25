@@ -39,6 +39,8 @@ class DeployTest(unittest.TestCase):
         self.units.mkdir()
         self.calls = []
         self.tests_pass = True
+        self.cards = base / "vault" / "Inbox" / ".proposals"
+        self.cards.parent.mkdir(parents=True)
 
     def tearDown(self):
         for k, v in self.old_env.items():
@@ -60,6 +62,7 @@ class DeployTest(unittest.TestCase):
         self.calls.append(("systemctl", *args))
 
     def deploy(self, **kw):
+        kw.setdefault("folders", (self.cards,))
         return deploy.deploy(self.repo, self.lib, self.units, run_tests=self.run_tests,
                              systemctl=self.systemctl, **kw)
 
@@ -85,6 +88,24 @@ class DeployTest(unittest.TestCase):
         entry = json.loads((self.lib / "deploys.log").read_text().splitlines()[-1])
         self.assertEqual((entry["commit"], entry["label"]), (head, "v1"))
         self.assertIn("v1", out)
+
+    def test_bound_folders_made_before_the_restart(self):
+        # The approver's unit binds Inbox/.proposals: a missing one would stop it starting (208)
+        seen = []
+        self.systemctl = lambda *a: seen.append(self.cards.is_dir())
+        self.deploy()
+        self.assertTrue(seen and all(seen))
+        self.assertEqual(self.cards.stat().st_mode & 0o777, 0o700)
+        (self.cards / "x.json").write_text("{}")
+        self.deploy(dev=True)
+        self.assertTrue((self.cards / "x.json").exists())
+
+    def test_a_link_where_a_bound_folder_goes_is_refused(self):
+        # The container writes Inbox: a link there would point the approver's bind elsewhere
+        self.cards.symlink_to(self.units)
+        with self.assertRaises(deploy.DeployError):
+            self.deploy()
+        self.assertFalse((self.lib / "current").exists())
 
     def test_release_holds_only_committed_files(self):
         (self.repo / "secret.env").write_text("KEY=1\n")  # untracked, like a key file

@@ -39,6 +39,9 @@ LIB = Path.home() / ".local" / "lib" / "julz"
 UNITS = Path.home() / ".config" / "systemd" / "user"
 KEEP_RELEASES = 5
 LONG_RUNNING = ("julz-approver.service", "julz-chat.service")
+# Folders a unit binds that nothing else makes before it starts: the cards Julz asks for
+# (208, threat 156). The container writes Inbox, so a link there is refused, never followed
+BOUND_FOLDERS = (Path.home() / "Documents" / "julz-mem" / "Inbox" / ".proposals",)
 PASTE = ("tools/", "functions/")  # Open WebUI keeps its own copy: --tools pushes them (147)
 OWUI = "http://127.0.0.1:3100"
 # 0.11.4's replace_imports rewrites these before storing, so the hash check could never pass
@@ -183,7 +186,7 @@ def prune(lib: Path):
 
 
 def deploy(repo: Path, lib: Path, units: Path, dev: bool = False, run_tests=default_tests,
-           systemctl=default_systemctl) -> str:
+           systemctl=default_systemctl, folders=BOUND_FOLDERS) -> str:
     if git(repo, "status", "--porcelain"):
         raise DeployError("uncommitted changes: commit them first, a deploy never takes "
                           "unreviewed bytes")
@@ -193,6 +196,10 @@ def deploy(repo: Path, lib: Path, units: Path, dev: bool = False, run_tests=defa
     if not label:
         raise DeployError("HEAD of main has no tag: git tag v1.x first, or use --dev")
     commit = git(repo, "rev-parse", "HEAD")
+    for folder in folders:
+        if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
+            raise DeployError(f"{folder} is not a plain folder: look at it first, nothing changed")
+        folder.mkdir(mode=0o700, exist_ok=True)
     with lock(lib):
         releases = lib / "releases"
         releases.mkdir(mode=0o755, parents=True, exist_ok=True)
