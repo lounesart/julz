@@ -130,6 +130,28 @@ class ScreenshotTest {
                 setLearn = {}, send = {}, stop = {})
         }
 
+    // A change Julz asked for in the chat (208, threat 156): the card text whole and plain, then
+    // the two buttons, above the tab bar
+    @Test fun proposalCards() {
+        // Seen already, so the arrival frame is skipped: Paparazzi's one frame caught it at nothing
+        for (k in listOf("a", "b")) Arrived.first("change-" + k.repeat(64))
+        paparazzi.snapshot { proposalCardsScreen() }
+    }
+
+    @Composable
+    private fun proposalCardsScreen() {
+        shell(Screen.APPROVE) {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().padding(horizontal = J.gutter),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(J.gap)) {
+                ProposalCard(app.julz.approve.Proposal("1760000000-00000001.json",
+                    "Julz asks to add to daily/week.md:\n\n- [ ] buy bread\n- [ ] call mum\n", "a".repeat(64)), false, {}, {})
+                ProposalCard(app.julz.approve.Proposal("1760000001-00000002.json",
+                    "Julz asks to change study/network-plus/dhcp.md\n\nBefore:\nRelay agents.\n\nAfter:\n" +
+                        "Relay agents forward DHCP across subnets.\n", "b".repeat(64)), false, {}, {})
+            }
+        }
+    }
+
     @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
     @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, learn = true) }
     @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, learn = true, draft = "What is a /26?") }

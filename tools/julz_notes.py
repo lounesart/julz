@@ -42,6 +42,18 @@ MAX_SHOWN_CHARS = 2000
 NO_DIALOG = (" Nothing was changed: this chat has no confirm button, so this works only on the "
              "Open WebUI web page for now. Tell the user plainly that nothing was changed; do "
              "not say it is saved, drafted or waiting.")
+# Where no dialog shows, a change goes to Approve on the phone as a card I sign (208, threat
+# 156). The caps are the approver's and julz_vault's (a test keeps them equal)
+MAX_PROPOSALS = 10
+MAX_CARD = 4000
+CARD_ROOM = 300  # the card's own words and paths around the text
+PROPOSAL_TTL = 86_400
+NO_CARD = {"too long for a card": "the change is too long to sign on the phone",
+           "too many cards waiting": "too many changes already wait on the phone"}
+PROPOSAL_NAME = re.compile(r"(\d{10})-[0-9a-f]{8}\.json")
+ON_THE_PHONE = (" yet: this chat has no confirm button, so the change went to Approve on the "
+                "user's phone as a card. Nothing changes until they sign it there. Tell the "
+                "user exactly that; do not say it is done.")
 FRONT_MATTER_MAX = 2000
 # Days between reviews by the note's status; a note never reviewed is due at once
 REVIEW_DAYS = {"learning": 3, "review": 7, "solid": 30}
@@ -344,6 +356,7 @@ class Tools:
         self.inbox = Path(os.environ.get("JULZ_INBOX", "/data/julz-mem/Inbox")).resolve()
         self.log_file = Path(os.environ.get("JULZ_LOG", "/data/julz-log/actions.log"))
         self._writes = []
+        self._last_card = 0  # microsecond stamp of the last card's name (208)
         self._today = date.today
 
     # ---------- helpers ----------
@@ -574,6 +587,42 @@ class Tools:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False)
         os.rename(tmp, folder / name)
+
+    def _ask_phone(self, action: str, payload: dict, what: str) -> str:
+        """No dialog in this chat: drop the request as a proposal the approver shows as a card
+        (208, threat 156). Never a request: only my signature on the phone makes one."""
+        size = sum(len(payload.get(k, "")) for k in ("text", "old", "new")) + len(payload["note"])
+        why = "too long for a card" if size > MAX_CARD - CARD_ROOM else None
+        folder = self.inbox / ".proposals"
+        if why is None:
+            folder.mkdir(mode=0o700, exist_ok=True)
+            waiting = 0
+            for e in os.scandir(folder):
+                m = PROPOSAL_NAME.fullmatch(e.name)
+                if not m or not e.is_file(follow_symlinks=False):
+                    continue
+                if time.time() - int(m.group(1)) > PROPOSAL_TTL:
+                    os.unlink(e.path)  # the approver no longer shows it either
+                else:
+                    waiting += 1
+            if waiting >= MAX_PROPOSALS:
+                why = "too many cards waiting"
+        if why:
+            self._log(f"{action}_refused", note=payload["note"], reason=why)
+            return f"Not {what}: {NO_CARD[why]}." + NO_DIALOG
+        # Named as julz_vault.write_request names them, so the approver lists them in the order
+        # she asked; written under a hidden name and renamed (CWE-362)
+        stamp = max(time.time_ns() // 1000, self._last_card + 1)
+        self._last_card = stamp
+        name = f"{stamp // 1_000_000}-{stamp % 16 ** 8:08x}.json"
+        tmp = folder / f".tmp-{name}"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.rename(tmp, folder / name)
+        self._writes.append(time.monotonic())
+        self._log(f"{action}_proposed", note=payload["note"])
+        return f"Not {what}" + ON_THE_PHONE
 
     # ---------- tools the model can call ----------
 
@@ -932,11 +981,13 @@ class Tools:
             return "Refused: too many changes in the last minute."
         ok = await self._confirm(__event_call__, "Julz wants to save feedback for Claude Code",
                                  f"Save this for Claude Code to read next session?\n\n{text}")
+        content = (f"---\ntags:\n  - feedback\ncreated: {today}\n---\n\n# Feedback {today}\n\n"
+                   f"{text.strip()}\n")
+        if ok is None:
+            return self._ask_phone("save_feedback", {"op": "create", "note": rel, "text": content}, "saved")
         if not ok:
             self._log("save_feedback_refused", reason=self._why(ok))
             return self._not_done(ok, "Not saved: the feedback was not confirmed.")
-        content = (f"---\ntags:\n  - feedback\ncreated: {today}\n---\n\n# Feedback {today}\n\n"
-                   f"{text.strip()}\n")
         self._request({"op": "create", "note": rel, "text": content})
         self._writes.append(time.monotonic())
         self._log("save_feedback", note=rel)
@@ -1082,6 +1133,8 @@ class Tools:
             return "Refused: too many changes in the last minute."
         ok = await self._confirm(__event_call__, "Julz wants to add to your note",
                                  f"Add this to the end of {rel}?\n\n{text}")
+        if ok is None:
+            return self._ask_phone("append_note", {"op": "append", "note": str(rel), "text": text}, "added")
         if not ok:
             self._log("append_note_refused", note=str(rel), reason=self._why(ok))
             return self._not_done(ok, f"Not added: the addition to {rel} was not confirmed.")
@@ -1124,11 +1177,14 @@ class Tools:
         ok = await self._confirm(__event_call__, "Julz wants to change your note",
                                  f"Change {rel}?\n\nBefore:\n{old_text}\n\n"
                                  f"After:\n{new_text or '(removed)'}")
+        req = {"op": "replace", "note": str(rel), "old": old_text, "new": new_text,
+               "sha256": hashlib.sha256(raw).hexdigest()}
+        if ok is None:
+            return self._ask_phone("edit_note", req, "changed")
         if not ok:
             self._log("edit_note_refused", note=str(rel), reason=self._why(ok))
             return self._not_done(ok, f"Not changed: the change to {rel} was not confirmed.")
-        self._request({"op": "replace", "note": str(rel), "old": old_text, "new": new_text,
-                       "sha256": hashlib.sha256(raw).hexdigest()})
+        self._request(req)
         self._writes.append(time.monotonic())
         self._log("edit_note", note=str(rel), removed=len(old_text), added=len(new_text))
         return f"Changed {rel} in a few seconds. Only that passage changed."
@@ -1160,12 +1216,14 @@ class Tools:
             return "Refused: too many changes in the last minute."
         ok = await self._confirm(__event_call__, "Julz wants to move a note",
                                  f"Move {rel} to {dest}?")
+        raw = (self.vault / rel).read_bytes()
+        req = {"op": "move", "note": str(rel), "to": dest, "sha256": hashlib.sha256(raw).hexdigest()}
+        if ok is None:
+            return self._ask_phone("move_note", req, "moved")
         if not ok:
             self._log("move_note_refused", note=str(rel), reason=self._why(ok))
             return self._not_done(ok, f"Not moved: moving {rel} was not confirmed.")
-        raw = (self.vault / rel).read_bytes()
-        self._request({"op": "move", "note": str(rel), "to": dest,
-                       "sha256": hashlib.sha256(raw).hexdigest()})
+        self._request(req)
         self._writes.append(time.monotonic())
         self._log("move_note", note=str(rel), to=dest)
         return f"Moved {rel} to {dest}, in a few seconds."
@@ -1184,12 +1242,14 @@ class Tools:
             return "Refused: too many changes in the last minute."
         ok = await self._confirm(__event_call__, "Julz wants to delete a note",
                                  f"Delete {rel}? git keeps a copy, so it can be restored.")
+        raw = (self.vault / rel).read_bytes()
+        req = {"op": "delete", "note": str(rel), "sha256": hashlib.sha256(raw).hexdigest()}
+        if ok is None:
+            return self._ask_phone("delete_note", req, "deleted")
         if not ok:
             self._log("delete_note_refused", note=str(rel), reason=self._why(ok))
             return self._not_done(ok, f"Not deleted: deleting {rel} was not confirmed.")
-        raw = (self.vault / rel).read_bytes()
-        self._request({"op": "delete", "note": str(rel),
-                       "sha256": hashlib.sha256(raw).hexdigest()})
+        self._request(req)
         self._writes.append(time.monotonic())
         self._log("delete_note", note=str(rel))
         return f"Deleted {rel}, in a few seconds. It can be restored from git on the laptop."
@@ -1236,25 +1296,16 @@ class Tools:
         parts, answer = self._folder(folder or "Inbox")
         if answer:
             return answer
-        words = content
         if kind:
-            content = self._build(kind, name, words, parts)
+            content = self._build(kind, name, content, parts)
         data = content.encode("utf-8")
         if len(data) > MAX_NOTE_BYTES:
             return f"Refused: note is over {MAX_NOTE_BYTES // 1000} KB."
         if self._rate_limited():
             return "Refused: too many notes in the last minute."
-        shown = self._shown(content, whole=True)
-        wanted = None
         if parts != ["Inbox"]:
-            answer = await self._create_elsewhere(name, content, parts, shown, __event_call__)
-            if answer is not None:
-                return answer
-            # No dialog in this chat: Inbox needs no click, so it goes there instead (208)
-            wanted = "/".join(parts)
-            if kind:
-                content = self._build(kind, name, words, ["Inbox"])
-            data = content.encode("utf-8")
+            return await self._create_elsewhere(name, content, parts, self._shown(content, whole=True),
+                                                __event_call__)
         try:
             target = self._inside(self.inbox, name + ".md")
         except ValueError as e:
@@ -1280,12 +1331,6 @@ class Tools:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
         self._writes.append(time.monotonic())
-        if wanted:
-            self._log(action, note=str(rel), bytes=len(data), wanted=f"{wanted}/{name}.md")
-            return (f"Saved {rel} as a new note ({len(data)} bytes), not in {wanted}/: this "
-                    f"chat has no confirm button, and only Inbox needs none. Show the user this "
-                    f"saved text as it is, and say it is in {rel}, not in {wanted}/:\n\n"
-                    f"{self._shown(content)}")
         self._log(action, note=str(rel), bytes=len(data))
         # "Saved" alone read as a note already there: she called her own new one a draft (208)
         made = "over the old note" if action == "overwrite_note" else (
@@ -1305,7 +1350,7 @@ class Tools:
         ok = await self._confirm(__event_call__, "Julz wants to create a note",
                                  f"Create {rel}?\n\n{shown}")
         if ok is None:
-            return None  # create_note saves it in Inbox instead
+            return self._ask_phone("create_note", {"op": "create", "note": rel, "text": content}, "saved")
         if not ok:
             self._log("create_note_refused", note=rel, reason="not confirmed")
             return f"Not saved: creating {rel} was not confirmed."

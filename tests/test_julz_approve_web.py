@@ -541,9 +541,11 @@ class TickWebTest(DeviceBase):
         self.assertIn("%h/.local/share/julz/vault", ro)
         self.assertNotIn("%h/.local/share/julz/vault", rw)
         self.assertIn("%h/Documents/julz-mem/Inbox/.requests", rw)
-        # Nothing else of the vault is writable: the Claude specs folder and the requests only
+        # Nothing else of the vault is writable: the Claude specs folder, the requests and the
+        # cards Julz asks for (threat 156) only
         self.assertEqual({p for p in rw if p.startswith("%h/Documents/julz-mem")},
-                         {"%h/Documents/julz-mem/Inbox/claude", "%h/Documents/julz-mem/Inbox/.requests"})
+                         {"%h/Documents/julz-mem/Inbox/claude", "%h/Documents/julz-mem/Inbox/.requests",
+                          "%h/Documents/julz-mem/Inbox/.proposals"})
 
     def test_a_tick_signature_is_no_approval_and_back(self):
         status, _, _ = self.tick([{"list": "shop", "item": "milk"}], finish_as="approve")
@@ -968,6 +970,145 @@ class CaseWebTest(DeviceBase):
             status, _, _ = self.send("q", "a", finish_as=other)
             self.assertEqual(status, 403, other)
         self.assertEqual(self.written(), [])
+
+
+class ProposalWebTest(DeviceBase):
+    """Threat 156: a change Julz asks for in the native chat, a card I sign (208)."""
+
+    def setUp(self):
+        super().setUp()
+        base = Path(self.tmp.name)
+        self.app.requests = base / "julz-mem" / "Inbox" / ".requests"
+        self.app.proposals_dir = base / "julz-mem" / "Inbox" / ".proposals"
+        self.app.requests.mkdir(parents=True)
+        self.app.proposals_dir.mkdir()
+        self.clock.now = 1_760_000_000.0
+        self.n = 0
+
+    def propose(self, age=0, **req):
+        self.n += 1
+        name = f"{int(self.clock.now) - age}-{self.n:08x}.json"
+        (self.app.proposals_dir / name).write_text(json.dumps(req))
+        return name
+
+    def listed(self):
+        status, _, data = self.request("GET", "/api/proposals")
+        self.assertEqual(status, 200, data)
+        return data["proposals"]
+
+    def send(self, action, pid, sha=None, finish_as=None, before_finish=None):
+        if sha is None:
+            sha = next(p["sha256"] for p in self.listed() if p["id"] == pid)
+        status, _, begun = self.post("/api/begin", {"action": action, "id": pid, "via": "device", "sha256": sha})
+        if status != 200:
+            return status, begun, None
+        if before_finish:
+            before_finish()
+        status, _, data = self.post("/api/finish", {"action": finish_as or action, "nonce": begun["nonce"],
+                                                    "signature": self.sign(begun)})
+        return status, data, begun
+
+    def written(self):
+        return [json.loads(p.read_text()) for p in self.app.requests.iterdir()]
+
+    def test_listed_with_the_card_text(self):
+        pid = self.propose(op="append", note="daily/week.md", text="- [ ] bread")
+        item, = self.listed()
+        self.assertEqual(item, {"id": pid, "text": "Julz asks to add to daily/week.md:\n\n- [ ] bread\n",
+                                "sha256": gate.sha256(item["text"])})
+
+    def test_one_fingerprint_one_request(self):
+        req = {"op": "move", "note": "Inbox/physio.md", "to": "daily/physio.md", "sha256": "b" * 64}
+        pid = self.propose(**req)
+        status, data, begun = self.send("change", pid)
+        self.assertEqual(status, 200, data)
+        self.assertEqual(begun["text"], "Julz asks to move Inbox/physio.md to daily/physio.md\n")
+        self.assertEqual(self.written(), [req])
+        self.assertFalse((self.app.proposals_dir / pid).exists())
+        self.assertEqual(self.listed(), [])
+        log = [json.loads(l) for l in self.dirs.log.read_text().splitlines()]
+        self.assertIn("change-signed", [e["action"] for e in log])
+        # The same card again: it is gone, so nothing more is written
+        status, _, _ = self.send("change", pid, sha=gate.sha256(begun["text"]))
+        self.assertEqual(status, 404)
+        self.assertEqual(len(self.written()), 1)
+
+    def test_drop_writes_nothing(self):
+        pid = self.propose(op="delete", note="Inbox/physio.md", sha256="c" * 64)
+        status, data, _ = self.send("drop", pid)
+        self.assertEqual(status, 200, data)
+        self.assertEqual(self.written(), [])
+        self.assertFalse((self.app.proposals_dir / pid).exists())
+        log = [json.loads(l) for l in self.dirs.log.read_text().splitlines()]
+        self.assertIn("change-dropped", [e["action"] for e in log])
+
+    def test_changed_between_begin_and_finish(self):
+        pid = self.propose(op="append", note="daily/week.md", text="- [ ] bread")
+        path = self.app.proposals_dir / pid
+
+        def swap():
+            path.write_text(json.dumps({"op": "append", "note": "daily/week.md", "text": "- [ ] other"}))
+
+        for action in ("change", "drop"):
+            path.write_text(json.dumps({"op": "append", "note": "daily/week.md", "text": "- [ ] bread"}))
+            status, _, _ = self.send(action, pid, before_finish=swap)
+            self.assertEqual(status, 409, action)
+            self.assertEqual(self.written(), [])
+        # Gone between begin and finish: nothing written either
+        path.write_text(json.dumps({"op": "append", "note": "daily/week.md", "text": "- [ ] bread"}))
+        status, _, _ = self.send("change", pid, before_finish=path.unlink)
+        self.assertEqual(status, 409)
+        self.assertEqual(self.written(), [])
+
+    def test_another_text_than_the_hash_is_refused(self):
+        pid = self.propose(op="append", note="daily/week.md", text="- [ ] bread")
+        status, _, _ = self.send("change", pid, sha=gate.sha256("Julz asks to add to daily/week.md:\n\n- [ ] cake\n"))
+        self.assertEqual(status, 409)
+        self.assertEqual(self.written(), [])
+
+    def test_a_change_signature_is_nothing_else(self):
+        pid = self.propose(op="append", note="daily/week.md", text="x")
+        for other in ("drop", "approve", "save", "case"):
+            status, _, _ = self.send("change", pid, finish_as=other)
+            self.assertEqual(status, 403, other)
+        status, _, _ = self.send("drop", pid, finish_as="change")
+        self.assertEqual(status, 403)
+        self.assertEqual(self.written(), [])
+        self.assertTrue((self.app.proposals_dir / pid).exists())
+
+    def test_bad_ones_not_listed(self):
+        self.propose(op="tick", note="daily/week.md", item="bread")
+        self.propose(op="append", note="Inbox/claude/spec.md", text="x")
+        self.propose(op="append", note="daily/week.md", text="a\u202eb")
+        self.propose(op="append", note="daily/week.md", text="x", extra=1)
+        self.propose(age=86_401, op="append", note="daily/week.md", text="old")
+        self.propose(age=-600, op="append", note="daily/week.md", text="future")
+        (self.app.proposals_dir / "notaname.json").write_text(json.dumps({"op": "append", "note": "daily/w.md", "text": "x"}))
+        (self.app.proposals_dir / f"{int(self.clock.now)}-0000ffff.json").symlink_to(self.app.requests)
+        target = Path(self.tmp.name) / "planted.json"
+        target.write_text(json.dumps({"op": "append", "note": "daily/w.md", "text": "x"}))
+        (self.app.proposals_dir / f"{int(self.clock.now)}-0000fffe.json").symlink_to(target)
+        (self.app.proposals_dir / f"{int(self.clock.now)}-0000fffd.json").write_bytes(b"x" * 20_000)
+        self.assertEqual(self.listed(), [])
+        status, _, _ = self.send("change", f"{int(self.clock.now)}-0000fffe.json", sha="0" * 64)
+        self.assertEqual(status, 404)
+
+    def test_at_most_ten_oldest_first(self):
+        ids = [self.propose(age=100 - i, op="append", note="daily/week.md", text=f"line {i}") for i in range(12)]
+        self.assertEqual([p["id"] for p in self.listed()], ids[:10])
+        # One not shown is never signed, even by its own id and text
+        status, _, _ = self.send("change", ids[11], sha=gate.sha256("Julz asks to add to daily/week.md:\n\nline 11\n"))
+        self.assertEqual(status, 404)
+        self.assertEqual(self.written(), [])
+
+    def test_no_folder_no_cards(self):
+        self.app.proposals_dir.rmdir()
+        self.assertEqual(self.listed(), [])
+
+    def test_unknown_id_at_begin(self):
+        for pid in ("../x.json", None, 5, "1760000000-00000001.json"):
+            status, _, _ = self.post("/api/begin", {"action": "change", "id": pid, "via": "device", "sha256": "0" * 64})
+            self.assertEqual(status, 404, pid)
 
 
 class IntegrationsWebTest(Base):

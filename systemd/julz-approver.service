@@ -32,6 +32,9 @@ BindPaths=%h/.local/share/julz/tasks %h/.local/share/julz/control
 # which the container writes anyway; julz-vault checks every request there again
 BindReadOnlyPaths=%h/.local/share/julz/vault
 BindPaths=%h/Documents/julz-mem/Inbox/.requests
+# Changes Julz asks for where no dialog shows (threat 156): read as untrusted, removed once
+# signed or dropped. deploy.py makes the folder and refuses a link there
+BindPaths=%h/Documents/julz-mem/Inbox/.proposals
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
 LockPersonality=yes

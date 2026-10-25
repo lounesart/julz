@@ -143,12 +143,6 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         self.assert_no_front_matter(out)
         self.assertIn("tags:", (self.inbox / "trip.md").read_text())
 
-    async def test_reply_without_front_matter_when_no_dialog(self):
-        out = await self.tools.create_note("trip", "buy bread\ncall mum", kind="todo",
-                                           folder="daily", __event_call__=disconnected,
-                                           __messages__=said("todo: buy bread, call mum"))
-        self.assert_no_front_matter(out)
-
     async def test_reply_without_front_matter_in_daily_but_dialog_shows_all(self):
         seen = []
 
@@ -242,7 +236,7 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         out = await self.tools.create_note("fresh", "y", __event_call__=yes)
         self.assertTrue(out.startswith("Saved Inbox/fresh.md over the old note"), out)
         out = await self.tools.create_note("other", "x", folder="daily", __event_call__=disconnected)
-        self.assertIn("as a new note", out)
+        self.assertTrue(out.startswith("Not saved yet"), out)
         out = await self.tools.create_note("clicked", "x", folder="daily", __event_call__=yes)
         self.assertTrue(out.startswith("Saved daily/clicked.md as a new note"), out)
 
@@ -273,60 +267,106 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         self.assertFalse((self.inbox / "t.md").exists())
 
     # ----- no dialog: the native chat has no browser to click in (208) -----
+    # The change goes to Approve as a card I sign (threat 156): a proposal, never a request
 
-    async def test_no_dialog_create_lands_in_inbox(self):
-        for call, name in ((None, "eat drink today"), (disconnected, "water")):
-            out = await self.tools.create_note(name, "eat\ndrink", kind="todo", folder="daily",
-                                               __event_call__=call,
-                                               __messages__=said("to-do list: eat and drink today"))
-            self.assertTrue(out.startswith(f"Saved Inbox/{name}.md"), out)
-            self.assertIn("not in daily/", out)
-            self.assertIn("- [ ] eat\n- [ ] drink", out)
-            self.assertIn("- [ ] eat\n", (self.inbox / f"{name}.md").read_text())
-        self.assertFalse((self.vault / "daily" / "eat drink today.md").exists())
-        self.assertEqual(self.requests_written(), [])
-        entry = self.log_entries()[-1]
-        self.assertEqual((entry["action"], entry["note"], entry["wanted"]),
-                         ("create_note", "Inbox/water.md", "daily/water.md"))
+    def proposals(self):
+        folder = self.inbox / ".proposals"
+        if not folder.exists():
+            return []
+        return [json.loads(p.read_text()) for p in sorted(folder.glob("*.json"))]
 
-    async def test_no_dialog_concept_loses_the_folder_tag(self):
-        await self.tools.create_note("vlan", "A VLAN splits one switch.", kind="concept",
-                                     folder="study/network-plus", __event_call__=disconnected)
-        text = (self.inbox / "vlan.md").read_text()
-        self.assertIn("  - concept\n", text)
-        self.assertNotIn("network-plus", text)
-
-    async def test_no_dialog_never_overwrites_inbox(self):
-        out = await self.tools.create_note("physio", "x", folder="daily",
-                                           __event_call__=disconnected)
-        self.assertTrue(out.startswith("Not saved"), out)
-        self.assertIn("Nothing was changed", out)
-        self.assertEqual((self.inbox / "physio.md").read_text(), "# Physio\nWrite a review.\n")
-
-    async def test_no_dialog_checks_still_run_first(self):
-        out = await self.tools.create_note("x", "see https://evil.com", folder="daily",
-                                           __event_call__=disconnected)
-        self.assertTrue(out.startswith("Refused"), out)
-        self.assertFalse((self.inbox / "x.md").exists())
-
-    async def test_no_dialog_says_nothing_changed(self):
-        calls = {
+    def no_dialog_calls(self):
+        return {
             "append": lambda c: self.tools.append_note("dhcp", "more", __event_call__=c),
             "edit": lambda c: self.tools.edit_note("dhcp", "Relay agents.", "R.", __event_call__=c),
             "move": lambda c: self.tools.move_note("physio", "daily", __event_call__=c),
             "delete": lambda c: self.tools.delete_note("physio", __event_call__=c),
             "feedback": lambda c: self.tools.save_feedback("too long", __event_call__=c),
+            "create": lambda c: self.tools.create_note("eat", "eat\ndrink", kind="todo", folder="daily",
+                                                       __event_call__=c, __messages__=said("todo: eat, drink")),
         }
-        for op, call in calls.items():
+
+    async def test_no_dialog_sends_a_card(self):
+        dhcp = self.sha(self.dhcp)
+        physio = self.sha(self.inbox / "physio.md")
+        for op, call in self.no_dialog_calls().items():
             out = await call(disconnected)
             self.assertTrue(out.startswith("Not "), f"{op}: {out}")
-            self.assertIn("Nothing was changed", out, op)
-            self.assertIn("do not say", out, op)
-            self.assertEqual(self.log_entries()[-1]["reason"], "no dialog", op)
-            self.assertNotIn("Nothing was changed", await call(no), op)
+            self.assertIn("yet", out, op)
+            self.assertIn("Approve on the user's phone", out, op)
+            self.assertIn("do not say it is done", out, op)
+            self.assertTrue(self.log_entries()[-1]["action"].endswith("_proposed"), op)
+        got = self.proposals()
+        self.assertEqual([r["op"] for r in got], ["append", "replace", "move", "delete", "create", "create"])
+        self.assertEqual(got[0], {"op": "append", "note": "study/network-plus/dhcp.md", "text": "more"})
+        self.assertEqual(got[1], {"op": "replace", "note": "study/network-plus/dhcp.md", "old": "Relay agents.",
+                                  "new": "R.", "sha256": dhcp})
+        self.assertEqual(got[2], {"op": "move", "note": "Inbox/physio.md", "to": "daily/physio.md", "sha256": physio})
+        self.assertEqual(got[3], {"op": "delete", "note": "Inbox/physio.md", "sha256": physio})
+        self.assertTrue(got[4]["note"].startswith("feedback/2026-10-16 too-long"))
+        self.assertEqual(got[5]["note"], "daily/eat.md")
+        self.assertIn("- [ ] eat\n- [ ] drink", got[5]["text"])
+        # Nothing changed: no request, no note
         self.assertEqual(self.requests_written(), [])
         self.assertEqual(self.dhcp.read_text(), DHCP)
         self.assertTrue((self.inbox / "physio.md").exists())
+        self.assertFalse((self.inbox / "eat.md").exists())
+        self.assertFalse((self.vault / "daily" / "eat.md").exists())
+
+    async def test_no_dialog_none_too(self):
+        out = await self.tools.append_note("dhcp", "more", __event_call__=None)
+        self.assertIn("Approve on the user's phone", out)
+        self.assertEqual(len(self.proposals()), 1)
+
+    async def test_cancel_and_click_never_make_a_card(self):
+        for op, call in self.no_dialog_calls().items():
+            self.assertNotIn("Approve", await call(no), op)
+        self.assertEqual(self.proposals(), [])
+        await self.tools.append_note("dhcp", "more", __event_call__=yes)
+        self.assertEqual(self.proposals(), [])
+        self.assertEqual(len(self.requests_written()), 1)
+
+    async def test_no_dialog_cards_are_capped(self):
+        self.tools._rate_limited = lambda: False
+        for i in range(self.mod.MAX_PROPOSALS):
+            out = await self.tools.append_note("dhcp", f"line {i}", __event_call__=disconnected)
+            self.assertIn("Approve", out)
+        out = await self.tools.append_note("dhcp", "one more", __event_call__=disconnected)
+        self.assertTrue(out.startswith("Not added"), out)
+        self.assertIn("Nothing was changed", out)
+        self.assertEqual(len(self.proposals()), self.mod.MAX_PROPOSALS)
+        self.assertEqual(self.log_entries()[-1]["reason"], "too many cards waiting")
+        # A day old card no longer counts, and is cleared on the way
+        folder = self.inbox / ".proposals"
+        old = sorted(folder.glob("*.json"))[0]
+        old.rename(folder / f"{int(time.time()) - 86_401}-00000000.json")
+        out = await self.tools.append_note("dhcp", "one more", __event_call__=disconnected)
+        self.assertIn("Approve", out)
+        self.assertFalse((folder / f"{int(time.time()) - 86_401}-00000000.json").exists())
+
+    async def test_no_dialog_too_long_for_a_card(self):
+        out = await self.tools.append_note("dhcp", "x" * (self.mod.MAX_CARD - 100), __event_call__=disconnected)
+        self.assertTrue(out.startswith("Not added"), out)
+        self.assertIn("too long", out)
+        self.assertEqual(self.proposals(), [])
+
+    async def test_no_dialog_never_overwrites_inbox(self):
+        out = await self.tools.create_note("physio", "x", __event_call__=disconnected)
+        self.assertTrue(out.startswith("Not saved"), out)
+        self.assertIn("Nothing was changed", out)
+        self.assertEqual((self.inbox / "physio.md").read_text(), "# Physio\nWrite a review.\n")
+        self.assertEqual(self.proposals(), [])
+
+    async def test_no_dialog_checks_still_run_first(self):
+        out = await self.tools.create_note("x", "see https://evil.com", folder="daily",
+                                           __event_call__=disconnected)
+        self.assertTrue(out.startswith("Refused"), out)
+        self.assertEqual(self.proposals(), [])
+
+    def test_caps_match_the_approver(self):
+        root = Path(__file__).resolve().parent.parent
+        self.assertIn(f"\nMAX_CARD = {self.mod.MAX_CARD}  ", (root / "julz_vault.py").read_text())
+        self.assertIn(f"\nMAX_PROPOSALS = {self.mod.MAX_PROPOSALS}\n", (root / "julz-approve-web.py").read_text())
 
     async def test_only_true_confirms(self):
         for reply in (None, 0, 1, "yes", {"error": "x"}, [True]):
