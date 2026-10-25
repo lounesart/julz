@@ -58,8 +58,6 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
     var signing by remember { mutableStateOf<Begun?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
-    var open by remember { mutableStateOf<String?>(null) }   // the note shown whole
-    var choosing by remember { mutableStateOf<String?>(null) }  // the note whose folders are shown
     var counts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     // A notice this screen keeps out of the tray reloads it at once
     val fresh by app.julz.JulzService.changes.collectAsState()
@@ -78,16 +76,9 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
         else problem = if (reply.first == 0) "The approver is not reachable. Is the laptop on and Tailscale up?"
                        else "The laptop answered oddly"
     }
+    // The id signed is that of the snapshot the picks were checked against, as drawn
     val s = snap
-    // Picks of notes no longer in the Inbox (moved, deleted, changed) drop by themselves
-    val notes = s?.notes.orEmpty().map { it.note }.toSet()
-    val picks = picked.mapNotNull { InboxPick.from(it) }.filter { it.note in notes }
-    fun pickFor(n: InboxNote) = picks.firstOrNull { it.note == n.note }
-    fun set(n: InboxNote, p: InboxPick?) {
-        setPicked(picks.filter { it.note != n.note }.map { it.key } + listOfNotNull(p?.key))
-    }
-
-    fun apply() {
+    fun apply(picks: List<InboxPick>) {
         val body = s?.let { InboxSnapshot.body(it.id, picks) } ?: run { status = "Reload: no Inbox to act on"; return }
         busy = true; status = null
         signWithDevice(context, scope, origins, "inbox", body,
@@ -101,6 +92,27 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
         }
     }
 
+    InboxContent(snap, problem, counts, picked, setPicked, signing, busy, status,
+        reload = { status = null; reloads++ }, apply = ::apply, browse = browse, back = back)
+}
+
+/** What the Inbox shows, from what InboxScreen fetched and signs: no network and no key here, so
+ *  a screenshot test draws it from fixed data (184). */
+@Composable
+internal fun InboxContent(s: InboxSnapshotData?, problem: String?, counts: Map<String, Int>, picked: List<String>,
+                          setPicked: (List<String>) -> Unit, signing: Begun?, busy: Boolean, status: String?,
+                          reload: () -> Unit, apply: (List<InboxPick>) -> Unit, browse: (String?) -> Unit,
+                          back: () -> Unit) {
+    var open by remember { mutableStateOf<String?>(null) }   // the note shown whole
+    var choosing by remember { mutableStateOf<String?>(null) }  // the note whose folders are shown
+    // Picks of notes no longer in the Inbox (moved, deleted, changed) drop by themselves
+    val notes = s?.notes.orEmpty().map { it.note }.toSet()
+    val picks = picked.mapNotNull { InboxPick.from(it) }.filter { it.note in notes }
+    fun pickFor(n: InboxNote) = picks.firstOrNull { it.note == n.note }
+    fun set(n: InboxNote, p: InboxPick?) {
+        setPicked(picks.filter { it.note != n.note }.map { it.key } + listOfNotNull(p?.key))
+    }
+
     Column(Modifier.fillMaxSize().padding(bottom = barClear())) {
     Box(Modifier.weight(1f)) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
@@ -109,7 +121,7 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
             s == null -> "asking the laptop"
             s.notes.size == 1 -> "1 note waiting to be sorted"
             else -> "${s.notes.size} notes waiting to be sorted"
-        }, back, "Back to feed") { RoundButton(Icons.reload, "Reload") { status = null; reloads++ } }
+        }, back, "Back to feed") { RoundButton(Icons.reload, "Reload", reload) }
         Guide(Guides.INBOX)
         Column(Modifier.fillMaxWidth().glass().padding(horizontal = J.inset)) {
             ListRow("Browse all notes", "every folder and what is in it, read only", onClick = { browse(null) }) {
@@ -117,7 +129,7 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
             }
         }
         when {
-            problem != null -> Text(problem!!, style = J.sec)
+            problem != null -> Text(problem, style = J.sec)
             s == null -> Text("Asking the laptop", style = J.sec)
             s.notes.isEmpty() -> Text("The Inbox is empty.", style = J.bodyText)
             else -> for (n in s.notes) {
@@ -174,7 +186,7 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
             busy -> "Waiting for your fingerprint"
             picks.size == 1 -> "Apply 1 change with fingerprint"
             else -> "Apply ${picks.size} changes with fingerprint"
-        }) { if (!busy) apply() }
+        }) { if (!busy) apply(picks) }
     }
     }
 }
