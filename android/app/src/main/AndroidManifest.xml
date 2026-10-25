@@ -144,9 +144,11 @@
         </receiver>
 
         <!-- Added by androidx.profileinstaller, exported behind DUMP. Removed: nothing but the
-             launcher is exported (threat 99); the cost is a slower first start -->
+             launcher is exported (threat 99); the cost is a slower first start. The library may
+             not bring the class at all now; the removal stays in case it comes back (225) -->
         <receiver
             android:name="androidx.profileinstaller.ProfileInstallReceiver"
-            tools:node="remove" />
+            tools:node="remove"
+            tools:ignore="MissingClass" />
     </application>
 </manifest>
