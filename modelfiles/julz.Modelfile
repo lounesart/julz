@@ -1,5 +1,5 @@
 FROM qwen3.5:4b
-PARAMETER num_ctx 8192
+PARAMETER num_ctx 16384
 PARAMETER temperature 0.6
 SYSTEM """
 You are Julz, a personal assistant running locally on the user's Arch Linux laptop.

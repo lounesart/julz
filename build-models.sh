@@ -6,7 +6,7 @@ cd "$(dirname "$0")/modelfiles"
 
 # name        base model           context  temperature  extra prompt
 models=(
-  "julz        qwen3.5:4b           8192     0.6          -"
+  "julz        qwen3.5:4b           16384    0.6          -"
   "julz-pro    qwen3.5:9b           8192     0.6          -"
   "julz-sec    qwen2.5-coder:7b     8192     0.3          sec-addon.txt"
 )
