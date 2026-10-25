@@ -108,6 +108,18 @@ Expected results in brackets.
 6. A question I cannot do from the phone: I did it, continue, and Claude asks the same again.
    [The task ends with "Claude asked the same thing again", no third run.]
 
+### What I sign stays in view (219, 109)
+1. Inbox: Delete on a note, Apply. [The text I sign at the top under "You are signing exactly
+   this", the fingerprint sheet below it, nothing of the text under the sheet. The prompt says
+   "Signs the text shown above".] Cancel. [Panel gone, the pick still there.]
+2. Todos: tick a task with fingerprint; Goals: Apply. [Same: text at the top, sheet below.]
+3. Chat: Save to notes on a long answer (more than a screen). [First a full screen to read,
+   "Sign with fingerprint" and Cancel at the bottom; Sign brings the sheet with the start of the
+   text above it.] Back on the read screen. [Cancelled, nothing saved.]
+4. Feedback: send. Approve: a spec, then Stop the run. [Text at the top each time.]
+5. Big text at the top and landscape: one Inbox delete each. [The text still clear of the sheet;
+   if the sheet covers it, 219 is not done.]
+
 ### Tools and Settings (122)
 1. Tools. [Each integration with its status; tap shows its facts as spec lines (22e): a
    short value beside its label in the accent, a longer one under it.]
