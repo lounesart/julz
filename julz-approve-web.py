@@ -63,8 +63,12 @@ INBOX_KEYS = {"name", "note", "sha256", "size", "modified", "preview"}
 GOAL_KEY = re.compile(r"\d{4}(-\d{2}(-\d{2})?|-W\d{2})?")
 NOTE_KEYS = {"name", "note", "size", "modified", "text"}
 # The folders the notes browser may show (118): a root, then plain folder names, never ".."
+# One note by its id: the SHA-256 of its path, looked up in notes.json, never a path (148)
+NOTE_BY_ID = re.compile(r"/api/notes/([0-9a-f]{64})")
 NOTES_FOLDER = re.compile(r"(study|daily|Inbox|Claude|Outbox|feedback)(/\w[\w .-]{0,99})*")
-MAX_NOTES_BYTES = 2_000_000
+# From the snapshot's own caps: 300 notes of 4000 characters, 6 bytes a letter once JSON
+# escapes it, plus room for names and keys. Less, and a full vault reads as empty (148)
+MAX_NOTES_BYTES = vault.MAX_NOTES_SHOWN * (vault.MAX_NOTE_TEXT * 6 + 1000)
 
 MAX_BODY = 16_000
 MAX_SHOWN = 3
@@ -150,7 +154,10 @@ class App:
                 return self.json(200, gets[path]())
             if method == "POST" and path in posts:
                 return self.json(200, posts[path](self.read_json(headers, body)))
-            if path in STATIC or path in gets or path in posts:
+            one = NOTE_BY_ID.fullmatch(path)
+            if method == "GET" and one:
+                return self.json(200, self.one_note(one.group(1)))
+            if path in STATIC or path in gets or path in posts or one:
                 raise HTTPError(405, "method not allowed")
             raise HTTPError(404, "not found")
         except HTTPError as e:
@@ -435,32 +442,47 @@ class App:
             return empty
         return data
 
-    def all_notes(self) -> dict:
-        """The notes browser (118): what julz-vault wrote, checked again as if anyone could have.
-        Read only. Anything off is no folders at all."""
-        empty = {"folders": []}
+    def checked_notes(self) -> list:
+        """What julz-vault wrote for the notes browser (118), checked again as if anyone could
+        have. Anything off is no folders at all."""
         try:
             data = json.loads(gate.read_regular(self.todos_file.parent / "notes.json", MAX_NOTES_BYTES))
         except (gate.SpecError, OSError, ValueError, UnicodeDecodeError):
-            return empty
+            return []
         folders = data.get("folders") if isinstance(data, dict) and set(data) == {"folders"} else None
         if not isinstance(folders, list):
-            return empty
+            return []
         count = 0
         for f in folders:
             if not isinstance(f, dict) or set(f) != {"folder", "notes"} or not isinstance(f["folder"], str) \
                     or not NOTES_FOLDER.fullmatch(f["folder"]) or f["folder"].startswith("Inbox/") \
                     or not isinstance(f["notes"], list):
-                return empty
+                return []
             for n in f["notes"]:
                 if not isinstance(n, dict) or set(n) != NOTE_KEYS \
                         or not all(isinstance(n[k], str) for k in NOTE_KEYS - {"size"}) \
                         or type(n["size"]) is not int or n["note"].rpartition("/")[0] != f["folder"] \
                         or not n["note"].endswith(".md") or not DAY.fullmatch(n["modified"]) \
                         or len(n["text"]) > vault.MAX_NOTE_TEXT or vault._shown(n["text"]) != n["text"]:
-                    return empty
+                    return []
                 count += 1
-        return empty if count > vault.MAX_NOTES_SHOWN else {"folders": folders}
+        return [] if count > vault.MAX_NOTES_SHOWN else folders
+
+    def all_notes(self) -> dict:
+        """The notes browser: folders and names with an id each, no text, so the reply stays
+        small however long the notes are (206). Read only."""
+        return {"folders": [{"folder": f["folder"], "notes": [
+            {**{k: v for k, v in n.items() if k != "text"}, "id": gate.sha256(n["note"])}
+            for n in f["notes"]]} for f in self.checked_notes()]}
+
+    def one_note(self, nid: str) -> dict:
+        """One note's text by its id (148). The id only selects among the checked snapshot;
+        no vault file is opened for it. Unknown is 404."""
+        for f in self.checked_notes():
+            for n in f["notes"]:
+                if gate.sha256(n["note"]) == nid:
+                    return {"note": n["note"], "text": n["text"]}
+        raise HTTPError(404, "not found")
 
     def feedback_list(self) -> dict:
         """Open and done feedback for the app (120): what julz-vault wrote, checked again as if

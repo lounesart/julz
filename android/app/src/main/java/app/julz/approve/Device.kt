@@ -70,11 +70,24 @@ object ApproverApi {
     const val INTEGRATIONS = "/api/integrations"  // the Tools tab, read only (122)
     const val GOALS = "/api/goals"  // the Goals tab, read only (123)
     private val PATHS = setOf(STATE, BEGIN, FINISH, ENROLL, DONE, INBOX, NOTES, FEEDBACK, INTEGRATIONS, GOALS)
+    // One note by its id, a key the laptop looks up in its snapshot, never a path (148)
+    private val NOTE = Regex("/api/notes/[0-9a-f]{64}")
     private const val MAX_REPLY = 256_000
+    /** The status [call] gives for a reply over [MAX_REPLY]: too big, not odd. Nothing is parsed. */
+    const val TOO_BIG = -2
 
     fun origin(o: Origins): String = o.approver.trimEnd('/')
 
-    fun urlOrNull(o: Origins, path: String): String? = if (path in PATHS) origin(o) + path else null
+    fun urlOrNull(o: Origins, path: String): String? =
+        if (path in PATHS || NOTE.matches(path)) origin(o) + path else null
+
+    fun note(id: String): String = "$NOTES/$id".also { require(NOTE.matches(it)) }
+
+    /** The reply's text, or null when it runs over [MAX_REPLY]. */
+    fun capped(s: java.io.InputStream): String? {
+        val bytes = s.readNBytes(MAX_REPLY + 1)
+        return if (bytes.size > MAX_REPLY) null else String(bytes, Charsets.UTF_8)
+    }
 
     fun url(o: Origins, path: String): String = urlOrNull(o, path)!!
 
@@ -97,10 +110,7 @@ object ApproverApi {
             }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.use { s ->
-                val bytes = s.readNBytes(MAX_REPLY + 1)
-                if (bytes.size > MAX_REPLY) "" else String(bytes, Charsets.UTF_8)
-            } ?: ""
+            val text = stream?.use { capped(it) ?: return TOO_BIG to "" } ?: ""
             return code to text
         } finally { conn.disconnect() }
     }

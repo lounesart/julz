@@ -34,6 +34,22 @@ class ApproveTest {
             assertNull(bad, ApproverApi.urlOrNull(o, bad))
     }
 
+    @Test fun oneNoteOnlyByA64HexId() {
+        // Threat 148: an id is a key looked up in the laptop's snapshot, never a path
+        val id = "0123456789abcdef".repeat(4)
+        assertEquals("https://laptop.tail1234.ts.net:8443/api/notes/$id", ApproverApi.url(o, ApproverApi.note(id)))
+        for (bad in listOf(id.uppercase(), id.dropLast(1), id + "0", "../../x", "study%2Fdns.md", "$id?x=1", "$id/", ""))
+            assertNull(bad, ApproverApi.urlOrNull(o, "/api/notes/$bad"))
+        assertNull(runCatching { ApproverApi.note("../x") }.getOrNull())
+    }
+
+    @Test fun aReplyOverTheLimitIsTooBigNotEmpty() {
+        val max = 256_000
+        assertEquals("a".repeat(max), ApproverApi.capped("a".repeat(max).byteInputStream()))
+        assertNull(ApproverApi.capped("a".repeat(max + 1).byteInputStream()))
+        assertEquals("я", ApproverApi.capped("я".byteInputStream()))
+    }
+
     private fun spec(name: String = "fix-readme.md", sha: String = "a".repeat(64), text: String = "goal: x\n",
                      project: String = "julz-sandbox") =
         JSONObject().put("name", name).put("sha256", sha).put("text", text).put("project", project)
