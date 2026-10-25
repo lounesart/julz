@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -121,6 +122,19 @@ fun IconBadge(icon: ImageVector, tint: Color? = null) {
         Icon(icon, contentDescription = null, tint = tint ?: J.muted, modifier = Modifier.size(22.dp))
     }
 }
+
+/** border() drawn as a stroke. Compose draws a cut corner border (Industrial) through a bitmap
+ *  the size of the element, and a 3060 line code block asked for 210 MB: the app died (25 Oct).
+ *  Inset by half the width, as border() is, so a clip to the same shape keeps all of it. */
+fun Modifier.outline(width: androidx.compose.ui.unit.Dp, color: Color, shape: androidx.compose.ui.graphics.Shape) =
+    drawWithCache {
+        val w = width.toPx()
+        val inner = shape.createOutline(androidx.compose.ui.geometry.Size(size.width - w, size.height - w), layoutDirection, this)
+        onDrawWithContent {
+            drawContent()
+            translate(w / 2, w / 2) { drawOutline(inner, color, style = androidx.compose.ui.graphics.drawscope.Stroke(w)) }
+        }
+    }
 
 /** A notice's card in one family (22d integrity): dark glass with a line and a glow in its
  *  kind's colour; [strong] (a warning, an approval) a brighter line, a wider glow, tinted glass.
