@@ -152,6 +152,21 @@ class ScreenshotTest {
         }
     }
 
+    // Last week's open goals, read only (126b(3), threat 157): words and bar, nothing to tap
+    @Test fun pastGoals() = paparazzi.snapshot {
+        shell(Screen.TODOS) {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().padding(horizontal = J.gutter)) {
+                PastGoalsCard(listOf(
+                    app.julz.feed.GoalPeriod("2026-10-24", "Yesterday", emptyList()),
+                    app.julz.feed.GoalPeriod("2026-W42", "Last week", listOf(
+                        app.julz.feed.GoalItem("Study 10 h (2/10) #goal/study-10-h [in:: pass-cpts] [est:: 10h] [spent:: 3h]", false,
+                            2 to 10, "study-10-h", null, "pass-cpts", 30, 0, null, 600, 180, 180 to 600),
+                        app.julz.feed.GoalItem("Read the Kerberos chapter (1/3)", false, 1 to 3, null, null))),
+                    app.julz.feed.GoalPeriod("2025", "2025", listOf(app.julz.feed.GoalItem("Get A+", false, null, null, null)))))
+            }
+        }
+    }
+
     @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
     @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, learn = true) }
     @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, learn = true, draft = "What is a /26?") }

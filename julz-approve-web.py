@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -116,6 +116,39 @@ def load_config(path: Path) -> tuple[str, int]:
     return origin, port
 
 
+def _minutes_ok(m) -> bool:  # own hours: none, or whole minutes up to 9999 h (129)
+    return m is None or (type(m) is int and 0 < m <= vault.MAX_SPENT_MIN)
+
+
+def _day_ok(d) -> bool:  # a due date: none, or a real day in ISO form (126)
+    return d is None or (isinstance(d, str) and vault.DUE_DAY.fullmatch(d) is not None and vault._due_of(f"[due:: {d}]") == d)
+
+
+def _period_ok(p) -> bool:
+    """One period of a goals snapshot as julz-vault writes it (123): its key, note and label."""
+    return isinstance(p, dict) and set(p) == {"key", "label", "note", "goals"} \
+        and isinstance(p["key"], str) and GOAL_KEY.fullmatch(p["key"]) is not None \
+        and p["note"] == f"goals/{p['key']}.md" and isinstance(p["label"], str) and len(p["label"]) <= 20 \
+        and isinstance(p["goals"], list) and len(p["goals"]) <= vault.MAX_GOALS
+
+
+def _goal_ok(g) -> bool:
+    """One goal of a period, every field checked as if anyone could have written it (123)."""
+    return isinstance(g, dict) and set(g) == {"text", "done", "progress", "goal", "linked", "parent", "rollup", "parts",
+                                             "due", "est", "spent", "hours"} \
+        and _day_ok(g["due"]) and all(_minutes_ok(m) for m in (g["est"], g["spent"])) \
+        and (g["hours"] is None or (isinstance(g["hours"], list) and len(g["hours"]) == 2
+                                    and all(type(m) is int and 0 <= m <= 10 ** 7 for m in g["hours"]))) \
+        and (g["parent"] is None or (isinstance(g["parent"], str) and vault.GOAL_ID.fullmatch(g["parent"]) is not None)) \
+        and (g["rollup"] is None or (type(g["rollup"]) is int and 0 <= g["rollup"] <= 100)) \
+        and type(g["parts"]) is int and 0 <= g["parts"] <= 10000 \
+        and isinstance(g["text"], str) and len(g["text"]) <= vault.MAX_GOAL_TEXT + 60 \
+        and vault._shown(g["text"]) == g["text"] and type(g["done"]) is bool \
+        and all(x is None or (isinstance(x, list) and len(x) == 2 and all(type(n) is int for n in x))
+                for x in (g["progress"], g["linked"])) \
+        and (g["goal"] is None or (isinstance(g["goal"], str) and vault.GOAL_TAG.fullmatch("#goal/" + g["goal"]) is not None))
+
+
 class App:
     """The approver without sockets: handle() takes a request and returns a response."""
 
@@ -137,6 +170,7 @@ class App:
         self.hosts = {urlsplit(passkeys.origin).netloc, f"127.0.0.1:{port}"}
         self.names: dict[str, str] = {}  # nonce -> inbox file name, or task root for a need
         self.todos_file, self.requests, self.proposals_dir = TODOS_FILE, REQUESTS, PROPOSALS
+        self.today = date.today  # which periods are current, for the past goals check (157)
 
     # ---------- plumbing ----------
 
@@ -149,7 +183,7 @@ class App:
             gets = {"/api/state": self.state, "/api/done": self.done_week, "/api/inbox": self.inbox_notes,
                     "/api/notes": self.all_notes, "/api/feedback": self.feedback_list,
                     "/api/integrations": self.integrations, "/api/goals": self.goals,
-                    "/api/proposals": self.proposals}
+                    "/api/proposals": self.proposals, "/api/goals/past": self.goals_past}
             posts = {"/api/begin": self.begin, "/api/finish": self.finish,
                      "/api/enroll/begin": self.enroll_begin,
                      "/api/enroll/finish": self.enroll_finish,
@@ -529,12 +563,7 @@ class App:
         """The four current periods' goals for the app (123), checked again as if anyone could
         have written them. Anything off is no goals at all."""
         empty = {"id": "", "periods": [], "tree": {}, "milestones": []}
-
-        def minutes(m) -> bool:  # own hours: none, or whole minutes up to 9999 h (129)
-            return m is None or (type(m) is int and 0 < m <= vault.MAX_SPENT_MIN)
-
-        def day(d) -> bool:  # a due date: none, or a real day in ISO form (126)
-            return d is None or (isinstance(d, str) and vault.DUE_DAY.fullmatch(d) is not None and vault._due_of(f"[due:: {d}]") == d)
+        day = _day_ok
         try:
             data = json.loads(gate.read_regular(self.todos_file.parent / "goals.json", MAX_TODOS_BYTES))
         except (gate.SpecError, OSError, ValueError, UnicodeDecodeError):
@@ -556,26 +585,26 @@ class App:
                     or vault._shown(m["text"]) != m["text"] or vault.NOT_PLAIN.search(m["text"]):
                 return empty
         for p in data["periods"]:
-            if not isinstance(p, dict) or set(p) != {"key", "label", "note", "goals"} \
-                    or not isinstance(p["key"], str) or not GOAL_KEY.fullmatch(p["key"]) \
-                    or p["note"] != f"goals/{p['key']}.md" or not isinstance(p["label"], str) or len(p["label"]) > 20 \
-                    or not isinstance(p["goals"], list) or len(p["goals"]) > vault.MAX_GOALS:
+            if not _period_ok(p) or not all(_goal_ok(g) for g in p["goals"]):
                 return empty
-            for g in p["goals"]:
-                if not isinstance(g, dict) or set(g) != {"text", "done", "progress", "goal", "linked", "parent", "rollup", "parts",
-                                                         "due", "est", "spent", "hours"} \
-                        or not day(g["due"]) or not all(minutes(m) for m in (g["est"], g["spent"])) \
-                        or not (g["hours"] is None or (isinstance(g["hours"], list) and len(g["hours"]) == 2
-                                                       and all(type(m) is int and 0 <= m <= 10 ** 7 for m in g["hours"]))) \
-                        or not (g["parent"] is None or (isinstance(g["parent"], str) and vault.GOAL_ID.fullmatch(g["parent"]))) \
-                        or not (g["rollup"] is None or (type(g["rollup"]) is int and 0 <= g["rollup"] <= 100)) \
-                        or type(g["parts"]) is not int or not 0 <= g["parts"] <= 10000 \
-                        or not isinstance(g["text"], str) or len(g["text"]) > vault.MAX_GOAL_TEXT + 60 \
-                        or vault._shown(g["text"]) != g["text"] or type(g["done"]) is not bool \
-                        or not all(x is None or (isinstance(x, list) and len(x) == 2 and all(type(n) is int for n in x))
-                                   for x in (g["progress"], g["linked"])) \
-                        or not (g["goal"] is None or (isinstance(g["goal"], str) and vault.GOAL_TAG.fullmatch("#goal/" + g["goal"]))):
-                    return empty
+        return data
+
+    def goals_past(self) -> dict:
+        """Open goals from the periods just before the current ones, for a read only card
+        (126b(3), threat 157). Checked as goals() checks its periods, plus open only and never a
+        current period; anything off is no list. Begin and finish never read it."""
+        empty = {"periods": []}
+        try:
+            data = json.loads(gate.read_regular(self.todos_file.parent / "goals-past.json", MAX_TODOS_BYTES))
+        except (gate.SpecError, OSError, ValueError, UnicodeDecodeError):
+            return empty
+        if not isinstance(data, dict) or set(data) != {"periods"} or not isinstance(data["periods"], list) \
+                or len(data["periods"]) > 4:
+            return empty
+        current = {k for k, _, _ in vault.goal_periods(self.today())}
+        for p in data["periods"]:
+            if not _period_ok(p) or p["key"] in current or not all(_goal_ok(g) and g["done"] is False for g in p["goals"]):
+                return empty
         return data
 
     def proposal(self, name) -> tuple[dict, str] | None:

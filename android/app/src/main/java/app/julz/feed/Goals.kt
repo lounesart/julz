@@ -88,7 +88,21 @@ object GoalsData {
                 (rollup != null && rollup !in 0..100)) return null
             Milestone(goal, text, due, rollup)
         }
-        return GoalsSnapshot(id, (0 until ps.length()).map { i ->
+        return GoalsSnapshot(id, periodsOf(ps) ?: return null, tree, milestones)
+    }
+
+    /** Open goals from the periods just before the current ones, for a read only card (126b(3),
+     *  SECURITY.md 157): only the periods key, the same checks per period and goal, none done. */
+    fun parsePast(raw: String): List<GoalPeriod>? {
+        val j = try { JSONObject(raw) } catch (e: Exception) { return null }
+        if (j.keys().asSequence().toSet() != setOf("periods")) return null
+        val ps = j.optJSONArray("periods") ?: return null
+        if (ps.length() > 4) return null
+        return periodsOf(ps)?.takeIf { l -> l.none { p -> p.goals.any { it.done } } }
+    }
+
+    private fun periodsOf(ps: JSONArray): List<GoalPeriod>? {
+        return (0 until ps.length()).map { i ->
             val p = ps.optJSONObject(i) ?: return null
             val key = p.optString("key"); val gs = p.optJSONArray("goals") ?: return null
             if (!KEY.matches(key) || gs.length() > 20) return null
@@ -110,7 +124,7 @@ object GoalsData {
                     (due != null && day(due) == null)) return null
                 GoalItem(text, g.optBoolean("done"), progress, goal, linked, parent, rollup, g.optInt("parts"), due, est, spent, hours)
             })
-        }, tree, milestones)
+        }
     }
 
     /** The goals a goal may go under: all in the tree but itself and its own parts (the laptop
