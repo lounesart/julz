@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -173,6 +174,9 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     var problem by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
     var sentAt by remember { mutableStateOf(0L) }
+    // Learning mode (135): its name goes with each message; an opened chat brings its own back
+    var learn by remember { mutableStateOf(false) }
+    val learnNow by androidx.compose.runtime.rememberUpdatedState(learn)
 
     suspend fun call(path: String, body: String? = null, delete: Boolean = false) =
         withContext(Dispatchers.IO) { ChatApi.call(origin, path, token, body, delete) }
@@ -222,6 +226,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
             }
         }
     }
+    // Only when another chat opens: a poll must not undo the tap I made before sending
+    LaunchedEffect(view?.id) { view?.let { learn = it.mode == "learn" } }
     LaunchedEffect(undo) { if (undo != null) { delay(5_000); undo = null } }
     LaunchedEffect(note) { if (note != null) { delay(5_000); note = null } }
 
@@ -264,8 +270,9 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
             }
             return
         }
-        if (editing != null && id != null) start(ChatApi.edit(id), ChatApi.body(draft))
-        else start(ChatApi.send(id), ChatApi.body(draft))
+        val mode = if (learnNow) "learn" else ""
+        if (editing != null && id != null) start(ChatApi.edit(id), ChatApi.body(draft, mode))
+        else start(ChatApi.send(id), ChatApi.body(draft, mode))
     }
 
     fun stop() {
@@ -451,7 +458,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
             }
         }
         Composer(draft, setDraft, busy = view?.busy == true, sending = sending, focus = editing?.id, roomy = ChatPrefs.roomy,
-            send = ::send, stop = ::stop)
+            learn = learn, setLearn = { learn = it }, send = ::send, stop = ::stop)
     }
 
     // One sheet at a time: what a message offers, the text I sign, or my chats
@@ -720,8 +727,8 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, retry: ()
  *  the text to six lines. (The first try, two empty lines with send in the corner, left the
  *  button alone at the bottom with uneven margins.) */
 @Composable
-private fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, sending: Boolean, focus: String?,
-                     roomy: Boolean, send: () -> Unit, stop: () -> Unit) {
+internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, sending: Boolean, focus: String?,
+                      roomy: Boolean, learn: Boolean, setLearn: (Boolean) -> Unit, send: () -> Unit, stop: () -> Unit) {
     val can = ChatLogic.canSend(draft, busy, sending)
     val sendNow by androidx.compose.runtime.rememberUpdatedState(send)
     val stopNow by androidx.compose.runtime.rememberUpdatedState(stop)
@@ -743,7 +750,8 @@ private fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, s
             cursorBrush = SolidColor(J.acc), onTextLayout = { lines = it.lineCount },
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
-                    if (draft.isEmpty()) Text("Message Julz", style = J.bodyText.copy(color = J.faint), maxLines = 1)
+                    if (draft.isEmpty()) Text(if (learn) "Ask, and Julz will teach" else "Message Julz",
+                        style = J.bodyText.copy(color = J.faint), maxLines = 1)
                     inner()
                 }
             })
@@ -759,11 +767,29 @@ private fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, s
         .clip(shape).background(J.surface).border(1.dp, J.lineStrong, shape)
     if (roomy) Column(box.padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset)) {
         field(Modifier.fillMaxWidth().padding(end = J.sp3, bottom = J.sp2))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { sendButton(Modifier) }
-    } else Row(box.heightIn(min = button + inset * 2).padding(start = J.sp4, end = inset),
-        verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-        // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
-        field(Modifier.weight(1f).padding(vertical = 14.dp))
-        sendButton(Modifier.padding(vertical = inset))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            LearnChip(learn, setLearn, Modifier.offset(x = -J.sp2))
+            Box(Modifier.weight(1f))
+            sendButton(Modifier)
+        }
+    } else Column {
+        LearnChip(learn, setLearn, Modifier.padding(start = J.gutter + J.sp2, top = J.sp1))
+        Row(box.heightIn(min = button + inset * 2).padding(start = J.sp4, end = inset),
+            verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+            // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
+            field(Modifier.weight(1f).padding(vertical = 14.dp))
+            sendButton(Modifier.padding(vertical = inset))
+        }
+    }
+}
+
+/** Learning mode (135): a switch, so TalkBack reads its name and state. Compact as the tag chips;
+ *  Compose widens its touch area without moving the layout. */
+@Composable
+private fun LearnChip(on: Boolean, set: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.toggleable(on, role = Role.Switch, onValueChange = set).heightIn(min = 32.dp).clip(J.pill)
+        .background(if (on) J.acc else J.raise).border(1.dp, if (on) J.acc else J.line, J.pill)
+        .padding(horizontal = J.sp3), verticalAlignment = Alignment.CenterVertically) {
+        Text("Learn", style = J.cap.copy(color = if (on) J.onAcc else J.text, fontWeight = FontWeight(600)), maxLines = 1)
     }
 }

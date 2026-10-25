@@ -9,7 +9,7 @@ import java.net.URL
 data class ChatSummary(val id: String, val title: String, val updated: Long)
 data class ChatMessage(val id: String, val user: Boolean, val text: String, val done: Boolean, val time: Long, val error: String?)
 data class ChatView(val id: String, val title: String, val busy: Boolean, val messages: List<ChatMessage>,
-                    val archived: Boolean = false)
+                    val archived: Boolean = false, val mode: String = "")
 data class Sent(val chat: String, val message: String)
 
 /** julz-chat on the laptop, the native chat's only way to Open WebUI (SECURITY.md 136, 138).
@@ -20,6 +20,8 @@ object ChatApi {
     const val MAX_TITLE = 200
     const val MAX_ANSWER = 200_000
     const val MAX_ERROR = 500
+    /** julz-chat's mode names (135, threat 151); the words for each live on the laptop */
+    val MODES = setOf("learn")
     private const val MAX_REPLY = 2_000_000
     private val ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     private val MESSAGE_ID = Regex("[A-Za-z0-9-]{1,64}")
@@ -43,8 +45,10 @@ object ChatApi {
     /** With the DELETE method; the same path as the chat itself */
     fun delete(id: String): String? = view(id)
 
-    fun body(text: String): String? =
-        if (text.isBlank() || text.length > MAX_TEXT || '\u0000' in text) null else JSONObject().put("text", text).toString()
+    /** The text and, when one is on, a mode's name; "" is no mode */
+    fun body(text: String, mode: String = ""): String? =
+        if (text.isBlank() || text.length > MAX_TEXT || '\u0000' in text || (mode != "" && mode !in MODES)) null
+        else JSONObject().put("text", text).apply { if (mode != "") put("mode", mode) }.toString()
 
     private fun obj(raw: String): JSONObject? = try { JSONObject(raw) } catch (e: Exception) { null }
 
@@ -74,7 +78,7 @@ object ChatApi {
         val rows = o.optJSONArray("messages") ?: JSONArray()
         val messages = (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let { message(it) } }
         return ChatView(id, o.optString("title", "").take(MAX_TITLE), o.optBoolean("busy", false), messages,
-            o.opt("archived") == true)
+            o.opt("archived") == true, (o.opt("mode") as? String)?.takeIf { it in MODES } ?: "")
     }
 
     fun parseArchived(raw: String): Boolean? = obj(raw)?.opt("archived") as? Boolean
