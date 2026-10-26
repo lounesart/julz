@@ -263,7 +263,11 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
     a test case"; `./eval-promote.py` on the laptop lists it as new within a minute.] Hold an
     older answer. [The same; the sheet says `mode: unknown`.] Hold my own message. [No Bad
     answer row.]
-19. Icon buttons: the header's, send and the jump arrow. [The same 40 dp shape, each easy to hit.]
+20. Icon buttons: the header's, send and the jump arrow. [The same 40 dp shape, each easy to hit.]
+21. Ask for a long answer; while Julz writes, hold my message, Edit (203). [The row says "Stops her
+    answer, then sends your new words"; the button is send, not stop.] Change the words, send.
+    [About two seconds of sending, then one new answer to the new words; the old one stopped and
+    kept on the laptop page.] Edit again and Cancel. [Stop is back while she writes.]
 
 ### Tab bar (22i)
 1. Any screen. [A glass capsule with margins, in the card shape (cut on Industrial); the active tab
