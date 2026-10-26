@@ -159,6 +159,25 @@ class VaultTasksTest(VaultBase):
         for bad in ("evil", "zero", "y" * 81, "\u241e", "ghp_", "not my list", "archived"):
             self.assertFalse(any(bad in i for i in items), bad)
 
+    def test_tags_do_not_count_toward_the_limit(self):
+        # 113b: two #goal tags and [est::]/[spent::] pushed a 50 character task to 97 and it vanished
+        tags = " #goal/ccna-prep #goal/net-plus [est:: 2h] [spent:: 1.5h] [due:: 2026-11-01]"  # 155 with 80 words
+        words = "w" * 80
+        (self.daily / "t.md").write_text(
+            f"- [ ] {words}{tags}\n- [ ] x{words}{tags}\n- [ ] {words} [in:: {'a' * 73}]\n"
+            f"- [ ] {words[:70]} [note:: 1]\n- [ ] {words} [est:: 2 h]\n"
+            f"- [ ] {'a' * 79}\u00a0[est:: 1h]b\n")
+        items = [i for l in vault_mod.todo_snapshot(self.vault)["lists"] for i in l["open"]]
+        self.assertIn(words + tags, items)
+        self.assertFalse(any(i.startswith("x") for i in items))  # 81 characters of words
+        self.assertFalse(any("a" * 73 in i for i in items))  # the line is 161
+        self.assertNotIn(words[:70] + " [note:: 1]", items)  # a made up tag is words
+        self.assertNotIn(words + " [est:: 2 h]", items)  # not the closed shape
+        self.assertFalse(any("a" * 79 in i for i in items))  # a no-break space counts, as on the phone
+        # a tick of it reads back
+        line = f"tick: {'c' * 64}\ndaily/t.md: {words}{tags}\n"
+        self.assertEqual(vault_mod.ticks_of(line), [("daily/t.md", words + tags)])
+
     def test_snapshot_caps_the_number_of_lists(self):
         for n in range(12):  # many short lists: only the list cap stops them
             (self.daily / f"l{n:02d}.md").write_text(f"- [ ] task {n}\n")

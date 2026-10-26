@@ -505,7 +505,10 @@ def due_count(vault: Path, today: date) -> int:
 
 MAX_TODO_LISTS = 8
 MAX_TODO_ITEMS = 20
-MAX_TODO_TEXT = 80
+MAX_TODO_TEXT = 80  # the words; the tags below do not count (113b)
+MAX_TODO_LINE = 160
+# The tag shapes the phone reads apart (GoalsData.TAG), ASCII \s as in Kotlin, so both count alike
+TODO_TAG = re.compile(r"\s*(#goal/[a-z0-9-]+|\[in:: [a-z0-9-]+\]|\[due:: [0-9-]+\]|\[(est|spent):: [0-9.]+h\])", re.ASCII)
 MAX_TODO_DONE = 10  # done tasks in the whole snapshot (113)
 MAX_DONE_PER_LIST = 3
 TODO_SEPARATORS = ("\u241e", "\u241f")  # the message format's separators never inside a task
@@ -520,12 +523,12 @@ NOT_PLAIN = re.compile(r"!\[|\]\(|<[A-Za-z!?/]|://|(?i:\bwww\.)")
 
 
 def _travels(text: str) -> bool:
-    """A task or list name may go to the phone: short, plain, no link, secret or hidden mark."""
+    """A task or list name may go to the phone: short words, plain, no link, secret or hidden mark."""
     try:
-        checked_text(text, MAX_TODO_TEXT)
+        checked_text(text, MAX_TODO_LINE)
     except Refused:
         return False
-    return not any(sep in text for sep in TODO_SEPARATORS) and not NOT_PLAIN.search(text)
+    return len(TODO_TAG.sub("", text).strip()) <= MAX_TODO_TEXT and not any(sep in text for sep in TODO_SEPARATORS) and not NOT_PLAIN.search(text)
 
 
 def todo_snapshot(vault: Path) -> dict:

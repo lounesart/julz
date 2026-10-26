@@ -201,6 +201,8 @@ TODO_LIST_SEP, TODO_FIELD_SEP = "\u241e", "\u241f"
 TODO_NAME = re.compile(r"\w[\w .-]{0,39}")
 TODO_NOT_PLAIN = re.compile(r"!\[|\]\(|<[A-Za-z!?/]|://|(?i:\bwww\.)")
 MAX_TODO_LISTS, MAX_TODO_ITEMS, MAX_TODO_TEXT = 8, 20, 80
+MAX_TODO_LINE = 160  # the words count to 80, the tags the phone reads apart do not (113b)
+TODO_TAG = re.compile(r"\s*(#goal/[a-z0-9-]+|\[in:: [a-z0-9-]+\]|\[due:: [0-9-]+\]|\[(est|spent):: [0-9.]+h\])", re.ASCII)
 MAX_TODO_DONE = 10
 MAX_TODO_BYTES = 4000  # under ntfy's 4096 byte message limit
 TODO_ID = re.compile(r"[0-9a-f]{64}")
@@ -208,7 +210,7 @@ TODO_NOTE = re.compile(r"(?:Inbox|daily)(?:/\w[\w .-]{0,99})+\.md")
 
 
 def _todo_text_ok(t) -> bool:
-    return (isinstance(t, str) and 0 < len(t) <= MAX_TODO_TEXT and not any(unicodedata.category(c) in gate.BAD_CATEGORIES for c in t)
+    return (isinstance(t, str) and 0 < len(t) <= MAX_TODO_LINE and len(TODO_TAG.sub("", t).strip()) <= MAX_TODO_TEXT and not any(unicodedata.category(c) in gate.BAD_CATEGORIES for c in t)
             and TODO_LIST_SEP not in t and TODO_FIELD_SEP not in t and not TODO_NOT_PLAIN.search(t))
 
 
