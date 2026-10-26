@@ -1,5 +1,6 @@
 package app.julz.ui
 
+import androidx.compose.animation.core.VectorConverter
 import app.julz.chat.ChatApi
 import app.julz.feed.Kind
 import org.junit.Assert.assertEquals
@@ -8,6 +9,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WheelTest {
+    // A landing ends when the word looks still, not 0.01 px later: Messages' list waited about
+    // 350 ms on an unseen tail before it changed (my note 26 Oct): about 600 ms today, 360 with the threshold. 300 px at 3000 px/s, a flick
+    private fun settleMs(spec: androidx.compose.animation.core.AnimationSpec<Float>) =
+        androidx.compose.animation.core.TargetBasedAnimation(spec, Float.VectorConverter,
+            0f, 300f, 3000f).durationNanos / 1_000_000
+    @Test fun aLandingEndsWhenTheWordLooksStill() {
+        val ours = settleMs(Wheel.settle)
+        val default = settleMs(androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow))
+        assertTrue("settles in $ours ms", ours < 400)
+        // the threshold does it: the same spring at Compose's default runs well past
+        assertTrue("default $default ms, ours $ours ms", default > ours + 150)
+    }
+
     // The word nearest the strip's middle is the one picked
     @Test fun nearestPicksTheClosestCentre() { assertEquals(2, Wheel.nearest(listOf(1 to 40f, 2 to 170f, 3 to 300f), 180f)) }
     @Test fun nearestWorksLeftOfTheMiddle() { assertEquals(1, Wheel.nearest(listOf(1 to 160f, 2 to 260f), 180f)) }

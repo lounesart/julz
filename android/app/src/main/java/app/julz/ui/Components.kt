@@ -420,8 +420,7 @@ private class WheelFling(val state: androidx.compose.foundation.lazy.LazyListSta
             .coerceIn(seen.first().index, seen.last().index)
         val delta = centre(seen.first { it.index == to }) - mid
         var done = 0f
-        androidx.compose.animation.core.AnimationState(0f, initialVelocity).animateTo(delta,
-            androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)) {
+        androidx.compose.animation.core.AnimationState(0f, initialVelocity).animateTo(delta, Wheel.settle) {
             scrollBy(value - done); done = value
         }
         return 0f

@@ -40,6 +40,12 @@ object Wheel {
         return u * u * (3 - 2 * u)
     }
 
+    /** How a fling lands: done within a pixel of the word, as Compose's Int and Offset springs are; the
+     *  last frame puts it on the word. At the Float default, 0.01 px, it crept on unseen for about
+     *  250 ms, and the pick, so Messages' list, waited for it (my note 26 Oct) */
+    val settle = androidx.compose.animation.core.spring(
+        stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow, visibilityThreshold = 1f)
+
     /** The word a fling lands on: [travel] is how far a free decay would carry the middle, less how
      *  far the nearest word already sits off it, in pixels; [size] a word's width with its gap. A
      *  flick faster than [minVelocity] moves at least one word, so no precise swipe is needed */
