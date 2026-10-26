@@ -1296,5 +1296,39 @@ class Hex64AnchorTest(unittest.TestCase):
             gate.task_path(dirs, self.H + "\n")
 
 
+class NameAnchorTest(unittest.TestCase):
+    """230: the same edge as 222 in the name patterns; a Linux file name may end in a newline."""
+    GOOD = {"SPEC_NAME": "fix-login.md", "APPROVED_NAME": "a" * 64 + ".md",
+            "PROJECT_NAME": "julz", "ARCHIVE_NAME": "runner-20261026T010203Z-2.log"}
+
+    def test_newline_refused_by_match(self):
+        for attr, good in self.GOOD.items():
+            pat = getattr(gate, attr)
+            self.assertTrue(pat.match(good), attr)
+            for bad in (good + "\n", good + "\r", good + "\n\n", "\n" + good):
+                with self.subTest(attr=attr, bad=bad):
+                    self.assertIsNone(pat.match(bad))
+
+    def test_load_spec_refuses_a_newline_name(self):
+        path = Path(tempfile.mkdtemp()) / "fix-login.md\n"
+        path.write_text("anything")
+        with self.assertRaisesRegex(gate.SpecError, "bad spec file name"):
+            gate.load_spec(path, {"julz"})
+
+    def test_archives_skip_a_newline_name(self):
+        dirs = gate.Dirs(Path(tempfile.mkdtemp()) / "gate")
+        dirs.logdir.mkdir(parents=True)
+        for name in ("runner-20261026T010203Z.log", "runner-20261026T010204Z.log\n"):
+            (dirs.logdir / name).write_text("x")
+        self.assertEqual([p.name for p in gate.archives(dirs)], ["runner-20261026T010203Z.log"])
+
+    def test_projects_refuse_a_newline_name(self):
+        path = Path(tempfile.mkdtemp()) / "projects.json"
+        path.write_text(json.dumps({"julz\n": "/home/x/julz"}))
+        path.chmod(0o600)
+        with self.assertRaisesRegex(gate.GateError, "bad project name"):
+            gate.load_projects(path)
+
+
 if __name__ == "__main__":
     unittest.main()
