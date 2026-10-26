@@ -261,6 +261,20 @@ class TrojanSourceTest(unittest.TestCase):
                 self.assertIsNone(self.HIDDEN.search(f.read_text(encoding="utf-8", errors="replace")))
 
 
+class IcuRegexTest(unittest.TestCase):
+    """Android compiles a Regex with ICU, the unit tests with the desktop JVM. ICU refuses the
+    inline (?U) flag, so v1.119 passed every test and crashed the chat on the phone (133c).
+    A Unicode letter is spelled \\p{L} instead; ICU's \\w is Unicode already, the JVM's is not."""
+    FLAG = re.compile(r"\(\?[a-zA-Z]*U")
+
+    def test_no_unicode_class_flag(self):
+        files = [p for p in (APP / "app" / "src" / "main").rglob("*.kt")]
+        self.assertGreater(len(files), 20)
+        for f in files:
+            with self.subTest(f=str(f.relative_to(ROOT))):
+                self.assertIsNone(self.FLAG.search(f.read_text(encoding="utf-8")))
+
+
 class MarkdownViewCallTest(unittest.TestCase):
     """MarkdownView(blocks, opens, link): a trailing lambda binds to link, the web link handler,
     not opens. NotesScreen did that: every wikilink drew as "no such note" and web links became
