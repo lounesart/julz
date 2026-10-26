@@ -112,6 +112,7 @@ internal fun InboxContent(s: InboxSnapshotData?, problem: String?, counts: Map<S
         setPicked(picks.filter { it.note != n.note }.map { it.key } + listOfNotNull(p?.key))
     }
 
+    OwnsBarFade()
     Column(Modifier.fillMaxSize().padding(bottom = barClear())) {
     Box(Modifier.weight(1f)) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)

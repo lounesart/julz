@@ -44,6 +44,10 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.node.invalidateDraw
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -246,12 +250,12 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
  *  swipe up or down steps one, a tap steps to the next; the caller gives its size. Inside the Feed's
  *  pager the drag stays with the strip (KeepSideways). [counts], if given, stand beside the words. */
 @Composable
-fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifier, counts: List<Int>? = null,
+fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifier, counts: List<Int?>? = null,
                 vertical: Boolean = false, onSelect: (Int) -> Unit) {
     val n = words.size
     if (n == 0) return
-    // A loop of copies, started in its middle, so both sides always hold a word
-    val slots = Wheel.slots(n)
+    // A fixed row with ends; only the chat's one word wheel loops, started in its middle
+    val slots = Wheel.slots(n, vertical)
     val loop = slots > n
     val state = remember(n) { androidx.compose.foundation.lazy.LazyListState(if (loop) Wheel.LOOP / 2 * n + selected else 0) }
     val still = stillMotion()
@@ -267,12 +271,22 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     LaunchedEffect(middle) {
         if (!first[0] && middle != null) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
     }
+    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
     LaunchedEffect(selected, state) {
         androidx.compose.runtime.snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
+        // Cleared in finally: a flick that cut a roll short left them set, and the wheel never
+        // centred or picked again (found flicking back and forth, my note 26 Oct)
         rolling[0] = true
-        val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
-        wheelRoll(state, to, still || first[0]); first[0] = false
-        rolling[0] = false
+        val placing = first[0]
+        try {
+            val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
+            wheelRoll(state, to, still || first[0])
+        } finally { first[0] = false; rolling[0] = false }
+        // The pick has landed: the light swells and springs back, so it reads as made (Wheel.POP)
+        if (!placing && !still) {
+            pop.animateTo(Wheel.POP, androidx.compose.animation.core.tween(90, easing = J.ease))
+            pop.animateTo(1f, Wheel.pop)
+        }
     }
     // A roll by hand: the fling lands on a word in one motion (WheelFling), then that word is picked
     LaunchedEffect(state) {
@@ -281,18 +295,108 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             val slot = wheelMiddle(state) ?: return@collect
             val i = Wheel.real(slot, n)
             if (i != now) pick(i) else if (kotlin.math.abs(wheelOffset(state, slot) ?: 0f) > 1f) {
-                rolling[0] = true; wheelRoll(state, slot, still); rolling[0] = false
+                // A flick that cuts this roll short cancels the scroll, not this loop: let it through
+                // and the loop ended, so the wheel never picked again (found flicking, 26 Oct)
+                rolling[0] = true
+                try { wheelRoll(state, slot, still) }
+                catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
+                finally { rolling[0] = false }
             }
         }
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val fling = remember(state, density) {
-        WheelFling(state, density, android.view.ViewConfiguration.get(context).scaledMinimumFlingVelocity * 4f)
-    }
     val pillShape = J.pill
     // Counted after the touch slop, so 12 dp more is a short flick, not a precise one
     val reach = with(androidx.compose.ui.platform.LocalDensity.current) { J.sp3.toPx() }
+    // Quiet ticks past each end, so a side never looks empty, a word's room away from the end word;
+    // those at a pulled end spread with the pull, as a stretched spring (Wheel.spread)
+    val ticks: androidx.compose.ui.graphics.drawscope.DrawScope.(Float, Float) -> Unit = { pull, limit ->
+        val info = state.layoutInfo
+        val seen = info.visibleItemsInfo
+        val r = J.sp1.toPx() / 2; val gap = J.sp3.toPx()
+        val off = J.sp1.toPx() + J.sp3.toPx() + gap + r
+        fun dots(cx: Float, side: Float) {
+            val g = gap * if (pull * side < 0f) Wheel.spread(pull, limit) else 1f
+            for (k in -1..1) drawCircle(J.faint, r, androidx.compose.ui.geometry.Offset(cx + side * (k + 1) * g - side * gap, size.height / 2))
+        }
+        seen.firstOrNull { it.index == 0 }?.let { dots(it.offset - info.viewportStartOffset - off, -1f) }
+        seen.firstOrNull { it.index == info.totalItemsCount - 1 }?.let { dots(it.offset + it.size - info.viewportStartOffset + off, 1f) }
+    }
+    val ends = remember(state, still) { WheelEnds(state, still, ticks) }
+    val endsScope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.runtime.SideEffect { ends.scope = endsScope }
+    val fling = remember(state, density, n) {
+        WheelFling(state, density, android.view.ViewConfiguration.get(context).scaledMinimumFlingVelocity * 4f, n) { ends.kick(it) }
+    }
+    // Where the light should be, from where the words are: [left, right, how big the middle word
+    // draws, the light's width gathered on the nearest word]. Between the two words round the middle
+    // its edges go by Wheel.edges, so it stretches across and gathers; each word's extent as it
+    // draws (Wheel.magnify); past an end it leans toward the pull, the edge on that side with the
+    // word, the other lagging, never over the ticks (Liquid Glass; my notes 26 Oct)
+    val clear = with(density) { (J.sp1 + J.sp3 - J.sp2).toPx() }
+    val speed = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    fun lightTarget(): FloatArray? {
+        val info = state.layoutInfo
+        val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+        val seen = info.visibleItemsInfo
+        val a = seen.lastOrNull { it.offset + it.size / 2f <= mid } ?: seen.firstOrNull() ?: return null
+        val b = seen.firstOrNull { it.index == a.index + 1 } ?: a
+        val ca = a.offset + a.size / 2f; val cb = b.offset + b.size / 2f
+        val t = if (b === a) 0f else ((mid - ca) / (cb - ca)).coerceIn(0f, 1f)
+        // Elastic on a slow move, straight across on a fast one (Wheel.calm)
+        val s = speed.floatValue
+        val calm = if (still) 0f else Wheel.calm(s)
+        val el = Wheel.edges(t)
+        val e = (t + (el.first - t) * calm) to (t + (el.second - t) * calm)
+        val step = (cb - ca).takeIf { it > 0f } ?: a.size.toFloat()
+        val ma = Wheel.magnify((ca - mid) / step); val mb = Wheel.magnify((cb - mid) / step)
+        val start = info.viewportStartOffset
+        var left = (ca - a.size / 2f * ma) + ((cb - b.size / 2f * mb) - (ca - a.size / 2f * ma)) * e.first - start
+        var right = (ca + a.size / 2f * ma) + ((cb + b.size / 2f * mb) - (ca + a.size / 2f * ma)) * e.second - start
+        // Fast, it streaks along the motion, mostly ahead: later words come from the right
+        // The light's own width, blended from word to word: switched at halfway, the streak jumped
+        val rest = a.size * ma + (b.size * mb - a.size * ma) * t
+        val streak = if (still) 0f else Wheel.streak(s) * rest
+        if (s > 0f) { right += streak * 0.7f; left -= streak * 0.3f } else if (s < 0f) { left -= streak * 0.7f; right += streak * 0.3f }
+        // The lean only at the end being pulled: a pull still settling after a flick back into the
+        // list leaned against the wrong word and squeezed the light to a dot (found on video). Away
+        // from an end the light just goes with the words while the pull settles
+        val p = ends.now
+        if (p < 0f && a.index == info.totalItemsCount - 1) { left += p; right = minOf(right + p * 0.3f, a.offset + a.size - start + p + clear) }
+        else if (p > 0f && a.index == 0 && t == 0f) { right += p; left = maxOf(left + p * 0.3f, a.offset - start + p - clear) }
+        else { left += p; right += p }
+        return floatArrayOf(left, right, ma + (mb - ma) * (e.first + e.second) / 2, rest)
+    }
+    // How fast the strip goes, in words a second, smoothed over about 80 ms: measured each frame
+    // only while it moves, back to 0 once still. Slow, the light is elastic; fast, it streaks
+    if (!vertical && n > 1) LaunchedEffect(state) {
+        var lastF = Float.NaN
+        var lastT = 0L
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { now ->
+                val f = wheelPlace(state)
+                if (f != null && !lastF.isNaN() && lastT != 0L) {
+                    val dt = ((now - lastT) / 1e9f).coerceIn(0.001f, 0.1f)
+                    val k = 1f - kotlin.math.exp(-dt / 0.08f)
+                    speed.floatValue += ((f - lastF) / dt - speed.floatValue) * k
+                }
+                lastF = f ?: Float.NaN; lastT = now
+            }
+            if (!state.isScrollInProgress && kotlin.math.abs(speed.floatValue) < 0.05f) {
+                speed.floatValue = 0f
+                androidx.compose.runtime.snapshotFlow { state.isScrollInProgress }.first { it }
+                lastF = Float.NaN; lastT = 0L
+            }
+        }
+    }
+    // A pull left by a touch that never became a drag springs back once the strip is still; a new
+    // drag cancels the spring
+    if (!vertical) LaunchedEffect(ends) {
+        androidx.compose.runtime.snapshotFlow { state.isScrollInProgress || !ends.pulled }.collectLatest { busy ->
+            if (!busy && !ends.bouncing) ends.settle(0f)
+        }
+    }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.then(if (vertical) Modifier else Modifier.fillMaxWidth())
         // One word, one step a swipe: no precise swipe needed (my note 26 Oct)
         .then(if (!vertical) Modifier else Modifier.pointerInput(n) {
@@ -300,33 +404,40 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             detectVerticalDragGestures(onDragStart = { moved = 0f },
                 onDragEnd = { Wheel.step(now, n, moved, reach).let { if (it != now) pick(it) } }) { _, dy -> moved += dy }
         })
+        // Room for the light to swell: at the bottom of a screen the tab bar's band covered its lower edge
+        .then(if (vertical) Modifier else Modifier.padding(vertical = J.sp1))
         .drawBehind {
-            // The light from where the words are, every frame, no clock of its own (my note 26 Oct:
-            // the animation was jumpy): between the two words around the middle, by Wheel.aim
+            // The light where its edges are (lightTarget, followed by springs), thinner while
+            // stretched (Wheel.squash), as big as the word it holds, and swelling for a moment when a
+            // pick lands (pop). Still motion: a plain slide
             val tall = this.size.height
-            val box = if (vertical || !loop) {
+            var mag = 1f
+            var stretch = 0f
+            val box = if (vertical || n == 1) {
                 val c = state.layoutInfo.visibleItemsInfo.firstOrNull() ?: return@drawBehind
                 val w = if (vertical) this.size.width else c.size.toFloat()
                 (this.size.width - w) / 2 to w
             } else {
-                val info = state.layoutInfo
-                val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2f
-                val seen = info.visibleItemsInfo
-                val a = seen.lastOrNull { it.offset + it.size / 2f <= mid } ?: seen.firstOrNull() ?: return@drawBehind
-                val b = seen.firstOrNull { it.index == a.index + 1 } ?: a
-                val ca = a.offset + a.size / 2f; val cb = b.offset + b.size / 2f
-                val k = if (b === a) 0f else Wheel.aim(((mid - ca) / (cb - ca)).coerceIn(0f, 1f))
-                val w = a.size + (b.size - a.size) * k
-                val x = ca + (cb - ca) * k - info.viewportStartOffset
-                x - w / 2 to w
+                // Drawn straight from where the words are, so it never lags them
+                val tg = lightTarget() ?: return@drawBehind
+                mag = tg[2]
+                stretch = (tg[1] - tg[0]) / tg[3].coerceAtLeast(1f) - 1f
+                tg[0] to tg[1] - tg[0]
             }
-            val size = androidx.compose.ui.geometry.Size(box.second, tall)
-            translate(left = box.first) {
-                val o = pillShape.createOutline(size, layoutDirection, this)
+            val grow = pop.value
+            val size = androidx.compose.ui.geometry.Size(box.second * grow, tall * mag * Wheel.squash(stretch) * grow)
+            translate(left = box.first - (size.width - box.second) / 2, top = (tall - size.height) / 2) {
                 // In the chat box the mode is a tile like the send button beside it, not a picked tab
-                if (vertical) drawOutline(o, J.raise)
-                else if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-                else drawOutline(o, J.text)
+                if (vertical) drawOutline(pillShape.createOutline(size, layoutDirection, this), J.raise)
+                else if (J.outline) {
+                    // The line inside the light's own box, so no half of it falls outside
+                    val w = 1.dp.toPx()
+                    translate(w / 2, w / 2) {
+                        drawOutline(pillShape.createOutline(androidx.compose.ui.geometry.Size(size.width - w, size.height - w), layoutDirection, this),
+                            J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+                    }
+                }
+                else drawOutline(pillShape.createOutline(size, layoutDirection, this), J.text)
             }
             // One word in view: a column of dots says where it stands and that more are there, as a
             // pager's indicator does, so the tile reads as a wheel to swipe, not a button (my note 26 Oct)
@@ -363,7 +474,14 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             // The same words as Segmented: dark on the filled light, the readable accent on the outline
             val ink = if (!lit) J.muted else if (vertical || J.outline) J.accText else J.bg
             val style = J.cap
-            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small))
+            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small).graphicsLayer {
+                    // The middle word a little bigger, by where it stands now (Wheel.magnify), no relayout
+                    val info = state.layoutInfo
+                    val item = info.visibleItemsInfo.firstOrNull { it.index == slot }
+                    val m = if (item == null) 1f else Wheel.magnify((item.offset + item.size / 2f -
+                        (info.viewportStartOffset + info.viewportEndOffset) / 2f) / (item.size + J.sp1.toPx()))
+                    scaleX = m; scaleY = m
+                })
                 .clip(J.pill).clickable(role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
                 .clearAndSetSemantics {
                     contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
@@ -378,19 +496,129 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         }
         if (vertical) androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().semantics { selectableGroup() },
             state = state, userScrollEnabled = false, horizontalAlignment = Alignment.CenterHorizontally) { items(slots) { word(it) } }
-        else androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().height(J.small).nestedScroll(KeepSideways).then(mask),
+        else {
+          val reachPx = with(density) { (maxWidth / 4).toPx() }
+          androidx.compose.runtime.SideEffect { ends.limit = reachPx }
+          androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().height(J.small).nestedScroll(KeepSideways).then(mask),
             state = state, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (loop) 0.dp else maxWidth / 2),
-            flingBehavior = fling,
+            flingBehavior = fling, overscrollEffect = ends,
             horizontalArrangement = Arrangement.spacedBy(J.sp1), verticalAlignment = Alignment.CenterVertically) {
             items(slots) { word(it) }
+          }
         }
     }
+}
+
+/** The wheel's ends (my note 26 Oct): a fixed row, not an endless loop, as iOS's picker is for what
+ *  is not cyclic. A drag scrolls until an end word stands in the middle; past that the strip
+ *  follows the finger less and less (Wheel.rubber) and springs back when let go, and a flick into
+ *  an end bounces. The ticks past each end move with the strip. Still motion: no spring, it snaps */
+private class WheelEnds(val state: androidx.compose.foundation.lazy.LazyListState, val still: Boolean,
+                        val ticks: androidx.compose.ui.graphics.drawscope.DrawScope.(Float, Float) -> Unit) :
+    androidx.compose.foundation.OverscrollEffect {
+    /** How far a pull may go, a quarter of the strip; set by the wheel once it is measured */
+    var limit = 1f
+    private val pullState = androidx.compose.runtime.mutableFloatStateOf(0f)
+    /** The pull now, read by the light, which stretches toward it */
+    val now get() = pullState.floatValue
+    private var pull: Float
+        get() = pullState.floatValue
+        set(v) { pullState.floatValue = v; if (node.isAttached) node.invalidateDraw() }
+    override val isInProgress get() = pull != 0f
+    val pulled get() = pull != 0f
+
+    /** How far the strip may scroll by [dx] before an end word stands in the middle */
+    private fun room(dx: Float): Float {
+        val info = state.layoutInfo
+        val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+        val seen = info.visibleItemsInfo
+        fun centre(i: androidx.compose.foundation.lazy.LazyListItemInfo) = i.offset + i.size / 2f
+        val end = if (dx > 0) seen.firstOrNull { it.index == 0 }?.let { mid - centre(it) }
+                  else seen.firstOrNull { it.index == info.totalItemsCount - 1 }?.let { centre(it) - mid }
+        return end?.coerceAtLeast(0f) ?: Float.MAX_VALUE
+    }
+
+    override fun applyToScroll(delta: androidx.compose.ui.geometry.Offset,
+                               source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+                               performScroll: (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset): androidx.compose.ui.geometry.Offset {
+        var rest = delta.x
+        var used = 0f
+        // Back toward rest first: a pull is undone before the strip scrolls again
+        if (pull != 0f && rest * pull < 0f) {
+            val take = if (kotlin.math.abs(rest) >= kotlin.math.abs(pull)) -pull else rest
+            pull += take; rest -= take; used += take
+        }
+        if (rest != 0f) {
+            val can = room(rest)
+            val done = performScroll(androidx.compose.ui.geometry.Offset(rest.coerceIn(-can, can), 0f)).x
+            rest -= done; used += done
+        }
+        if (rest != 0f && source == androidx.compose.ui.input.nestedscroll.NestedScrollSource.UserInput) {
+            pull = Wheel.rubber(pull, rest, limit); used += rest
+        }
+        return androidx.compose.ui.geometry.Offset(used, 0f)
+    }
+
+    override suspend fun applyToFling(velocity: androidx.compose.ui.unit.Velocity,
+                                      performFling: suspend (androidx.compose.ui.unit.Velocity) -> androidx.compose.ui.unit.Velocity) {
+        // A pull under a pixel, left by a settle a touch cut short, is none: it made the next fling
+        // spend all its speed on a bounce mid-list (found on video, 26 Oct)
+        if (kotlin.math.abs(pull) < 1f) pull = 0f
+        if (pull != 0f) {
+            // Let go past an end: spring back, with a quarter of the speed if it goes into the end
+            // (all of it threw the strip to the limit), as the fling's bounce; a flick away from the
+            // end springs back and flings at once
+            if (velocity.x * pull > 0f) { settle(velocity.x / 4); return }
+            kotlinx.coroutines.coroutineScope {
+                launch { settle(0f) }
+                performFling(velocity)
+            }
+            return
+        }
+        // performFling answers what was used, not what is left; the wheel's own fling bounces at an
+        // end (kick), since KeepSideways takes what is left so the pager does not page
+        val left = velocity.x - performFling(velocity).x
+        if (kotlin.math.abs(left) > 1f) settle(left)
+    }
+
+    /** A flick into an end: the bounce runs on its own, so the fling ends and picks at once */
+    var scope: kotlinx.coroutines.CoroutineScope? = null
+    private var bounce: kotlinx.coroutines.Job? = null
+    val bouncing get() = bounce?.isActive == true
+    fun kick(v: Float) { bounce?.cancel(); bounce = scope?.launch { settle(v) } }
+
+    suspend fun settle(v: Float) {
+        if (still) { pull = 0f; return }
+        androidx.compose.animation.core.animate(pull, 0f, v,
+            androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)) { value, _ ->
+            pull = value.coerceIn(-limit, limit)
+        }
+    }
+
+    inner class Shift : Modifier.Node(), androidx.compose.ui.node.DrawModifierNode {
+        override fun androidx.compose.ui.graphics.drawscope.ContentDrawScope.draw() {
+            val scope = this
+            translate(left = pull) { scope.drawContent(); ticks(pull, limit) }
+        }
+    }
+    override val node: Shift = Shift()
 }
 
 private fun wheelMiddle(state: androidx.compose.foundation.lazy.LazyListState): Int? {
     val info = state.layoutInfo
     return Wheel.nearest(info.visibleItemsInfo.map { it.index to it.offset + it.size / 2f },
         (info.viewportStartOffset + info.viewportEndOffset) / 2f)
+}
+
+/** Where the middle stands in words, between two while the strip rolls; null when empty */
+private fun wheelPlace(state: androidx.compose.foundation.lazy.LazyListState): Float? {
+    val info = state.layoutInfo
+    val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+    val seen = info.visibleItemsInfo
+    fun centre(i: androidx.compose.foundation.lazy.LazyListItemInfo) = i.offset + i.size / 2f
+    val a = seen.lastOrNull { centre(it) <= mid } ?: return seen.firstOrNull()?.index?.toFloat()
+    val b = seen.firstOrNull { it.index == a.index + 1 } ?: return a.index.toFloat()
+    return a.index + (mid - centre(a)) / (centre(b) - centre(a))
 }
 
 /** How far slot [i]'s centre sits from the middle, negative before it; null when out of view */
@@ -405,7 +633,8 @@ private fun wheelOffset(state: androidx.compose.foundation.lazy.LazyListState, i
  *  finger's own speed, as Compose's snap fling does; no stop and second glide. It lands on a word
  *  in view, so the distance is exact */
 private class WheelFling(val state: androidx.compose.foundation.lazy.LazyListState,
-                         val density: androidx.compose.ui.unit.Density, val minVelocity: Float) :
+                         val density: androidx.compose.ui.unit.Density, val minVelocity: Float, val count: Int,
+                         val bounce: (Float) -> Unit) :
     androidx.compose.foundation.gestures.FlingBehavior {
     override suspend fun androidx.compose.foundation.gestures.ScrollScope.performFling(initialVelocity: Float): Float {
         val info = state.layoutInfo
@@ -416,13 +645,17 @@ private class WheelFling(val state: androidx.compose.foundation.lazy.LazyListSta
         val near = seen.minBy { kotlin.math.abs(centre(it) - mid) }
         val step = if (seen.size > 1) (centre(seen.last()) - centre(seen.first())) / (seen.size - 1) else near.size.toFloat()
         val travel = androidx.compose.animation.splineBasedDecay<Float>(density).calculateTargetValue(0f, initialVelocity)
-        val to = Wheel.landing(near.index, travel - (centre(near) - mid), step, initialVelocity, minVelocity)
-            .coerceIn(seen.first().index, seen.last().index)
+        val want = Wheel.landing(near.index, travel - (centre(near) - mid), step, initialVelocity, minVelocity, count)
+        val to = want.coerceIn(seen.first().index, seen.last().index)
         val delta = centre(seen.first { it.index == to }) - mid
         var done = 0f
-        androidx.compose.animation.core.AnimationState(0f, initialVelocity).animateTo(delta, Wheel.settle) {
+        androidx.compose.animation.core.AnimationState(0f, Wheel.landingSpeed(initialVelocity, delta)).animateTo(delta, Wheel.settle) {
             scrollBy(value - done); done = value
         }
+        // Flung into an end: it bounces with a quarter of the speed (half swung 275 px), the strip moving the other way to the
+        // scroll. Only at a real end: a hard fling mid-list wants past the words in view too
+        val end = (want < 0 && to == 0) || (want > info.totalItemsCount - 1 && to == info.totalItemsCount - 1)
+        if (end) bounce(-initialVelocity / 4)
         return 0f
     }
 }
@@ -811,9 +1044,9 @@ fun Modifier.fadeOutBottom(height: androidx.compose.ui.unit.Dp): Modifier =
         }
 
 /** The end of a list that scrolls under a pinned bar: a short fade into the page, so content
- *  slides away instead of stopping at a hard edge (found 2026-10-18 on Goals). */
+ *  slides away instead of stopping at a hard edge (found 2026-10-18 on Goals). The page itself,
+ *  glows and all: into flat J.bg it was a dark strip across the cyan glow (257) */
 @Composable
 fun androidx.compose.foundation.layout.BoxScope.FadeBottom() {
-    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp)
-        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, J.bg))))
+    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp).pageBackdrop(fade = true))
 }

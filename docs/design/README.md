@@ -55,8 +55,20 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   (`Segmented`) pick a destination and sit in a glass track at 48. A filter or a view inside a
   destination is one level down, like h2 under h1: the wheel (`WheelPicker`) has no track, is
   `small` (36) tall like `SmallPill`, and shows the picked word under the same light in 14.
-  It loops, so a word stands on both sides, and a short flick steps one word. In the chat box
+  It is a fixed row with ends, not a loop (iOS's picker, for what is
+  not cyclic), so a word never stands twice. Past an end the strip pulls stiffer and springs
+  back, a flick into an end bounces, and quiet ticks stand past each end so no side looks empty.
+  A short flick steps one word. A count that only repeats another (Board's) is left off. The light is elastic: between two
+  words its edge on the way runs ahead and the other catches up, a few percent thinner while
+  stretched (squash and stretch), and a landing pick swells it for a moment with a springy settle;
+  a plain slide when the phone asks for less motion. The middle word draws a tenth bigger,
+  as a drum's middle row, and its neighbours keep 14 sp. Past an end the light stretches toward
+  the pull, never over the ticks, and the ticks spread like a stretched spring. In the chat box
   it shows one word as tall as the send button, and a swipe up or down steps it.
+- **Wheels sit under the thumb** (257, after iOS Photos): a list's filter wheel floats at the
+  bottom, right over the tab bar, on the dark end of a fade as soft as the bar's own. The list's
+  end clears it by its measured height and TalkBack still reads the filter first. A floating band
+  pads by `barClear()`, and the design check holds every one to that.
 - **Space counts what you see.** A touch area never adds visible space: Compose widens a small
   control to 48 by itself, so a 36 control takes 36 in the layout and the role gaps sit around
   its visible edge.
@@ -104,7 +116,11 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
 ## Look
 
 - Surfaces are frosted glass, white at 4 percent with a 14 blur and a hairline border, over a
-  soft magenta and cyan glow. Reduce transparency in Accessibility turns them solid.
+  soft magenta and cyan glow. The page is the accent's glow at the top right and the info cyan's from
+  the left edge lower down (`PageGlow`, read from tokens.css by a test). A band that hides what
+  scrolls under it draws the page where it sits (`pageBackdrop`), never a flat block, and a
+  fade eases in (smoothstep), so no row edge floats alone in it. A list fades at its top too
+  once it has moved. Reduce transparency in Accessibility turns them solid.
 - At most one glowing button per screen, for the action that matters there.
 - Motion uses the HyDE standard curve, cubic-bezier(0.05, 0.9, 0.1, 1.05), about 0.7 s.
   All of it stops when the phone asks for less motion.

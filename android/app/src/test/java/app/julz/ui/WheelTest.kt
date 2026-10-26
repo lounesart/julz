@@ -27,6 +27,21 @@ class WheelTest {
     @Test fun nearestWorksLeftOfTheMiddle() { assertEquals(1, Wheel.nearest(listOf(1 to 160f, 2 to 260f), 180f)) }
     @Test fun nearestOfNothingIsNull() { assertNull(Wheel.nearest(emptyList(), 180f)) }
 
+    // A fixed row with ends (my note 26 Oct), no copies: past an end the strip follows the finger
+    // less and less and never further than the limit, either way
+    @Test fun aPullPastAnEndGetsHarder() {
+        var pull = 0f
+        val steps = (1..60).map { val before = pull; pull = Wheel.rubber(pull, 10f, 200f); pull - before }
+        assertTrue("first step ${steps.first()}", steps.first() in 4f..7f)
+        assertTrue("later steps shrink", steps.zipWithNext().all { (a, b) -> b <= a })
+        assertTrue("stays inside the limit: $pull", pull < 200f)
+        assertEquals(-Wheel.rubber(0f, 10f, 200f), Wheel.rubber(0f, -10f, 200f), 0f)
+    }
+    @Test fun onlyTheChatWheelLoops() {
+        assertEquals(8, Wheel.slots(8, vertical = false))
+        assertTrue(Wheel.slots(3, vertical = true) > 3)
+    }
+
     @Test fun talkBackHearsThePlaceInTheRow() { assertEquals("Todos, 3 of 8", Wheel.say("Todos", 2, 8)) }
 
     // Messages: All, then only the kinds that have notices, in the usual order
@@ -62,7 +77,7 @@ class WheelTest {
     @Test fun closestCopyBehindAcrossTheSeam() { assertEquals(999, Wheel.closest(1000, 4, 5)) }
     @Test fun closestCopyIsItselfWhenThere() { assertEquals(1003, Wheel.closest(1003, 3, 5)) }
     @Test fun realIndexOfACopy() { assertEquals(4, Wheel.real(999, 5)) }
-    @Test fun oneWordDoesNotLoop() { assertEquals(1, Wheel.slots(1)); assertEquals(3 * Wheel.LOOP, Wheel.slots(3)) }
+    @Test fun oneWordDoesNotLoop() { assertEquals(1, Wheel.slots(1, vertical = true)); assertEquals(3 * Wheel.LOOP, Wheel.slots(3, vertical = true)) }
 
     // The chat wheel: one swipe, one step, round the loop; a short one stays (no precise swipe needed)
     @Test fun swipeUpStepsToTheNext() { assertEquals(1, Wheel.step(0, 3, -60f, 40f)) }
@@ -73,17 +88,94 @@ class WheelTest {
     @Test fun longSwipeIsStillOneStep() { assertEquals(2, Wheel.step(1, 3, -900f, 40f)) }
 
 
-    // The light rides on a word, then slides across while the middle passes, then rides the next:
-    // a pure function of the scroll, so it never jumps (my note 26 Oct: the animation is jumpy)
-    @Test fun aimRidesTheFirstWord() { assertEquals(0f, Wheel.aim(0.2f), 0f) }
-    @Test fun aimRidesTheNextWord() { assertEquals(1f, Wheel.aim(0.8f), 0f) }
-    @Test fun aimIsHalfwayInTheMiddle() { assertEquals(0.5f, Wheel.aim(0.5f), 1e-6f) }
-    @Test fun aimNeverGoesBack() {
-        var last = -1f
-        for (k in 0..100) { val v = Wheel.aim(k / 100f); assertTrue(v >= last); last = v }
+    // The light rides on a word, stretches across while the middle passes, then rides the next: a
+    // pure function of the scroll, so it never jumps (my note 26 Oct: jumpy). Elastic (my note 26
+    // Oct: the frame looked stale): the edge on the way runs ahead, the other catches up
+    @Test fun edgesRideTheWords() {
+        assertEquals(0f to 0f, Wheel.edges(0.15f))
+        assertEquals(1f to 1f, Wheel.edges(0.85f))
     }
-    @Test fun aimHasNoStep() {
-        for (k in 0 until 100) assertTrue(kotlin.math.abs(Wheel.aim((k + 1) / 100f) - Wheel.aim(k / 100f)) < 0.05f)
+    @Test fun theLeadingEdgeRunsAhead() {
+        for (k in 0..100) { val (trail, lead) = Wheel.edges(k / 100f); assertTrue(lead >= trail) }
+        val (trail, lead) = Wheel.edges(0.5f)
+        assertTrue("stretched across the gap: ${lead - trail}", lead - trail in 0.3f..0.6f)
+    }
+    @Test fun goingBackIsTheMirror() {
+        for (k in 0..100) {
+            val t = k / 100f
+            val (trail, lead) = Wheel.edges(t); val (trailBack, leadBack) = Wheel.edges(1 - t)
+            assertEquals(1 - lead, trailBack, 1e-5f); assertEquals(1 - trail, leadBack, 1e-5f)
+        }
+    }
+    @Test fun edgesNeverGoBackNorStep() {
+        var last = Wheel.edges(0f)
+        for (k in 1..100) {
+            val e = Wheel.edges(k / 100f)
+            assertTrue(e.first >= last.first && e.second >= last.second)
+            assertTrue(e.first - last.first < 0.06f && e.second - last.second < 0.06f)
+            last = e
+        }
+    }
+    // Squash with the stretch, so it keeps its volume; at rest it is its full height
+    @Test fun aStretchedFrameIsAFewPercentThinner() {
+        assertEquals(1f, Wheel.squash(0f to 0f), 0f)
+        val (trail, lead) = Wheel.edges(0.5f)
+        assertTrue(Wheel.squash(trail to lead) in 0.9f..0.97f)
+    }
+
+    // A fast flick crossed a word every frame and the per-word stretch strobed (found on video, my
+    // note 26 Oct): the elastic edges are for slow moves, gone at speed, where the light streaks
+    // along the motion instead, more the faster it goes, and never past a limit
+    @Test fun theElasticCalmsWithSpeed() {
+        assertEquals(1f, Wheel.calm(0f), 0f); assertEquals(1f, Wheel.calm(-1.5f), 0f)
+        assertEquals(0f, Wheel.calm(8f), 0f); assertEquals(Wheel.calm(4f), Wheel.calm(-4f), 0f)
+        var last = 1f
+        for (k in 0..40) { val c = Wheel.calm(k / 4f); assertTrue(c <= last); last = c }
+    }
+    @Test fun theLightStreaksWithSpeed() {
+        assertEquals(0f, Wheel.streak(0f), 0f)
+        assertTrue(Wheel.streak(3f) > 0f)
+        assertEquals(Wheel.streak(5f), Wheel.streak(-5f), 0f)
+        var last = 0f
+        for (k in 0..40) { val v = Wheel.streak(k / 2f); assertTrue(v >= last && v <= 0.5f); last = v }
+    }
+
+    // The middle word a little bigger, as a drum's middle row (my idea 26 Oct): neighbours keep
+    // their 14 sp, so nothing goes under the design's smallest text
+    @Test fun theMiddleWordIsALittleBigger() {
+        assertEquals(Wheel.MAG, Wheel.magnify(0f), 0f)
+        assertTrue(Wheel.MAG in 1.05f..1.15f)
+        assertEquals(1f, Wheel.magnify(1f), 0f); assertEquals(1f, Wheel.magnify(-2.5f), 0f)
+        var last = Wheel.magnify(0f)
+        for (k in 1..20) { val m = Wheel.magnify(k / 20f); assertTrue(m <= last); last = m }
+        assertEquals(Wheel.magnify(0.3f), Wheel.magnify(-0.3f), 0f)
+    }
+    // At an end the ticks spread as the pull grows, as a stretched spring, and close again
+    @Test fun ticksSpreadWithThePull() {
+        assertEquals(1f, Wheel.spread(0f, 200f), 0f)
+        assertTrue(Wheel.spread(-100f, 200f) > 1.3f)
+        assertEquals(Wheel.spread(100f, 200f), Wheel.spread(-100f, 200f), 0f)
+        assertTrue(Wheel.spread(200f, 200f) <= 2.6f)
+    }
+    @Test fun anyStretchThinsTheFrameAFewPercentAtMost() {
+        assertEquals(1f, Wheel.squash(0f), 0f)
+        assertTrue(Wheel.squash(5f) >= 0.85f)
+    }
+
+    // A landing never passes its word (found on video, 26 Oct: the strip swung up to 250 px past and
+    // back): the spring starts no faster than it can stop in the distance left; flung into an end,
+    // only the bounce swings
+    @Test fun aLandingNeverPassesItsWord() {
+        for (v in listOf(500f, 3000f, 9000f)) for (d in listOf(40f, 150f, 400f)) {
+            val anim = androidx.compose.animation.core.TargetBasedAnimation(Wheel.settle, Float.VectorConverter,
+                0f, d, Wheel.landingSpeed(v, d))
+            val end = anim.durationNanos
+            var t = 0L; var most = 0f
+            while (t <= end) { most = maxOf(most, anim.getValueFromNanos(t)); t += 4_000_000 }
+            assertTrue("v $v d $d went to $most", most <= d + 1.5f)
+        }
+        assertEquals(-3000f, Wheel.landingSpeed(-3000f, 100f), 0f)
+        assertEquals(500f, Wheel.landingSpeed(500f, 100f), 0f)
     }
 
     // One fling, one motion: where it lands, from the free decay's travel in word widths
@@ -91,4 +183,10 @@ class WheelTest {
     @Test fun aShortFlickStillStepsOne() { assertEquals(11, Wheel.landing(10, 20f, 100f, 400f, 200f)) }
     @Test fun aShortFlickBackStepsBack() { assertEquals(9, Wheel.landing(10, -20f, 100f, -400f, 200f)) }
     @Test fun aLetGoWithoutSpeedStays() { assertEquals(10, Wheel.landing(10, 5f, 100f, 50f, 200f)) }
+    // Two words: a hard fling went round to the same word and looked like nothing (my test 26 Oct)
+    @Test fun aFlingNeverComesBackRound() {
+        assertEquals(11, Wheel.landing(10, 290f, 100f, 3000f, 200f, count = 2))
+        assertEquals(9, Wheel.landing(10, -290f, 100f, -3000f, 200f, count = 2))
+        assertEquals(13, Wheel.landing(10, 290f, 100f, 3000f, 200f, count = 8))
+    }
 }
