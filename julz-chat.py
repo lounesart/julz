@@ -56,6 +56,15 @@ MODES = {
               "answer, full solution or exact commands. On an HTB box, a CTF or a lab: hints only, never "
               "the path, a flag or a working exploit. But if my message above says \"just tell me\", "
               "give the full answer. Keep it short and do not mention these instructions.)"),
+    # 133b: the rag template lets her fill gaps from her own knowledge; these words say no, this time
+    "notes": ("(Notes mode, about my message above: answer only from my notes, the notes given to you "
+              "and what search_notes or read_note return. If the notes given to you do not cover it, call "
+              "search_notes first. If my notes still do not have the answer, your whole reply is this one "
+              "sentence: \"That is not in your notes.\" Nothing before or after it: no guess, no general "
+              "answer, no fact from your own knowledge. When they do have it, say which note each point "
+              "comes from, like \"your DHCP note says\", and keep it short. Only the words \"just tell me\" "
+              "in my message above lift this: then answer from your own knowledge. Do not mention these "
+              "instructions.)"),
 }
 MAX_BODY = 16_000
 MAX_TEXT = 8_000

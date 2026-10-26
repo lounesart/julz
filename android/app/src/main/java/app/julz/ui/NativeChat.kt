@@ -174,9 +174,10 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     var problem by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
     var sentAt by remember { mutableStateOf(0L) }
-    // Learning mode (135): its name goes with each message; an opened chat brings its own back
-    var learn by remember { mutableStateOf(false) }
-    val learnNow by androidx.compose.runtime.rememberUpdatedState(learn)
+    // A mode (135 learn, 133b notes) or "": its name goes with each message; an opened chat
+    // brings its own back
+    var chatMode by remember { mutableStateOf("") }
+    val modeNow by androidx.compose.runtime.rememberUpdatedState(chatMode)
 
     suspend fun call(path: String, body: String? = null, delete: Boolean = false) =
         withContext(Dispatchers.IO) { ChatApi.call(origin, path, token, body, delete) }
@@ -225,7 +226,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         }
     }
     // Only when another chat opens: a poll must not undo the tap I made before sending
-    LaunchedEffect(view?.id) { view?.let { learn = it.mode == "learn" } }
+    LaunchedEffect(view?.id) { view?.let { chatMode = it.mode } }
     LaunchedEffect(undo) { if (undo != null) { delay(5_000); undo = null } }
     LaunchedEffect(note) { if (note != null) { delay(5_000); note = null } }
 
@@ -268,9 +269,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
             }
             return
         }
-        val mode = if (learnNow) "learn" else ""
-        if (editing != null && id != null) start(ChatApi.edit(id), ChatApi.body(draft, mode))
-        else start(ChatApi.send(id), ChatApi.body(draft, mode))
+        if (editing != null && id != null) start(ChatApi.edit(id), ChatApi.body(draft, modeNow))
+        else start(ChatApi.send(id), ChatApi.body(draft, modeNow))
     }
 
     fun stop() {
@@ -466,7 +466,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         }
         // While I edit, the button sends the edit; Cancel brings Stop back (203)
         Composer(draft, setDraft, busy = view?.busy == true && editing == null, sending = sending, focus = editing?.id, roomy = ChatPrefs.roomy,
-            learn = learn, setLearn = { learn = it }, send = ::send, stop = ::stop)
+            mode = chatMode, setMode = { chatMode = it }, send = ::send, stop = ::stop)
     }
 
     // One sheet at a time: what a message offers, the text I sign, or my chats
@@ -738,7 +738,7 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, retry: ()
  *  button alone at the bottom with uneven margins.) */
 @Composable
 internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, sending: Boolean, focus: String?,
-                      roomy: Boolean, learn: Boolean, setLearn: (Boolean) -> Unit, send: () -> Unit, stop: () -> Unit) {
+                      roomy: Boolean, mode: String, setMode: (String) -> Unit, send: () -> Unit, stop: () -> Unit) {
     val can = ChatLogic.canSend(draft, busy, sending)
     val sendNow by androidx.compose.runtime.rememberUpdatedState(send)
     val stopNow by androidx.compose.runtime.rememberUpdatedState(stop)
@@ -760,7 +760,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             cursorBrush = SolidColor(J.acc), onTextLayout = { lines = it.lineCount },
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
-                    if (draft.isEmpty()) Text(if (learn) "Ask, and Julz will teach" else "Message Julz",
+                    if (draft.isEmpty()) Text(when (mode) { "learn" -> "Ask, and Julz will teach"; "notes" -> "Ask your notes"; else -> "Message Julz" },
                         style = J.bodyText.copy(color = J.faint), maxLines = 1)
                     inner()
                 }
@@ -778,12 +778,12 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     if (roomy) Column(box.padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset)) {
         field(Modifier.fillMaxWidth().padding(end = J.sp3, bottom = J.sp2))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            LearnChip(learn, setLearn, Modifier.offset(x = -J.sp2))
+            ModeChips(mode, setMode, Modifier.offset(x = -J.sp2))
             Box(Modifier.weight(1f))
             sendButton(Modifier)
         }
     } else Column {
-        LearnChip(learn, setLearn, Modifier.padding(start = J.gutter + J.sp2, top = J.sp1))
+        ModeChips(mode, setMode, Modifier.padding(start = J.gutter + J.sp2, top = J.sp1))
         Row(box.heightIn(min = button + inset * 2).padding(start = J.sp4, end = inset),
             verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
             // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
@@ -793,13 +793,22 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     }
 }
 
-/** Learning mode (135): a switch, so TalkBack reads its name and state. Compact as the tag chips;
+/** The modes, at most one on: learning (135) and notes only (133b). */
+@Composable
+private fun ModeChips(mode: String, set: (String) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+        ModeChip("Learn", mode == "learn") { set(if (it) "learn" else "") }
+        ModeChip("Notes", mode == "notes") { set(if (it) "notes" else "") }
+    }
+}
+
+/** One mode: a switch, so TalkBack reads its name and state. Compact as the tag chips;
  *  Compose widens its touch area without moving the layout. */
 @Composable
-private fun LearnChip(on: Boolean, set: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.toggleable(on, role = Role.Switch, onValueChange = set).heightIn(min = 32.dp).clip(J.pill)
+private fun ModeChip(name: String, on: Boolean, set: (Boolean) -> Unit) {
+    Row(Modifier.toggleable(on, role = Role.Switch, onValueChange = set).heightIn(min = 32.dp).clip(J.pill)
         .background(if (on) J.acc else J.raise).border(1.dp, if (on) J.acc else J.line, J.pill)
         .padding(horizontal = J.sp3), verticalAlignment = Alignment.CenterVertically) {
-        Text("Learn", style = J.cap.copy(color = if (on) J.onAcc else J.text, fontWeight = FontWeight(600)), maxLines = 1)
+        Text(name, style = J.cap.copy(color = if (on) J.onAcc else J.text, fontWeight = FontWeight(600)), maxLines = 1)
     }
 }

@@ -13,6 +13,13 @@ promote = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(promote)
 vault = promote.vault
 
+
+def load_chat():
+    spec = importlib.util.spec_from_file_location("julz_chat", ROOT / "julz-chat.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
 QUESTION = "Show me how to list my firewall rules with nft"
 ANSWER = "sudo iptables -L -n -v"
 
@@ -75,6 +82,15 @@ class PromoteTest(unittest.TestCase):
         self.assertEqual(self.items()[0]["mode"], "learn")
         with self.assertRaises(promote.Refused):
             promote.promote(self.cases, self.answers, self.name, ["x"], [], "solve")
+
+    def test_every_chat_mode_can_be_kept_and_replayed(self):
+        # 133b: a mode julz-chat knows but the case path drops would lose its bad answers quietly
+        chat = load_chat()
+        self.assertEqual(promote.MODES, ("none", *chat.MODES))
+        self.assertEqual(vault.CASE_MODES, ("none", *chat.MODES, "unknown"))
+        name = self.case("q two", "a", "notes", datetime(2026, 10, 26, 12, 0, 0))
+        promote.promote(self.cases, self.answers, name, ["not in your notes"], [], None)
+        self.assertEqual(self.items()[-1]["mode"], "notes")
 
     def test_a_case_that_does_not_parse_is_refused(self):
         path = self.cases / f"{self.name}.md"

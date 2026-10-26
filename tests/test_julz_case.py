@@ -18,7 +18,7 @@ class CaseTextTest(unittest.TestCase):
         self.assertEqual(vault_mod.case_text(QUESTION, ANSWER, "none"), TEXT)
 
     def test_mode_only_from_the_fixed_set(self):
-        for mode in ("none", "learn", "unknown"):
+        for mode in ("none", "learn", "notes", "unknown"):
             self.assertIn(f"\nmode: {mode}\n", vault_mod.case_text("q", "a", mode))
         for bad in ("", "Learn", "learn\n", "solve", None, 1):
             with self.subTest(mode=bad):

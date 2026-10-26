@@ -876,7 +876,7 @@ def save_request(signed: str, now) -> dict:
 # ---------- a bad answer kept as an eval case (threat 153) ----------
 
 CASE_HEAD = "case: bad answer"
-CASE_MODES = ("none", "learn", "unknown")
+CASE_MODES = ("none", "learn", "notes", "unknown")
 CASE_FOLDER = ("feedback", "eval")
 MAX_CASE_Q = 1200
 MAX_CASE_A = 2400

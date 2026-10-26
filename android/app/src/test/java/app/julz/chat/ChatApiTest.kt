@@ -132,6 +132,14 @@ class ChatApiTest {
         assertNull(ChatApi.body("", "learn"))
     }
 
+    // 133b: notes mode goes the same way, and a kept case can carry it
+    @Test fun notesModeIsInEverySet() {
+        assertEquals("notes", org.json.JSONObject(ChatApi.body("what is CPTS", "notes")!!).getString("mode"))
+        assertEquals("notes", ChatApi.parseView("""{"id": "$c1", "title": "", "busy": false, "mode": "notes", "messages": []}""")!!.mode)
+        assertEquals("notes", KeepCase.body("q", "a", "notes")!!.getString("mode"))
+        assertEquals(KeepCase.MODES, setOf("none", "unknown") + ChatApi.MODES)
+    }
+
     @Test fun aViewKeepsAKnownModeOnly() {
         fun mode(v: String) = ChatApi.parseView("""{"id": "$c1", "title": "", "busy": false, "mode": $v, "messages": []}""")!!.mode
         assertEquals("learn", mode("\"learn\""))
