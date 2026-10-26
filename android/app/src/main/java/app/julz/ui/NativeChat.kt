@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -822,6 +824,14 @@ internal fun NotesFound(paths: List<String>, open: (String) -> Unit) {
  *  pick of three, where two switches read as if both could be on */
 @Composable
 private fun ModeWheel(mode: String, set: (String) -> Unit, modifier: Modifier = Modifier) {
-    WheelPicker(Wheel.MODES.map { it.second }, Wheel.MODES.indexOfFirst { it.first == mode }.coerceAtLeast(0),
-        modifier.width(76.dp).height(J.iconButton), vertical = true) { set(Wheel.MODES[it].first) }
+    // The send button's form on the other side: as tall, the same inset, as wide as the widest word
+    // (laid out unseen, so the light never jumps with the word)
+    Box(modifier.height(J.iconButton)) {
+        Column(Modifier.clearAndSetSemantics { }.alpha(0f)) {
+            for ((_, word) in Wheel.MODES) Text(word, style = J.cap.copy(fontWeight = J.ts.fontWeight), maxLines = 1,
+                modifier = Modifier.padding(horizontal = J.sp3).height(0.dp))
+        }
+        WheelPicker(Wheel.MODES.map { it.second }, Wheel.MODES.indexOfFirst { it.first == mode }.coerceAtLeast(0),
+            Modifier.matchParentSize(), vertical = true) { set(Wheel.MODES[it].first) }
+    }
 }

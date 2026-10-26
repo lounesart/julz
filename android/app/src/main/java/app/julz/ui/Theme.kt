@@ -118,6 +118,9 @@ object J {
     var barSpace by androidx.compose.runtime.mutableStateOf(112.dp)
     val end: Dp get() = if (rail) sp6 else barSpace + sp4
     val tap: Dp = 48.dp; val tapL: Dp = 56.dp; val row: Dp = 64.dp
+    /** A secondary control's visible height (SmallPill, the wheel): one level under the tabs'
+     *  [tap], as h2 under h1. Compose widens its touch area to 48 without a layout gap */
+    val small: Dp = 36.dp
     /** An icon button's visible size, inside a [tap] target (Material 3: 40 in 48) */
     val iconButton: Dp = 40.dp
     // Corners by role (22b): round, or cut like a spec sheet with Look and feel's Industrial

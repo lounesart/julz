@@ -54,8 +54,9 @@ object Wheel {
     const val BOARD = "/board"
     const val ALL = "/all"
 
-    /** Todos: the board, all lists, then each list on its own; All lists is the default */
-    fun todoViews(lists: List<String>) = listOf(BOARD, ALL) + lists
+    /** Todos: the board, all lists, then each list on its own; All lists is the default. One list
+     *  gets no view of its own: it would show the same card as All lists */
+    fun todoViews(lists: List<String>) = listOf(BOARD, ALL) + if (lists.size > 1) lists else emptyList()
 
     /** Where [view] sits; a list that is gone falls back to All lists */
     fun todoIndex(view: String, lists: List<String>) = todoViews(lists).indexOf(view).takeIf { it >= 0 } ?: 1

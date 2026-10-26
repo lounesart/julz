@@ -19,7 +19,8 @@ Text is in sp and space in dp, so the phone's font size scales everything.
   is `J.item`, 17 at weight 600 everywhere; `itemUnread` (700) only means unread. Tasks and
   goals are content, body text, as lines in a note.
 - Space goes in steps of 4, named by role in the Layout system below.
-- Every tap target is at least 48. Main buttons are 56, list rows and tabs 64.
+- Every tap target is at least 48. Main buttons are 56, list rows and tabs 64, small controls
+  (`SmallPill`, the wheel) look 36.
 - Corners are 12 for small things, 20 for rows and 28 for cards.
 
 ## Layout system
@@ -50,6 +51,17 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
 - **Primary and secondary actions**: one big action per item (Tick, Approve), the rest small
   pills that look 36 tall and keep a 48 touch area (`SmallPill`), grouped by purpose under a
   small caption.
+- **Two levels of picking**, as Material 3 splits primary and secondary tabs. The tabs
+  (`Segmented`) pick a destination and sit in a glass track at 48. A filter or a view inside a
+  destination is one level down, like h2 under h1: the wheel (`WheelPicker`) has no track, is
+  `small` (36) tall like `SmallPill`, and shows the picked word under the same light in 14.
+  It loops, so a word stands on both sides, and a short flick steps one word. In the chat box
+  it shows one word as tall as the send button, and a swipe up or down steps it.
+- **Space counts what you see.** A touch area never adds visible space: Compose widens a small
+  control to 48 by itself, so a 36 control takes 36 in the layout and the role gaps sit around
+  its visible edge.
+- **No size by eye.** A new size is a named token in `Theme.kt` with a line here. The design
+  check counts sizes typed by hand per file; the old ones are a baseline that only shrinks.
 - **At big text, stack instead of squeeze**: a side column (History's time, Tools' icon)
   moves above or steps aside so the main text keeps the width; a status pill goes under the
   name.
@@ -74,7 +86,7 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   colour), `Tag` the only status word, `kindCard` the only notice card (History and Details),
   `SpecLine` the only label and value. Lists of notices share one time column (`J.time`).
 - **The design check** (`tests/test_design_lint.py`) fails the build when a screen types a
-  colour, corner (also `CornerRadius` in draw code), font size or icon circle by hand; the
+  colour, corner (also `CornerRadius` in draw code), font size, icon circle or a new size by hand; the
   few component internals it allows are named there with their reason.
 - **Corners by role**: `rS` small, `rM` rows, `rL` cards, `pill` buttons, tabs and chips,
   `sheetTop` for sheets (`ShapeSet`). Round by default; Look and feel's Industrial cuts them,

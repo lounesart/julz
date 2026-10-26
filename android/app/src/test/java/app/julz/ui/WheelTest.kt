@@ -31,7 +31,10 @@ class WheelTest {
     }
     @Test fun todoViewFindsAList() { assertEquals(3, Wheel.todoIndex("home", listOf("study", "home"))) }
     @Test fun todoViewOfAGoneListFallsBackToAll() { assertEquals(1, Wheel.todoIndex("old", listOf("study"))) }
-    @Test fun aListNamedBoardIsStillAList() { assertEquals(2, Wheel.todoIndex("board", listOf("board"))) }
+    @Test fun aListNamedBoardIsStillAList() { assertEquals(2, Wheel.todoIndex("board", listOf("board", "home"))) }
+    // One list: its own view would show the same card as All lists, so rolling looked dead (my note 26 Oct)
+    @Test fun oneListOffersNoViewOfItsOwn() { assertEquals(listOf(Wheel.BOARD, Wheel.ALL), Wheel.todoViews(listOf("study"))) }
+    @Test fun oneListPickFallsBackToAll() { assertEquals(1, Wheel.todoIndex("study", listOf("study"))) }
 
     // Chat modes: Chat first; every other key is one julz-chat accepts (CASE_MODES, threat 151)
     @Test fun chatModeIsFirstAndEmpty() { assertEquals("" to "Chat", Wheel.MODES.first()) }
