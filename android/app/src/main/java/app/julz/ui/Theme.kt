@@ -109,6 +109,8 @@ object J {
     val gap: Dp get() = if (big) sp2 else sp3
     /** Between rows of a list (Messages, Tools) */
     val rowGap: Dp get() = if (big) sp1 else sp2
+    /** Between rows inside a card: the title and what is under it (Todos, Goals, Done keep one rhythm) */
+    val stack: Dp get() = if (big) sp2 else sp3
     /** Between groups of cards */
     val section: Dp get() = if (big) sp6 else sp8
     /** Room at a screen's end: clear of the bottom bar, or a little with the rail */

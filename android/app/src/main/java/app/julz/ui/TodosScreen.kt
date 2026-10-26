@@ -153,7 +153,7 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
                 @Composable fun task(list: String, t: String, inProgress: Boolean, showList: Boolean) =
                     TaskRow(list, t, inProgress, showList, live, waiting, busy, ::toggle)
                 if (!board) for (l in if (at == 1) lists else listOf(lists[at - 2])) Column(Modifier.fillMaxWidth().glass().padding(J.inset),
-                    verticalArrangement = Arrangement.spacedBy(J.sp2)) {
+                    verticalArrangement = Arrangement.spacedBy(J.stack)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(TodoSnapshot.listLabel(l.name), style = J.ts, modifier = Modifier.weight(1f))
                         Text("${l.done}/${l.total}", style = J.monoCap)
@@ -177,7 +177,7 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
                     // Academy's module list show them: in progress, planned, done
                     for ((title, tasks) in listOf("In progress" to lists.flatMap { l -> l.doing.map { l.name to it } },
                                                   "Planned" to lists.flatMap { l -> l.open.map { l.name to it } })) {
-                        Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
+                        Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.stack)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(title, style = J.ts, modifier = Modifier.weight(1f))
                                 Text("${tasks.size}", style = J.monoCap)
@@ -188,7 +188,7 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
                         }
                     }
                     val done = lists.flatMap { l -> l.doneItems.map { l.name to it } }
-                    if (done.isNotEmpty()) Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp2)) {
+                    if (done.isNotEmpty()) Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.stack)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Done", style = J.ts, modifier = Modifier.weight(1f))
                             Text("${lists.sumOf { it.done }}", style = J.monoCap)
@@ -299,7 +299,7 @@ private fun DoneTab(week: List<DoneDay>?, problem: String?) {
         week == null -> Text("Asking the laptop", style = J.sec)
         week.isEmpty() -> Text("Nothing ticked in the last 7 days.", style = J.bodyText)
         else -> for (d in week) Column(Modifier.fillMaxWidth().glass().padding(J.inset),
-            verticalArrangement = Arrangement.spacedBy(J.sp2)) {
+            verticalArrangement = Arrangement.spacedBy(J.stack)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(DoneWeek.label(d.date, today), style = J.ts, modifier = Modifier.weight(1f))
                 Text("${d.items.size}", style = J.monoCap)
