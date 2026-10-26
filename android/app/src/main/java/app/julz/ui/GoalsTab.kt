@@ -130,7 +130,7 @@ fun GoalsTab(origins: Origins, ui: GoalsUi, todos: List<app.julz.feed.TodoList>)
         val today = java.time.LocalDate.now()
         // Milestones first: open goals with a date from any period, soonest first (126)
         if (ui.problem == null && s != null && s.milestones.isNotEmpty())
-            Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+            Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.stack)) {
                 Text("Milestones", style = J.ts)
                 for (m in s.milestones) Column(verticalArrangement = Arrangement.spacedBy(J.sp1)) {
                     Text(GoalsData.shownText(m.text), style = J.bodyText)  // plain text (126)
@@ -219,7 +219,7 @@ private fun PeriodBody(p: app.julz.feed.GoalPeriod, ui: GoalsUi, todos: List<app
 internal fun PastGoalsCard(past: List<app.julz.feed.GoalPeriod>, openPage: (GoalItem) -> Unit = {}) {
     val open = past.filter { it.goals.isNotEmpty() }
     if (open.isEmpty()) return
-    Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.sp3)) {
+    Column(Modifier.fillMaxWidth().glass().padding(J.inset), verticalArrangement = Arrangement.spacedBy(J.stack)) {
         Text("Still open from before", style = J.ts)
         for (p in open) {
             Row(verticalAlignment = Alignment.CenterVertically) {
