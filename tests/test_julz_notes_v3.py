@@ -2,6 +2,7 @@
 (SECURITY.md 71 to 76). The tool changes nothing outside Inbox itself: it asks me, then drops
 a request for julz-vault that carries the hash of what I saw."""
 import hashlib
+import importlib.util
 import json
 import os
 import tempfile
@@ -241,6 +242,46 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
             await self.assert_todo_refused(
                 "complete climbing sesh", self.offered("complete climbing sesh", last),
                 "complete climbing sesh")
+
+    # What julz_language and julz_tasks append to my last message before tools run
+    LANG = "\n\n(Reply in English.)"
+    TASKS = ('\n\n(Tasks filter: open tasks that may match: "buy milk (2 l)" in daily/shop.md. '
+             "If the user says they did one, call tick_task with its words. Otherwise ignore "
+             "this line.)")
+
+    def test_filter_lines_cut_as_the_filters_write_them(self):
+        # The real filters, so a change of their wording fails here and not on the phone
+        def load(name):
+            spec = importlib.util.spec_from_file_location(
+                name, Path(__file__).resolve().parents[1] / "functions" / f"{name}.py")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+        with tempfile.TemporaryDirectory() as vault:
+            (Path(vault) / "daily").mkdir()
+            (Path(vault) / "daily" / "shop.md").write_text("- [ ] buy milk (2 l)\n")
+            line = load("julz_tasks").hint("yes, I bought the milk", Path(vault))
+        self.assertIn("buy milk", line)
+        body = {"messages": [{"role": "user", "content": "yes, I bought the milk" + line}]}
+        load("julz_language").Filter().inlet(body)
+        self.assertEqual(self.tools._my_last_message(body["messages"]), "yes, I bought the milk")
+
+    async def test_todo_bare_yes_with_filter_lines(self):
+        # Goals 11 on the phone, 26 Oct: the language line made "yes, save it" not bare
+        for lines in (self.LANG, self.TASKS + self.LANG, self.LANG + self.TASKS):
+            out = await self.tools.create_note(
+                f"g{len(lines)}", "complete climbing sesh", kind="todo", __event_call__=yes,
+                __messages__=self.offered("complete climbing sesh", "yes, save it" + lines))
+            self.assertTrue(out.startswith("Saved"), (lines, out))
+
+    async def test_todo_task_only_in_the_filter_line_refused(self):
+        # A note's task is not my word, even though the filter put it in my message
+        await self.assert_todo_refused("buy milk", said("todo: bread" + self.TASKS + self.LANG),
+                                       "buy milk")
+
+    async def test_save_word_only_in_the_filter_line_refused(self):
+        tasks = self.TASKS.replace("buy milk (2 l)", "save this")
+        await self.assert_inbox_refused(said("and port 68?" + tasks + self.LANG))
 
     async def test_todo_bare_yes_with_no_message_before_refused(self):
         await self.assert_todo_refused("go climbing", said("yes, save it"), "go climbing")
