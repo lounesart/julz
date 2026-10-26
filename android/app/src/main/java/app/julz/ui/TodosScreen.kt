@@ -217,7 +217,8 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
         Box(Modifier.fillMaxWidth().pageBackdrop()) {
             // Each view with what is left in it, so the wheel says where the work is
             WheelPicker(views.map { when (it) { Wheel.BOARD -> "Board"; Wheel.ALL -> "All lists"; else -> TodoSnapshot.listLabel(it) } }, at,
-                counts = views.map { left(it.takeIf { v -> v != Wheel.BOARD && v != Wheel.ALL }) }) { view = views[it] }
+                // The board holds what All lists does: its count only said the same number twice (my note 26 Oct)
+                counts = views.map { if (it == Wheel.BOARD) null else left(it.takeIf { v -> v != Wheel.ALL }) }) { view = views[it] }
         }
     } else FadeBottom()
     }

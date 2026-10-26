@@ -27,24 +27,19 @@ class WheelTest {
     @Test fun nearestWorksLeftOfTheMiddle() { assertEquals(1, Wheel.nearest(listOf(1 to 160f, 2 to 260f), 180f)) }
     @Test fun nearestOfNothingIsNull() { assertNull(Wheel.nearest(emptyList(), 180f)) }
 
-    // No word twice in view (my note 26 Oct): one lap round the middle holds each word once, the
-    // other slots show ticks. Two words: the next stands on the right, ticks on the left
-    @Test fun twoWordsShowEachOnce() {
-        assertEquals(0f, Wheel.shown(-1f, 2), 0f)
-        assertEquals(1f, Wheel.shown(0f, 2), 0f)
-        assertEquals(1f, Wheel.shown(1f, 2), 0f)
-        assertEquals(0f, Wheel.shown(2f, 2), 0f)
+    // A fixed row with ends (my note 26 Oct), no copies: past an end the strip follows the finger
+    // less and less and never further than the limit, either way
+    @Test fun aPullPastAnEndGetsHarder() {
+        var pull = 0f
+        val steps = (1..60).map { val before = pull; pull = Wheel.rubber(pull, 10f, 200f); pull - before }
+        assertTrue("first step ${steps.first()}", steps.first() in 4f..7f)
+        assertTrue("later steps shrink", steps.zipWithNext().all { (a, b) -> b <= a })
+        assertTrue("stays inside the limit: $pull", pull < 200f)
+        assertEquals(-Wheel.rubber(0f, 10f, 200f), Wheel.rubber(0f, -10f, 200f), 0f)
     }
-    @Test fun manyWordsChangeNothingInView() {
-        for (d in -2..2) assertEquals("at $d", 1f, Wheel.shown(d.toFloat(), 8), 0f)
-        for (d in -1..1) assertEquals("at $d", 1f, Wheel.shown(d.toFloat(), 3), 0f)
-    }
-    @Test fun aWordAndItsCopyCrossfadeWhileRolling() {
-        // a copy sits a lap away: between them one word's worth shows, never two, never none
-        for (n in 2..5) for (k in 0..40) {
-            val d = -n / 2f - 0.5f + k / 40f
-            assertEquals("n $n d $d", 1f, Wheel.shown(d, n) + Wheel.shown(d + n, n), 0.0001f)
-        }
+    @Test fun onlyTheChatWheelLoops() {
+        assertEquals(8, Wheel.slots(8, vertical = false))
+        assertTrue(Wheel.slots(3, vertical = true) > 3)
     }
 
     @Test fun talkBackHearsThePlaceInTheRow() { assertEquals("Todos, 3 of 8", Wheel.say("Todos", 2, 8)) }
@@ -82,7 +77,7 @@ class WheelTest {
     @Test fun closestCopyBehindAcrossTheSeam() { assertEquals(999, Wheel.closest(1000, 4, 5)) }
     @Test fun closestCopyIsItselfWhenThere() { assertEquals(1003, Wheel.closest(1003, 3, 5)) }
     @Test fun realIndexOfACopy() { assertEquals(4, Wheel.real(999, 5)) }
-    @Test fun oneWordDoesNotLoop() { assertEquals(1, Wheel.slots(1)); assertEquals(3 * Wheel.LOOP, Wheel.slots(3)) }
+    @Test fun oneWordDoesNotLoop() { assertEquals(1, Wheel.slots(1, vertical = true)); assertEquals(3 * Wheel.LOOP, Wheel.slots(3, vertical = true)) }
 
     // The chat wheel: one swipe, one step, round the loop; a short one stays (no precise swipe needed)
     @Test fun swipeUpStepsToTheNext() { assertEquals(1, Wheel.step(0, 3, -60f, 40f)) }

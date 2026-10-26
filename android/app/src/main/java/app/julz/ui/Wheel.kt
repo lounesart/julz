@@ -10,24 +10,17 @@ object Wheel {
     fun nearest(centres: List<Pair<Int, Float>>, mid: Float): Int? =
         centres.minByOrNull { kotlin.math.abs(it.second - mid) }?.first
 
-    /** Copies of the words in a loop: the last word is followed by the first again, so a word
-     *  always stands on both sides (an empty side was my note, 26 Oct). One word does not loop */
+    /** Copies of the words in a loop, for the chat's one word wheel, stepped round by a swipe. A
+     *  wheel of words in a row is a fixed row with ends, as iOS's picker is for what is not cyclic
+     *  (my note 26 Oct): a loop of copies stood the same word on both sides. One word does not loop */
     const val LOOP = 1000
-    fun slots(count: Int) = if (count > 1) count * LOOP else count
+    fun slots(count: Int, vertical: Boolean) = if (vertical && count > 1) count * LOOP else count
 
-    /** How much of a slot's word shows, 1 whole, 0 ticks instead, from [d], its distance from the
-     *  middle in words. One lap round the middle holds each word once, so no word stands twice in
-     *  view (my note 26 Oct: with two words the other one stood on both sides); the next word on
-     *  the right when the count is even. At the lap's edge a word and its copy crossfade over half a
-     *  word while the strip rolls, so nothing pops */
-    fun shown(d: Float, count: Int): Float {
-        if (count < 2) return 1f
-        val half = count / 2f
-        val c = if (count % 2 == 0) 0.5f else 0f
-        val w = 0.5f
-        val low = (d - (c - half - w / 2)) / w
-        val high = ((c + half + w / 2) - d) / w
-        return minOf(low, high).coerceIn(0f, 1f)
+    /** A pull past an end: the strip follows [delta] less the further it is out, never past [limit],
+     *  as a rubber band does; a little over half the finger at first */
+    fun rubber(pull: Float, delta: Float, limit: Float): Float {
+        val give = (1f - kotlin.math.abs(pull) / limit).coerceIn(0f, 1f)
+        return (pull + delta * 0.55f * give * give).coerceIn(-limit * 0.999f, limit * 0.999f)
     }
 
     /** The word at slot [slot] */
