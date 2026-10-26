@@ -5,7 +5,7 @@ the native chat with the new version.
 
 julz-chat's App runs in this process with user@'s key (chat.env) and a throwaway token; it
 makes a probe chat, reads an answer while it grows, sends a follow-up, stops it, checks a few
-refusals, retry, edit, archive and unarchive, then deletes its probe chat through julz-chat.
+refusals, retry, edit (also mid answer), archive and unarchive, then deletes its probe chat through julz-chat.
 
 Usage: ./contract-julz-chat.py     exit 0 when every step held
 """
@@ -105,7 +105,23 @@ def main():
         check(before <= set(stored) and len(view["messages"]) == 4,
               f"old versions kept in Open WebUI ({len(stored)} messages), the phone shows one branch")
 
-        # 135, SECURITY 151: the stored message keeps the mode's name and my own words only
+        # 203: an edit while she answers stops that answer, then answers the new words; after
+        # words have come, and at once (most likely before her first words)
+        for pause, words in ((2, "Now write 300 words about VLANs."), (0, "Now write 300 words about STP.")):
+            had = len(call(app, "GET", f"/api/chats/{cid}")[1]["messages"])
+            call(app, "POST", f"/api/chats/{cid}/messages", {"text": "Now write 300 words about hubs."})
+            time.sleep(pause)
+            t0 = time.time()
+            status, sent = call(app, "POST", f"/api/chats/{cid}/edit", {"text": words})
+            check(status == 200, f"edit {pause} s into an answer -> {status} after {round(time.time() - t0, 2)} s")
+            _, done, m = wait(app, cid)
+            status, view = call(app, "GET", f"/api/chats/{cid}")
+            stored = chat.Upstream(key)("GET", f"/api/v1/chats/{cid}")["chat"]["history"]["messages"]
+            check(m is not None and m["id"] == sent.get("message"), "the edit's answer is the current one")
+            check(len(view["messages"]) == had + 2 and view["messages"][-2]["text"] == words,
+                  f"the branch ends with the new words and their answer ({had} then {len(view['messages'])})")
+            check(sum(1 for x in stored.values() if x.get("content") == words) == 1, "my new words stored once")
+
         mine = "What does a switch learn from a frame?"
         status, _ = call(app, "POST", f"/api/chats/{cid}/messages", {"text": mine, "mode": "learn"})
         check(status == 200, f"a learning mode message -> {status}")

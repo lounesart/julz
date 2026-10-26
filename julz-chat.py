@@ -13,6 +13,8 @@ grow, so the phone polls /last and loses nothing when it sleeps.
   POST /api/chats                 {"text", "mode"?}: a new chat
   POST /api/chats/<id>/messages   {"text", "mode"?}: the next message in a chat
   POST /api/chats/<id>/stop       {}: stop the answer
+  POST /api/chats/<id>/edit       {"text", "mode"?}: my last message again, a running answer
+                                  stopped first (203)
 
 Runs on 127.0.0.1:8766; `tailscale serve --bg --https=8445 http://127.0.0.1:8766` publishes it
 to the tailnet. Config ~/.config/julz/chat.json: {"origin": "https://<name>:8445", "port": 8766}.
@@ -68,6 +70,11 @@ NEW_PER_HOUR = 20
 ARCHIVES_PER_HOUR = 60  # archive and unarchive together
 DELETES_PER_HOUR = 20  # delete is permanent: a leaked token removes few chats an hour (136)
 ANSWER_TIMEOUT = 600  # a stuck answer frees the slot after this
+# An edit while she answers stops the answer, then waits this long for its last write: Open
+# WebUI saves a chat whole, so a late save of the stopped task could drop the new message
+STOP_WAIT = 10
+STOP_STEP = 0.5
+STOP_STILL = 2  # reads in a row with the same words: stopped before its first words
 UPSTREAM_TIMEOUT = 30
 MAX_KNOWN = 5_000
 
@@ -130,13 +137,14 @@ class Upstream:
 class App:
     """julz-chat without sockets: handle() takes a request and returns a response."""
 
-    def __init__(self, token: str, hosts: set[str], upstream, clock=time.time):
+    def __init__(self, token: str, hosts: set[str], upstream, clock=time.time, sleep=time.sleep):
         if not TOKEN.fullmatch(token or ""):
             raise ValueError("the phone token looks wrong")
         self.token = token.encode()
         self.hosts = hosts
         self.up = upstream
         self.clock = clock
+        self.sleep = sleep
         self.known: set[str] = set()  # chat ids from a list or made here (136)
         self.sends: deque[float] = deque()
         self.news: deque[float] = deque()
@@ -374,13 +382,18 @@ class App:
         if not self.within(self.sends, SENDS_PER_HOUR) or \
                 (cid is None and not self.within(self.news, NEW_PER_HOUR)):
             raise HTTPError(429, "too many messages this hour")
-        if self.answering():
+        if self.answering() and (kind != "edit" or self.active[0] != cid):
             raise HTTPError(409, "an answer is still running")
         msgs: list[dict] = []
         if cid is not None:
             _, msgs = self.branch(cid)
-            if msgs and self.running(msgs[-1]):
-                raise HTTPError(409, "an answer is still running")
+            if msgs and self.running(msgs[-1]) or self.active:
+                # 203: only an edit, and only of my message right before the running answer
+                if kind != "edit" or len(msgs) < 2 or msgs[-2].get("role") != "user":
+                    raise HTTPError(409, "an answer is still running")
+                answer = msgs[-1]["id"]
+                self.stop(cid)
+                msgs = self.settle(cid, answer)
         if kind == "retry":
             # The last answer again: its own user message is the parent, the old answer stays
             if len(msgs) < 2 or msgs[-1].get("role") != "assistant" or msgs[-2].get("role") != "user":
@@ -432,6 +445,23 @@ class App:
         self.remember(new)
         self.active = (new, answer_id, now)
         return {"chat": new, "message": answer_id}
+
+    def settle(self, cid: str, mid: str) -> list[dict]:
+        """The branch once a stopped answer is written for the last time: done, or the same
+        words STOP_STILL reads in a row (stopped before its first words it stays done false)."""
+        last, still = None, 0
+        for _ in range(int(STOP_WAIT / STOP_STEP)):
+            self.sleep(STOP_STEP)
+            _, msgs = self.branch(cid)
+            m = next((x for x in msgs if x.get("id") == mid), None)
+            if m is None or m.get("done") is not False:
+                return msgs
+            text = str(m.get("content") or "")
+            still = still + 1 if text == last else 0
+            if still >= STOP_STILL:
+                return msgs
+            last = text
+        raise HTTPError(409, "an answer is still running")
 
     def archive(self, cid: str, archived: bool) -> dict:
         """Open WebUI's archive is a toggle: read the state, call it only when it differs."""
