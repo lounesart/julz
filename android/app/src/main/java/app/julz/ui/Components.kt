@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.node.invalidateDraw
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -270,10 +272,13 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     }
     LaunchedEffect(selected, state) {
         androidx.compose.runtime.snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
+        // Cleared in finally: a flick that cut a roll short left them set, and the wheel never
+        // centred or picked again (found flicking back and forth, my note 26 Oct)
         rolling[0] = true
-        val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
-        wheelRoll(state, to, still || first[0]); first[0] = false
-        rolling[0] = false
+        try {
+            val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
+            wheelRoll(state, to, still || first[0])
+        } finally { first[0] = false; rolling[0] = false }
     }
     // A roll by hand: the fling lands on a word in one motion (WheelFling), then that word is picked
     LaunchedEffect(state) {
@@ -282,7 +287,12 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             val slot = wheelMiddle(state) ?: return@collect
             val i = Wheel.real(slot, n)
             if (i != now) pick(i) else if (kotlin.math.abs(wheelOffset(state, slot) ?: 0f) > 1f) {
-                rolling[0] = true; wheelRoll(state, slot, still); rolling[0] = false
+                // A flick that cuts this roll short cancels the scroll, not this loop: let it through
+                // and the loop ended, so the wheel never picked again (found flicking, 26 Oct)
+                rolling[0] = true
+                try { wheelRoll(state, slot, still) }
+                catch (e: kotlinx.coroutines.CancellationException) { if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e }
+                finally { rolling[0] = false }
             }
         }
     }
@@ -392,6 +402,13 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
           }
           val reachPx = with(density) { (maxWidth / 4).toPx() }
           val ends = remember(state, reachPx, still) { WheelEnds(state, reachPx, still, ticks) }
+          // A pull left by a touch that never became a drag springs back once the strip is still;
+          // a new drag cancels the spring
+          LaunchedEffect(ends) {
+              androidx.compose.runtime.snapshotFlow { state.isScrollInProgress || !ends.pulled }.collectLatest { busy ->
+                  if (!busy) ends.settle(0f)
+              }
+          }
           androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().height(J.small).nestedScroll(KeepSideways).then(mask),
             state = state, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (loop) 0.dp else maxWidth / 2),
             flingBehavior = fling, overscrollEffect = ends,
@@ -414,6 +431,7 @@ private class WheelEnds(val state: androidx.compose.foundation.lazy.LazyListStat
         get() = pullState.floatValue
         set(v) { pullState.floatValue = v; if (node.isAttached) node.invalidateDraw() }
     override val isInProgress get() = pull != 0f
+    val pulled get() = pull != 0f
 
     /** How far the strip may scroll by [dx] before an end word stands in the middle */
     private fun room(dx: Float): Float {
@@ -454,7 +472,7 @@ private class WheelEnds(val state: androidx.compose.foundation.lazy.LazyListStat
         if (left.x != 0f) settle(left.x)
     }
 
-    private suspend fun settle(v: Float) {
+    suspend fun settle(v: Float) {
         if (still) { pull = 0f; return }
         androidx.compose.animation.core.animate(pull, 0f, v,
             androidx.compose.animation.core.spring(stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow)) { value, _ ->
