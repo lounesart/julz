@@ -104,8 +104,10 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
     var historyDay by remember { mutableIntStateOf(0) }
     // Messages: what the last Clear hid, for Undo (the filter lives in App, so a tap can set it)
     var undo by remember { mutableStateOf<Pair<ReadState, Int>?>(null) }
-    val kept = notices.filter { !cleared.isRead(it.id) }
-    val shown = kept.filter { filter == null || it.kind == filter }
+    // Remembered, so a tab change hands Messages the same lists and it skips (22g: rebuilt, they
+    // recomposed Messages twice a tap, its rows and wheel, about 50 ms of compose)
+    val kept = remember(notices, cleared) { notices.filter { !cleared.isRead(it.id) } }
+    val shown = remember(kept, filter) { kept.filter { filter == null || it.kind == filter } }
     // A swipe pages the three tabs (22c); tab stays the one truth, so a notification tap still
     // opens Messages, and the pager follows it, jumping when the phone's animations are off
     val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = tab) { 3 }
