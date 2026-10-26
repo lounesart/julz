@@ -271,6 +271,9 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
     answer, then sends your new words"; the button is send, not stop.] Change the words, send.
     [About two seconds of sending, then one new answer to the new words; the old one stopped and
     kept on the laptop page.] Edit again and Cancel. [Stop is back while she writes.]
+22. Tailscale off on the phone, send a message (128). ["The phone cannot find the laptop. Is
+    Tailscale running on the phone?", the words still in the field.] Tailscale back on, send again.
+    [It goes.] After 10 idle minutes, a message: ["Thinking" for up to about 35 s, never an error.]
 
 ### Tab bar (22i)
 1. Any screen. [A glass capsule with margins, in the card shape (cut on Industrial); the active tab
