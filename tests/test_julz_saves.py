@@ -68,6 +68,19 @@ class HonestSavesTest(unittest.TestCase):
         self.assert_warned(CLAIM, None)
         self.assert_warned(CLAIM, {})
 
+    def test_emphasis_does_not_hide_a_claim(self):
+        # Phone 26 Oct 14:15: "I **added** complete climbing sesh" after a refused create_note, no warning
+        for text in ("I **added** `complete climbing sesh` as a new task to your `daily` list.",
+                     "I *saved* it.", "I have __moved__ it.", "It is **saved** in daily.",
+                     "I've `saved` the note.", "I ***created*** your list.", "**Done!** I _wrote_ it down."):
+            with self.subTest(text=text):
+                self.assert_warned(text, meta(tool("julz_notes/create_note", "Refused: use a plain name")))
+
+    def test_emphasis_keeps_a_denial(self):
+        for text in ("I have **not** saved it.", "**Nothing** was added.", "I *didn't* save it."):
+            with self.subTest(text=text):
+                self.assert_kept(text, meta())
+
     def test_claim_after_a_refusal(self):
         refused = tool("julz_notes/create_note", "Refused: a to-do list holds only tasks the user named")
         self.assert_warned("I created a to-do list in Inbox/trip.md with passport and ID.", meta(refused))

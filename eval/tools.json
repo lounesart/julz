@@ -44,6 +44,7 @@
   {"q": "what is the difference between TCP and UDP?", "tool": null},
   {"q": "переведи на английский: доброе утро", "tool": null},
   {"q": "set me a goal for today: read the DNS chapter", "tool": null},
+  {"q": "set me a goal for today to finish the subnetting lab", "tool": null},
   {"q": "yes, save it",
    "history": [["user", "set me a goal for today: read the DNS chapter"], ["assistant", "Reading the DNS chapter today is a good goal. Shall I save it as a task in your daily list?"]],
    "tool": "create_note", "args": {"content": "dns"}}

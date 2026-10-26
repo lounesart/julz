@@ -1,7 +1,7 @@
 """
 title: Julz honest saves
 description: When Julz says she saved, added or moved something and no note tool did it this turn, a warning line goes above her answer.
-version: 0.2.0
+version: 0.2.1
 """
 # Paste this file into Open WebUI: Admin Panel, Functions, +, then turn it on for the julz
 # models. A function runs as the Open WebUI server, so paste only code you have read (A08).
@@ -36,6 +36,8 @@ CLAIM = re.compile(r"\b(?:I(?:'ve| have)?|is|are|was|were|has been|have been)\s+
                    r"appended|stored)\b", re.I)
 # "Nothing was saved" is honest: a denial earlier in the same clause cancels the claim
 DENIAL = re.compile(r"\b(?:nothing|not|never|no)\b|n't", re.I)
+# Markdown emphasis between the words hid a claim ("I **added**", phone 26 Oct): matched without it
+EMPHASIS = re.compile(r"[*_`]")
 WARNING = ("> [!warning] Nothing was saved in this answer: no note tool reported a change, so "
            "what Julz says below did not happen. Check your notes or ask her again.")
 CARD_WARNING = ("> [!warning] Not saved yet: the change waits on Approve on your phone. Nothing "
@@ -43,6 +45,7 @@ CARD_WARNING = ("> [!warning] Not saved yet: the change waits on Approve on your
 
 
 def claims_a_change(text: str) -> bool:
+    text = EMPHASIS.sub("", text)
     for m in CLAIM.finditer(text):
         clause = re.split(r"[.!?\n,;:]", text[:m.start()])[-1]
         if not DENIAL.search(clause):
