@@ -40,13 +40,26 @@ object Wheel {
         else -> selected
     }
 
-    /** Where the light sits between two words, 0 on the first, 1 on the next, from [t], how far the
-     *  middle has gone from one to the other: it rides the word for the first 30 percent, slides
-     *  across on a smoothstep while the middle passes, then rides the next. Pure, so no clock */
-    fun aim(t: Float): Float {
-        val u = ((t - 0.3f) / 0.4f).coerceIn(0f, 1f)
-        return u * u * (3 - 2 * u)
+    /** Where the light's two edges sit between two words, 0 on the first, 1 on the next, from [t],
+     *  how far the middle has gone from one to the other: (the edge behind, the edge on the way).
+     *  It rides the word for the first 20 percent, then the edge on the way runs ahead and the one
+     *  behind catches up, so the light stretches across the gap and gathers on the next word, as
+     *  an elastic tab indicator does (my note 26 Oct: the frame looked stale). Going back is the
+     *  mirror, so the edge on the way always leads. Pure, so no clock and no jump */
+    fun edges(t: Float): Pair<Float, Float> {
+        fun s(x: Float) = x.coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+        return s((t - 0.35f) / 0.45f) to s((t - 0.2f) / 0.45f)
     }
+
+    /** The light's height while stretched, as a share of its own: thinner as it stretches, so it
+     *  keeps its volume (squash and stretch), never by more than a few percent */
+    fun squash(edges: Pair<Float, Float>) = 1f - 0.15f * (edges.second - edges.first)
+
+    /** A pick landing: the light swells this much and springs back, with the haptic tick, so the
+     *  choice reads as made (Liquid Glass's press); a little bounce, settled in about 300 ms */
+    const val POP = 1.06f
+    val pop = androidx.compose.animation.core.spring<Float>(dampingRatio = 0.5f,
+        stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
 
     /** How a fling lands: done within a pixel of the word, as Compose's Int and Offset springs are; the
      *  last frame puts it on the word. At the Float default, 0.01 px, it crept on unseen for about

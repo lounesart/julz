@@ -58,7 +58,10 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   It is a fixed row with ends, not a loop (iOS's picker, for what is
   not cyclic), so a word never stands twice. Past an end the strip pulls stiffer and springs
   back, a flick into an end bounces, and quiet ticks stand past each end so no side looks empty.
-  A short flick steps one word. A count that only repeats another (Board's) is left off. In the chat box
+  A short flick steps one word. A count that only repeats another (Board's) is left off. The light is elastic: between two
+  words its edge on the way runs ahead and the other catches up, a few percent thinner while
+  stretched (squash and stretch), and a landing pick swells it for a moment with a springy settle;
+  a plain slide when the phone asks for less motion. In the chat box
   it shows one word as tall as the send button, and a swipe up or down steps it.
 - **Wheels sit under the thumb** (257, after iOS Photos): a list's filter wheel floats at the
   bottom, right over the tab bar, on the dark end of a fade as soft as the bar's own. The list's

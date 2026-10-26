@@ -270,15 +270,22 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     LaunchedEffect(middle) {
         if (!first[0] && middle != null) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
     }
+    val pop = remember { androidx.compose.animation.core.Animatable(1f) }
     LaunchedEffect(selected, state) {
         androidx.compose.runtime.snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
         // Cleared in finally: a flick that cut a roll short left them set, and the wheel never
         // centred or picked again (found flicking back and forth, my note 26 Oct)
         rolling[0] = true
+        val placing = first[0]
         try {
             val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
             wheelRoll(state, to, still || first[0])
         } finally { first[0] = false; rolling[0] = false }
+        // The pick has landed: the light swells and springs back, so it reads as made (Wheel.POP)
+        if (!placing && !still) {
+            pop.animateTo(Wheel.POP, androidx.compose.animation.core.tween(90, easing = J.ease))
+            pop.animateTo(1f, Wheel.pop)
+        }
     }
     // A roll by hand: the fling lands on a word in one motion (WheelFling), then that word is picked
     LaunchedEffect(state) {
@@ -313,8 +320,11 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         })
         .drawBehind {
             // The light from where the words are, every frame, no clock of its own (my note 26 Oct:
-            // the animation was jumpy): between the two words around the middle, by Wheel.aim
+            // the animation was jumpy): between the two words around the middle, its edges by
+            // Wheel.edges, so it stretches across and gathers, thinner while stretched (Wheel.squash),
+            // and swelling for a moment when a pick lands (pop). Still motion: a plain slide
             val tall = this.size.height
+            var e = 0f to 0f
             val box = if (vertical || n == 1) {
                 val c = state.layoutInfo.visibleItemsInfo.firstOrNull() ?: return@drawBehind
                 val w = if (vertical) this.size.width else c.size.toFloat()
@@ -326,13 +336,16 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
                 val a = seen.lastOrNull { it.offset + it.size / 2f <= mid } ?: seen.firstOrNull() ?: return@drawBehind
                 val b = seen.firstOrNull { it.index == a.index + 1 } ?: a
                 val ca = a.offset + a.size / 2f; val cb = b.offset + b.size / 2f
-                val k = if (b === a) 0f else Wheel.aim(((mid - ca) / (cb - ca)).coerceIn(0f, 1f))
-                val w = a.size + (b.size - a.size) * k
-                val x = ca + (cb - ca) * k - info.viewportStartOffset
-                x - w / 2 to w
+                val t = if (b === a) 0f else ((mid - ca) / (cb - ca)).coerceIn(0f, 1f)
+                e = if (still) t to t else Wheel.edges(t)
+                val start = info.viewportStartOffset
+                val left = a.offset + (b.offset - a.offset) * e.first - start
+                val right = a.offset + a.size + (b.offset + b.size - a.offset - a.size) * e.second - start
+                left to right - left
             }
-            val size = androidx.compose.ui.geometry.Size(box.second, tall)
-            translate(left = box.first) {
+            val grow = pop.value
+            val size = androidx.compose.ui.geometry.Size(box.second * grow, tall * Wheel.squash(e) * grow)
+            translate(left = box.first - (size.width - box.second) / 2, top = (tall - size.height) / 2) {
                 val o = pillShape.createOutline(size, layoutDirection, this)
                 // In the chat box the mode is a tile like the send button beside it, not a picked tab
                 if (vertical) drawOutline(o, J.raise)

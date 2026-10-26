@@ -88,17 +88,39 @@ class WheelTest {
     @Test fun longSwipeIsStillOneStep() { assertEquals(2, Wheel.step(1, 3, -900f, 40f)) }
 
 
-    // The light rides on a word, then slides across while the middle passes, then rides the next:
-    // a pure function of the scroll, so it never jumps (my note 26 Oct: the animation is jumpy)
-    @Test fun aimRidesTheFirstWord() { assertEquals(0f, Wheel.aim(0.2f), 0f) }
-    @Test fun aimRidesTheNextWord() { assertEquals(1f, Wheel.aim(0.8f), 0f) }
-    @Test fun aimIsHalfwayInTheMiddle() { assertEquals(0.5f, Wheel.aim(0.5f), 1e-6f) }
-    @Test fun aimNeverGoesBack() {
-        var last = -1f
-        for (k in 0..100) { val v = Wheel.aim(k / 100f); assertTrue(v >= last); last = v }
+    // The light rides on a word, stretches across while the middle passes, then rides the next: a
+    // pure function of the scroll, so it never jumps (my note 26 Oct: jumpy). Elastic (my note 26
+    // Oct: the frame looked stale): the edge on the way runs ahead, the other catches up
+    @Test fun edgesRideTheWords() {
+        assertEquals(0f to 0f, Wheel.edges(0.15f))
+        assertEquals(1f to 1f, Wheel.edges(0.85f))
     }
-    @Test fun aimHasNoStep() {
-        for (k in 0 until 100) assertTrue(kotlin.math.abs(Wheel.aim((k + 1) / 100f) - Wheel.aim(k / 100f)) < 0.05f)
+    @Test fun theLeadingEdgeRunsAhead() {
+        for (k in 0..100) { val (trail, lead) = Wheel.edges(k / 100f); assertTrue(lead >= trail) }
+        val (trail, lead) = Wheel.edges(0.5f)
+        assertTrue("stretched across the gap: ${lead - trail}", lead - trail in 0.3f..0.6f)
+    }
+    @Test fun goingBackIsTheMirror() {
+        for (k in 0..100) {
+            val t = k / 100f
+            val (trail, lead) = Wheel.edges(t); val (trailBack, leadBack) = Wheel.edges(1 - t)
+            assertEquals(1 - lead, trailBack, 1e-5f); assertEquals(1 - trail, leadBack, 1e-5f)
+        }
+    }
+    @Test fun edgesNeverGoBackNorStep() {
+        var last = Wheel.edges(0f)
+        for (k in 1..100) {
+            val e = Wheel.edges(k / 100f)
+            assertTrue(e.first >= last.first && e.second >= last.second)
+            assertTrue(e.first - last.first < 0.06f && e.second - last.second < 0.06f)
+            last = e
+        }
+    }
+    // Squash with the stretch, so it keeps its volume; at rest it is its full height
+    @Test fun aStretchedFrameIsAFewPercentThinner() {
+        assertEquals(1f, Wheel.squash(0f to 0f), 0f)
+        val (trail, lead) = Wheel.edges(0.5f)
+        assertTrue(Wheel.squash(trail to lead) in 0.9f..0.97f)
     }
 
     // One fling, one motion: where it lands, from the free decay's travel in word widths
