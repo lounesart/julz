@@ -73,7 +73,8 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
         androidx.compose.ui.unit.Density(base.density, base.fontScale * A11y.prefs.scale), LocalSheetHost provides sheets) {
     androidx.compose.runtime.SideEffect { J.scale = base.fontScale * A11y.prefs.scale }
     // Clear of the navigation bar on the side too: in landscape it stood over the app's right edge (22d)
-    Box(Modifier.fillMaxSize().background(J.bg).background(J.page).statusBarsPadding()
+    // The page and both its glows (257); its size lets a band draw them where it sits
+    Box(Modifier.fillMaxSize().page().statusBarsPadding()
         .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.navigationBars
             .only(androidx.compose.foundation.layout.WindowInsetsSides.Horizontal))) {
         if (config == null || refused) {
@@ -296,16 +297,15 @@ internal fun Shell(wide: Boolean, bar: @Composable (Boolean) -> Unit, content: @
       Box(Modifier.weight(1f)) {
         Box(Modifier.fillMaxSize()) { content() }
         if (!wide) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            // Content slides out through a short fade, then the band the bar sits on is solid
-            // page colour: the glass showed the list through its icons (found 19 Oct). The
-            // page is this colour at the bottom, so the band has no seam
-            Box(Modifier.fillMaxWidth().height(J.sp6).then(if (!J.barFade) Modifier else
-                Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, J.bg)))))
+            // Content slides out through a short fade, then the band the bar sits on hides it:
+            // the glass showed the list through its icons (found 19 Oct). Both are the page
+            // itself, glows and all, drawn where they sit, so neither is a flat block (257)
+            Box(Modifier.fillMaxWidth().height(J.sp6).then(if (!J.barFade) Modifier else Modifier.pageBackdrop(fade = true)))
             // Under the keyboard the bar is out of sight, so TalkBack must not reach it either;
             // only its semantics go, its place stays (a layout step made the chat jump, 127)
             @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
             val covered = androidx.compose.foundation.layout.WindowInsets.isImeVisible
-            Box(Modifier.fillMaxWidth().background(J.bg)
+            Box(Modifier.fillMaxWidth().pageBackdrop()
                 .then(if (covered) Modifier.clearAndSetSemantics { } else Modifier)
                 .onSizeChanged { J.barSpace = with(density) { it.height.toDp() } }) { bar(false) }
         }

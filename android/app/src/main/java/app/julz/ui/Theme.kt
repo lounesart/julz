@@ -8,6 +8,13 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -117,6 +124,8 @@ object J {
     var barSpace by androidx.compose.runtime.mutableStateOf(112.dp)
     /** The fade over the bar; off while a screen floats its own band there (257, the Messages wheel) */
     var barFade by androidx.compose.runtime.mutableStateOf(true)
+    /** The whole page's size, measured by App, so a band draws the page's glows where it sits (257) */
+    var pageSize by androidx.compose.runtime.mutableStateOf(androidx.compose.ui.geometry.Size.Zero)
     val end: Dp get() = if (rail) sp6 else barSpace + sp4
     val tap: Dp = 48.dp; val tapL: Dp = 56.dp; val row: Dp = 64.dp
     /** A secondary control's visible height (SmallPill, the wheel): one level under the tabs'
@@ -176,6 +185,63 @@ fun Modifier.bleed(by: Dp) = this.layout { m, c ->
     val side = by.roundToPx()
     val p = m.measure(c.copy(minWidth = c.minWidth + 2 * side, maxWidth = c.maxWidth + 2 * side))
     layout(c.maxWidth, p.height) { p.place(-side, 0) }
+}
+
+/** The page's second glow, as tokens.css draws it: the info cyan from the left edge, 70 percent
+ *  down, an ellipse 70 by 40 percent of the page that is gone at 70 percent of it. The app drew only
+ *  the accent's until 257, so every bottom was flat black (my note 26 Oct). */
+object PageGlow {
+    class Ellipse(val cx: Float, val cy: Float, val rx: Float, val ry: Float)
+    fun lower(w: Float, h: Float) = Ellipse(0f, 0.7f * h, 0.7f * 0.7f * w, 0.4f * 0.7f * h)
+    const val LOWER_ALPHA = 0x14 / 255f
+
+    /** Shaped for the whole [page], given here: a ShaderBrush is sized by the element that draws,
+     *  so a band 400 px tall drew a glow for a page 400 px tall, off screen (found on the phone) */
+    fun lowerBrush(page: androidx.compose.ui.geometry.Size): Brush {
+        val c = J.info.copy(alpha = LOWER_ALPHA)
+        val e = lower(page.width, page.height)
+        return androidx.compose.ui.graphics.ShaderBrush(androidx.compose.ui.graphics.RadialGradientShader(
+            androidx.compose.ui.geometry.Offset(e.cx, e.cy), e.rx, listOf(c, c.copy(alpha = 0f))).apply {
+            setLocalMatrix(android.graphics.Matrix().apply { setScale(1f, e.ry / e.rx, e.cx, e.cy) })
+        })
+    }
+}
+
+/** The page itself: its colour and both glows over [page], the whole screen's size */
+fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPage(page: androidx.compose.ui.geometry.Size) {
+    drawRect(J.bg, size = page)
+    drawRect(J.page, size = page)
+    drawRect(PageGlow.lowerBrush(page), size = page)
+}
+
+/** The page under a whole screen: its colour and glows, and its size for the bands (257) */
+fun Modifier.page(): Modifier = this.onSizeChanged { J.pageSize = androidx.compose.ui.geometry.Size(it.width.toFloat(), it.height.toFloat()) }
+    .drawBehind { drawPage(size) }
+
+/** The page drawn where this element sits on it (257): a band that hides what scrolls under it
+ *  (the tab bar's, the Messages wheel's) shows the page's own colours and glows, never a flat block
+ *  with a seam. [fade] runs it in from clear at the top (from the bottom when [up], for a list's
+ *  top), so content dissolves into the page. */
+@androidx.compose.runtime.Composable
+fun Modifier.pageBackdrop(fade: Boolean = false, up: Boolean = false): Modifier {
+    var at by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    return this.onGloballyPositioned { at = it.positionInRoot() }
+        .then(if (fade) Modifier.graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen } else Modifier)
+        .drawBehind {
+            clipRect {
+                translate(-at.x, -at.y) { drawPage(J.pageSize) }
+            }
+            if (fade) drawRect(Brush.verticalGradient(*fadeStops(up)), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+        }
+}
+
+/** How much of the page covers a fade, top to bottom: smoothstep, not a straight line. Straight, a
+ *  row's outline three quarters in still showed at a quarter, a lone line over the Messages wheel
+ *  (my note 26 Oct); eased, an edge deep in the fade is gone and one entering it still goes softly */
+internal fun fadeStops(up: Boolean): Array<Pair<Float, Color>> = Array(9) { i ->
+    val t = i / 8f
+    val p = t * t * (3 - 2 * t)
+    t to Color.Black.copy(alpha = if (up) 1 - p else p)
 }
 
 /** Frosted glass, without the backdrop blur (the background is a still glow, see SECURITY 97). */

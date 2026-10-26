@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -135,7 +136,7 @@ internal fun SignLayer() {
 @Composable
 internal fun SignScreen(ask: SignPanel.Ask, most: Dp, top: ScrollState, reading: Boolean, sign: () -> Unit,
                         cancel: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(J.bg).background(J.page).navigationBarsPadding()
+    Column(Modifier.fillMaxSize().drawBehind { drawPage(size) }.navigationBarsPadding()
         .padding(horizontal = J.gutter), verticalArrangement = Arrangement.spacedBy(J.gap)) {
         if (reading) {
             ScreenHeader(ask.title, "Read it whole. Your fingerprint signs this, nothing else.")

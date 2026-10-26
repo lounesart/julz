@@ -33,7 +33,10 @@ class ScreenshotTest {
 
     @Composable
     private fun shell(section: Screen, content: @Composable () -> Unit) =
-        Shell(wide = false, bar = { TabBar(section, 2, it, {}, {}, {}, {}, {}) }, content = content)
+        // On the page as App draws it, glows included, so the bar's band shows what the phone does (257)
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().page()) {
+            Shell(wide = false, bar = { TabBar(section, 2, it, {}, {}, {}, {}, {}) }, content = content)
+        }
 
     private val todos = run {
         val l = "␞"; val f = "␟"

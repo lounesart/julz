@@ -289,7 +289,13 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
         }
         Spacer(Modifier.height(J.sp3))
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(J.rowGap), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = J.end + band)) {
+    // Rows leave at the top through the same fade once the list moves (my note 26 Oct: they were cut
+    // hard under the tabs); at rest it would only dim the count line
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scrolled by remember { androidx.compose.runtime.derivedStateOf { list.canScrollBackward } }
+    Box {
+    LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(J.rowGap),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = J.end + band)) {
         var lastDay = ""
         for (n in shown) {
             val day = Words.day(n.time)
@@ -338,15 +344,16 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
             Text(if (filter == null) "All clear. Older notices are in History." else "Nothing in this channel.", style = J.sec)
         }
     }
+    if (scrolled) Box(Modifier.fillMaxWidth().height(J.sp6).pageBackdrop(fade = true, up = true))
     }
-    // As soft as the fade over the bar (J.sp6), then solid page colour under the wheel, right on
-    // the bar: this fade stands in for the bar's own (off on this page), which would dim the words.
-    // Solid under the wheel as well was a band of black too tall (my note 26 Oct)
+    }
+    // As soft as the fade over the bar (J.sp6), then the page itself under the wheel, right on the
+    // bar: this fade stands in for the bar's own (off on this page), which would dim the words. A
+    // solid block under the wheel as well was too tall and too dark (my notes 26 Oct)
     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = barClear())
         .onSizeChanged { band = with(density) { it.height.toDp() } }.semantics { traversalIndex = -1f }) {
-        Box(Modifier.fillMaxWidth().height(J.sp6).background(androidx.compose.ui.graphics.Brush.verticalGradient(
-            listOf(Color.Transparent, J.bg))))
-        Box(Modifier.fillMaxWidth().background(J.bg)) {
+        Box(Modifier.fillMaxWidth().height(J.sp6).pageBackdrop(fade = true))
+        Box(Modifier.fillMaxWidth().pageBackdrop()) {
             WheelPicker(kinds.map { if (it == null) "All" else Words.label(it) }, kinds.indexOf(filter).coerceAtLeast(0),
                 counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
         }

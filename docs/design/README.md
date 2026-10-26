@@ -108,7 +108,11 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
 ## Look
 
 - Surfaces are frosted glass, white at 4 percent with a 14 blur and a hairline border, over a
-  soft magenta and cyan glow. Reduce transparency in Accessibility turns them solid.
+  soft magenta and cyan glow. The page is the accent's glow at the top right and the info cyan's from
+  the left edge lower down (`PageGlow`, read from tokens.css by a test). A band that hides what
+  scrolls under it draws the page where it sits (`pageBackdrop`), never a flat block, and a
+  fade eases in (smoothstep), so no row edge floats alone in it. A list fades at its top too
+  once it has moved. Reduce transparency in Accessibility turns them solid.
 - At most one glowing button per screen, for the action that matters there.
 - Motion uses the HyDE standard curve, cubic-bezier(0.05, 0.9, 0.1, 1.05), about 0.7 s.
   All of it stops when the phone asks for less motion.
