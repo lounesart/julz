@@ -79,8 +79,8 @@ def pinned_under_bar(sources: dict[str, str] | None = None) -> list[str]:
 
 
 # A band floating at a screen's bottom (257: the Messages wheel under the thumb) sits on top of the
-# tab bar's place, so it pads by barClear() on its own line. The bar itself and the sheets, which
-# cover the bar, are the two that may not
+# tab bar's place, so it pads by barClear() on its own line, unless its screen already pads by it
+# (a pinned bottom, Todos). The bar itself and the sheets, which cover the bar, are the two that may not
 FLOATING = re.compile(r"Modifier\.align\(Alignment\.BottomCenter\)\.fillMaxWidth\(\)[^\n]*")
 FLOATING_ALLOWED = {"App.kt": "the band the tab bar sits on", "Components.kt": "a sheet, drawn over the bar"}
 
@@ -88,8 +88,9 @@ FLOATING_ALLOWED = {"App.kt": "the band the tab bar sits on", "Components.kt": "
 def floating_under_bar(sources: dict[str, str] | None = None) -> list[str]:
     if sources is None:
         sources = {f.name: f.read_text() for f in sorted(UI.glob("*.kt"))}
+    padded = lambda text: any("barClear()" in m.group(1) for m in PINNED.finditer(text))
     return [f"{name}:{text.count(chr(10), 0, m.start()) + 1}" for name, text in sources.items()
-            if name not in FLOATING_ALLOWED for m in FLOATING.finditer(text) if "barClear()" not in m.group(0)]
+            if name not in FLOATING_ALLOWED and not padded(text) for m in FLOATING.finditer(text) if "barClear()" not in m.group(0)]
 
 
 # A line drawn with border() (254): on Industrial's cut corners Compose paints it through a bitmap the
@@ -180,12 +181,14 @@ class DesignLintTest(unittest.TestCase):
     def test_floating_bands_clear_the_tab_bar(self):
         self.assertEqual(floating_under_bar(), [], "\nPad the floating band with barClear(): the bar sits under it (257)")
         found = [f.name for f in sorted(UI.glob("*.kt")) if f.name not in FLOATING_ALLOWED and FLOATING.search(f.read_text())]
-        self.assertEqual(found, ["FeedScreens.kt"], "a new floating band? check it on the phone too")
+        self.assertEqual(found, ["FeedScreens.kt", "TodosScreen.kt"], "a new floating band? check it on the phone too")
 
     def test_the_floating_lint_catches_what_it_should(self):
         bad = "Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = J.sp4)) {\n"
         good = "Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = barClear())) {\n"
         self.assertEqual(floating_under_bar({"X.kt": bad, "Y.kt": good, "App.kt": bad}), ["X.kt:1"])
+        screen = "    Column(Modifier.fillMaxSize().padding(bottom = barClear())) {\n    Box(Modifier.weight(1f)) {\n" + bad
+        self.assertEqual(floating_under_bar({"Z.kt": screen}), [])
 
 
 if __name__ == "__main__":

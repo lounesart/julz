@@ -120,8 +120,7 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
     }
     // Messages floats its wheel with its own fade where the bar's is (257): the bar's goes while
     // Messages is the page, and comes back when the Feed goes
-    val ownFade = pager.currentPage == 1
-    androidx.compose.runtime.DisposableEffect(ownFade) { J.barFade = !ownFade; onDispose { J.barFade = true } }
+    OwnsBarFade(pager.currentPage == 1)
     Column(Modifier.fillMaxSize()) {
       Column(Modifier.padding(horizontal = J.gutter)) {
         // In landscape the title, the tabs and Feedback share one line, so the notices keep the height (22d)

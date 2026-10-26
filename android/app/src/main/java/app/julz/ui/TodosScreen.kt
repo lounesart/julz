@@ -30,6 +30,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -117,6 +121,7 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
         }
     }
 
+    OwnsBarFade()
     Column(Modifier.fillMaxSize().padding(bottom = barClear())) {
     Box(Modifier.weight(1f)) {
     Column(Modifier.fillMaxSize()) {
@@ -128,7 +133,15 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
             Words.time(snap.time), back, "Back to feed")
         Segmented(listOf("Left", "Done", "Goals"), tab) { tab = it }
     }
-    Box(Modifier.weight(1f)) {
+    // The wheel floats at the list's bottom, under the thumb, as on Messages (257); only Left has one
+    val names = lists.orEmpty().map { it.name }
+    val views = Wheel.todoViews(names)
+    val at = Wheel.todoIndex(view, names)
+    fun left(name: String?) = lists.orEmpty().filter { name == null || it.name == name }.sumOf { it.open.size + it.doing.size }
+    val wheel = tab == 0 && !lists.isNullOrEmpty()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var band by remember { mutableStateOf(0.dp) }
+    Box(Modifier.weight(1f).semantics { isTraversalGroup = true }) {
     // A swipe left or right moves one tab (250); the switch above stays as the visible way. It only
     // changes the view, never a pick or a tick: those stay behind the fingerprint
     val reach = with(androidx.compose.ui.platform.LocalDensity.current) { 80.dp.toPx() }
@@ -137,20 +150,13 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
         detectHorizontalDragGestures(onDragStart = { moved = 0f }, onDragCancel = { moved = 0f },
             onDragEnd = { tab = TabSwipe.next(tab, 3, moved, reach) }) { _, dx -> moved += dx }
     }.verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
-        .padding(bottom = J.sp6), verticalArrangement = Arrangement.spacedBy(J.gap)) {
+        .padding(bottom = J.sp6 + if (wheel) band else 0.dp), verticalArrangement = Arrangement.spacedBy(J.gap)) {
         if (tab == 0) Guide(Guides.TODOS) else if (tab == 2) Guide(Guides.GOALS)
         if (tab == 2) GoalsTab(origins, goals, lists.orEmpty()) else if (tab == 1) DoneTab(week, weekProblem) else when {
             lists == null -> Text("Nothing here yet. Julz sends your tasks when they change.", style = J.sec)
             lists.isEmpty() -> Text("Every task is done.", style = J.bodyText)
             else -> {
-                val names = lists.map { it.name }
-                val at = Wheel.todoIndex(view, names)
                 val board = at == 0
-                // Each view with what is left in it, so the wheel says where the work is
-                val views = Wheel.todoViews(names)
-                fun left(name: String?) = lists.filter { name == null || it.name == name }.sumOf { it.open.size + it.doing.size }
-                WheelPicker(views.map { when (it) { Wheel.BOARD -> "Board"; Wheel.ALL -> "All lists"; else -> TodoSnapshot.listLabel(it) } }, at,
-                    counts = views.map { left(it.takeIf { v -> v != Wheel.BOARD && v != Wheel.ALL }) }) { view = views[it] }
                 @Composable fun task(list: String, t: String, inProgress: Boolean, showList: Boolean) =
                     TaskRow(list, t, inProgress, showList, live, waiting, busy, ::toggle)
                 if (!board) for (l in lists.filter { at == 1 || it.name == views[at] }) Column(Modifier.fillMaxWidth().glass().padding(J.inset),
@@ -204,7 +210,16 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
             }
         }
     }
-    FadeBottom()
+    // On the page's own fade, as on Messages; TalkBack still reads the filter first
+    if (wheel) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+        .onSizeChanged { band = with(density) { it.height.toDp() } }.semantics { traversalIndex = -1f }) {
+        Box(Modifier.fillMaxWidth().height(J.sp6).pageBackdrop(fade = true))
+        Box(Modifier.fillMaxWidth().pageBackdrop()) {
+            // Each view with what is left in it, so the wheel says where the work is
+            WheelPicker(views.map { when (it) { Wheel.BOARD -> "Board"; Wheel.ALL -> "All lists"; else -> TodoSnapshot.listLabel(it) } }, at,
+                counts = views.map { left(it.takeIf { v -> v != Wheel.BOARD && v != Wheel.ALL }) }) { view = views[it] }
+        }
+    } else FadeBottom()
     }
     }
     }

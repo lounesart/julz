@@ -811,9 +811,9 @@ fun Modifier.fadeOutBottom(height: androidx.compose.ui.unit.Dp): Modifier =
         }
 
 /** The end of a list that scrolls under a pinned bar: a short fade into the page, so content
- *  slides away instead of stopping at a hard edge (found 2026-10-18 on Goals). */
+ *  slides away instead of stopping at a hard edge (found 2026-10-18 on Goals). The page itself,
+ *  glows and all: into flat J.bg it was a dark strip across the cyan glow (257) */
 @Composable
 fun androidx.compose.foundation.layout.BoxScope.FadeBottom() {
-    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp)
-        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, J.bg))))
+    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp).pageBackdrop(fade = true))
 }

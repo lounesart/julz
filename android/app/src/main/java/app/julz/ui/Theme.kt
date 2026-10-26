@@ -193,7 +193,8 @@ fun Modifier.bleed(by: Dp) = this.layout { m, c ->
 object PageGlow {
     class Ellipse(val cx: Float, val cy: Float, val rx: Float, val ry: Float)
     fun lower(w: Float, h: Float) = Ellipse(0f, 0.7f * h, 0.7f * 0.7f * w, 0.4f * 0.7f * h)
-    const val LOWER_ALPHA = 0x14 / 255f
+    // 5 percent, not the mockup's 8: on the phone the cyan was too bright (my note 26 Oct)
+    const val LOWER_ALPHA = 0x0D / 255f
 
     /** Shaped for the whole [page], given here: a ShaderBrush is sized by the element that draws,
      *  so a band 400 px tall drew a glow for a page 400 px tall, off screen (found on the phone) */
@@ -234,6 +235,13 @@ fun Modifier.pageBackdrop(fade: Boolean = false, up: Boolean = false): Modifier 
             if (fade) drawRect(Brush.verticalGradient(*fadeStops(up)), blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
         }
 }
+
+/** A screen that fades its own bottom (Todos, Inbox: they pad by barClear(), so nothing scrolls
+ *  under the bar) turns the bar's fade off while it shows: stacked over its own it was a dark strip
+ *  across the glow (my note 26 Oct) */
+@androidx.compose.runtime.Composable
+fun OwnsBarFade(on: Boolean = true) =
+    androidx.compose.runtime.DisposableEffect(on) { J.barFade = !on; onDispose { J.barFade = true } }
 
 /** How much of the page covers a fade, top to bottom: smoothstep, not a straight line. Straight, a
  *  row's outline three quarters in still showed at a quarter, a lone line over the Messages wheel
