@@ -100,13 +100,14 @@ class TabsTest {
     }
     @Test fun aSwipeTicksAsItCrosses() { assertEquals(true to null, Tabs.change(null, 1)) }
 
-    // Firmer than the wheel's soft tick and not a Confirm: a tab moves between choices and
-    // completes nothing (Android's SEGMENT_TICK)
-    @Test fun aTabTicksFirmerThanTheWheel() {
+    // A tab moves between choices and completes nothing, so not a Confirm (Android's
+    // SEGMENT_TICK); the wheel ticks the same since its soft tick could not be felt (my yes 26 Oct)
+    @Test fun aTabTicksAsAChoice() {
         assertEquals(HapticFeedbackType.SegmentTick, Tabs.tick)
-        assertNotEquals(HapticFeedbackType.SegmentFrequentTick, Tabs.tick)
         assertNotEquals(HapticFeedbackType.Confirm, Tabs.tick)
+        assertEquals(Tabs.tick, Wheel.tickType)
     }
+
 
     // The give is sized by a real width, not by the cell (my note 26 Oct: Todos' tabs looked too
     // liquid): a cell as wide as the tab bar's gives all of it, one twice as wide half, so the

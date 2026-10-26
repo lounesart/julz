@@ -4,7 +4,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.drawscope.scale
@@ -77,8 +76,8 @@ object Tabs {
         else -> false to pending
     }
 
-    /** One tick per change: between choices, so not a Confirm, and firmer than the wheel's
-     *  frequent tick (Android's SEGMENT_TICK) */
+    /** One tick per change: between choices, so not a Confirm (Android's SEGMENT_TICK), the same
+     *  as the wheel's (Wheel.tickType) */
     val tick = HapticFeedbackType.SegmentTick
 }
 
@@ -91,8 +90,6 @@ internal class TabLight(start: Float) {
     val sink = Animatable(1f)
     var dir by mutableFloatStateOf(1f)
     var arriving by mutableIntStateOf(-1)
-    /** True while a tap's glide drives the light, over a pager's own position */
-    var gliding by mutableStateOf(false)
     /** The row's give (Tabs.give), set where it is drawn */
     var give = 1f
 
@@ -115,7 +112,7 @@ internal class TabLight(start: Float) {
     }
 
     /** The landing on [to], coming the way [way] (+1 along, -1 back): the squash and the punch.
-     *  A tap's travel ends in it, and a swipe's landing calls it alone */
+     *  A tap's travel ends in it; over a pager, the page's landing calls it alone */
     suspend fun hit(to: Int, way: Float) {
         dir = way
         arriving = to

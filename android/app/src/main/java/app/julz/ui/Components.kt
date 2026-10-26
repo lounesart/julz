@@ -212,10 +212,8 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
     val textSize = rememberRowSize(options, labelStyle, (maxWidth - J.sp1 * (options.size + 1)) / options.size - J.sp1 * 2)
     val still = stillMotion()
     val light = rememberTabLight(selected)
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val pending = remember { arrayOfNulls<Int>(1) }
-    val glide = remember { arrayOfNulls<kotlinx.coroutines.Job>(1) }
     val first = remember { booleanArrayOf(true) }
     LaunchedEffect(selected) {
         if (first[0]) { first[0] = false; return@LaunchedEffect }
@@ -225,9 +223,10 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         if (tick && position != null) haptic.performHapticFeedback(Tabs.tick)
         if (position == null) light.go(selected, options.size - 1, still)
     }
-    val at = { if (position != null && !light.gliding) position() else light.pos.value }
-    // A swipe that comes to rest on a new page lands with the tap's hit (Tabs.landed); a tap's
-    // glide hits by itself
+    // Over a pager the light is the pages' position, for a tap as for a swipe: with a clock of its
+    // own it drifted from the pages and leapt when building a page froze a frame (up to 200 ms,
+    // my note 26 Oct: it looked bouncy). Coming to rest on a new page, it hits (Tabs.landed)
+    val at = position ?: { light.pos.value }
     if (position != null) LaunchedEffect(Unit) {
         val rows = this
         var last = selected
@@ -235,7 +234,7 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
             val k = Tabs.landed(last, p) ?: return@collect
             val way = kotlin.math.sign((k - last).toFloat())
             last = k
-            if (!light.gliding && !still) rows.launch { light.hit(k, way) }
+            if (!still) rows.launch { light.hit(k, way) }
         }
     }
     val presses = remember(options.size) { List(options.size) { androidx.compose.foundation.interaction.MutableInteractionSource() } }
@@ -245,15 +244,6 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         if (i != selected) {
             haptic.performHapticFeedback(Tabs.tick)
             pending[0] = i
-            // Over a pager the tap's glide draws the light while the pages slide on the same timing
-            if (position != null) {
-                glide[0]?.cancel()
-                glide[0] = scope.launch {
-                    light.pos.snapTo(position())
-                    light.gliding = true
-                    try { light.go(i, options.size - 1, still) } finally { light.gliding = false }
-                }
-            }
         }
         onSelect(i)
     }
@@ -316,7 +306,7 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val ticked = remember { arrayOfNulls<Int>(1) }
     LaunchedEffect(middle) {
-        if (Wheel.tick(ticked[0], middle, first[0])) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
+        if (Wheel.tick(ticked[0], middle, first[0])) haptic.performHapticFeedback(Wheel.tickType)
         if (!first[0] && middle != null) ticked[0] = middle
     }
     val pop = remember { androidx.compose.animation.core.Animatable(1f) }
