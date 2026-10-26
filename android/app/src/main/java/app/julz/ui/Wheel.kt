@@ -24,6 +24,24 @@ object Wheel {
         return if (ahead <= count / 2) from + ahead else from + ahead - count
     }
 
+    /** One swipe, one step, round the loop (the chat's wheel shows one word): up or left goes to
+     *  the next, as TabSwipe does, and a swipe shorter than [threshold] stays */
+    fun step(selected: Int, count: Int, d: Float, threshold: Float): Int = when {
+        d <= -threshold -> (selected + 1) % count
+        d >= threshold -> (selected - 1 + count) % count
+        else -> selected
+    }
+
+    /** Where a roll by hand settles: the nearest word, but a short flick that left the start word
+     *  nearest still steps one in its direction ([moved] is how far that word's centre now sits
+     *  from the middle, negative when it went left or up), so no precise swipe is needed */
+    fun settle(start: Int, nearest: Int, moved: Float, threshold: Float): Int = when {
+        nearest != start -> nearest
+        moved <= -threshold -> start + 1
+        moved >= threshold -> start - 1
+        else -> start
+    }
+
     /** What TalkBack says for a word: its place, since the row hides most of itself */
     fun say(word: String, index: Int, count: Int) = "$word, ${index + 1} of $count"
 
