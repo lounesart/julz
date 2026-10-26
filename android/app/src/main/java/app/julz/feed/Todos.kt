@@ -13,11 +13,15 @@ data class TodoList(val name: String, val done: Int, val total: Int, val open: L
 object TodoSnapshot {
     private const val LISTS = "\u241E"
     private const val FIELDS = "\u241F"
-    private const val MAX_TASK = 80
+    private const val MAX_TASK = 80  // the words; the tags Goals reads apart do not count (113b)
+    private const val MAX_LINE = 160
     const val MAX_PICKS = 20
     private val NAME = Regex("\\w[\\w .-]{0,39}")
     private val ID = Regex("[0-9a-f]{64}")
     private val VERSIONS = setOf("v2", "v3")
+
+    /** A task as the laptop lets it travel: words to 80 without the tags, the line to 160 (100, 113b) */
+    fun task(s: String) = s.isNotBlank() && s.length <= MAX_LINE && GoalsData.shownText(s).length <= MAX_TASK
 
     /** The snapshot id the laptop signs a tick against, or null. */
     /** A list's file name as words for the screen (126b): get_job reads Get job. */
@@ -47,7 +51,7 @@ object TodoSnapshot {
                 done < 0 || done > total || count < 0 || doingCount < 0 || count + doingCount < 1 ||
                 first + count + doingCount > f.size) return null
             val tasks = f.drop(first)
-            if (tasks.any { it.isBlank() || it.length > MAX_TASK }) return null
+            if (tasks.any { !task(it) }) return null
             val open = tasks.take(count)
             val doing = tasks.drop(count).take(doingCount)
             val doneItems = tasks.drop(count + doingCount)
@@ -87,11 +91,10 @@ data class DoneDay(val date: String, val items: List<Pair<String, String>>)
 object DoneWeek {
     private const val MAX_DAYS = 7
     private const val MAX_ITEMS = 60
-    private const val MAX_TASK = 80
     private val DATE = Regex("\\d{4}-\\d{2}-\\d{2}")
     private val HIDDEN = Regex("[\\p{Cc}\\p{Cf}\\p{Co}\\p{Cs}\\p{Cn}]")
 
-    private fun plain(s: String) = s.isNotBlank() && s.length <= MAX_TASK && !HIDDEN.containsMatchIn(s)
+    private fun plain(s: String) = TodoSnapshot.task(s) && !HIDDEN.containsMatchIn(s)
 
     fun parse(raw: String): List<DoneDay>? {
         val days = try { JSONObject(raw).getJSONArray("days") } catch (e: Exception) { return null }

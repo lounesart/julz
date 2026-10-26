@@ -1007,6 +1007,13 @@ class TodoSnapshotTest(LocalServerTest):
         req, = self.requests
         self.assertEqual(req.get_header("Title"), "Julz: no open todos")
 
+    def test_tags_do_not_count_toward_the_limit(self):
+        # 113b: the words count, the closed tag shapes the phone reads apart do not
+        task = "w" * 80 + " #goal/ccna-prep #goal/net-plus [est:: 2h] [spent:: 1.5h] [due:: 2026-11-01]"
+        self.run_todos(self.write(self.snap([self.lst("x", 0, 1, [task])])))
+        req, = self.requests
+        self.assertIn(task, req.data.decode())
+
     def test_a_bad_file_posts_nothing(self):
         ok = self.lst("x", 0, 1, ["fine"])
         for name, data in {
@@ -1016,6 +1023,9 @@ class TodoSnapshotTest(LocalServerTest):
             "separator in a task": self.snap([{**ok, "open": ["a \u241e b"]}]),
             "hidden character": self.snap([{**ok, "open": ["a\u202eb"]}]),
             "too long": self.snap([{**ok, "open": ["y" * 81]}]),
+            "81 words with a tag": self.snap([{**ok, "open": ["y" * 81 + " #goal/x"]}]),
+            "a line over 160": self.snap([{**ok, "open": ["y" * 80 + " [in:: " + "a" * 73 + "]"]}]),
+            "a made up tag is words": self.snap([{**ok, "open": ["y" * 75 + " [x:: 1]"]}]),
             "too many lists": self.snap([ok] * 9),
             "too many tasks": self.snap([{**ok, "total": 21, "open": ["t"] * 21}]),
             "too many with those in progress": self.snap([{**ok, "total": 21, "open": ["t"] * 10, "doing": ["u"] * 11}]),

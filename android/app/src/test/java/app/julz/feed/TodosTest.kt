@@ -79,6 +79,18 @@ class TodosTest {
             assertNull(bad, TodoSnapshot.parse(bad))
     }
 
+    /** 113b: the words count to 80; the tag shapes Goals reads apart do not, the line stops at 160 */
+    @Test fun tagsDoNotCountTowardTheLimit() {
+        val tags = " #goal/ccna-prep #goal/net-plus [est:: 2h] [spent:: 1.5h] [due:: 2026-11-01]"  // 155 with 80 words
+        val task = "w".repeat(80) + tags
+        assertEquals(listOf(task), TodoSnapshot.parse("$HEAD${L}week${F}0${F}1${F}1${F}$task")!![0].open)
+        for (bad in listOf("x" + task, "w".repeat(80) + " [in:: " + "a".repeat(73) + "]", "w".repeat(75) + " [x:: 1]",
+                "a".repeat(79) + "\u00A0[est:: 1h]b"))
+            assertNull(bad, TodoSnapshot.parse("$HEAD${L}week${F}0${F}1${F}1${F}$bad"))
+        assertEquals(1, DoneWeek.parse(week(day("2026-10-18", "shop" to task)))!![0].items.size)
+        assertNull(DoneWeek.parse(week(day("2026-10-18", "shop" to "x$task"))))
+    }
+
     @Test fun todoMessagesMayBeLongerThanOthers() {
         val long = (1..20).joinToString(F, prefix = "$HEAD${L}list${F}0${F}20${F}20$F") { "task number $it with some words" }
         val line = "{\"id\":\"aaaaaaaa1\",\"time\":5,\"event\":\"message\",\"title\":\"Julz: 20 open todos\"," +
