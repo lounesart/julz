@@ -356,6 +356,73 @@ class EndTest(Base):
                 self.assertEqual(chat.WINDOWS[chat.MODEL], int(line.split()[2]))
 
 
+def kb(name, *files, kind="collection", doc="chunk words"):
+    """One stored source as Open WebUI 0.11.4 keeps it (probed 26 Oct, 133c)."""
+    return {"source": {"id": "e9f0198c-adbe-401a-a132-23d9c4763623", "name": name, "type": kind},
+            "document": [doc] * len(files), "metadata": [{"source": f, "name": f, "file_id": "x"} for f in files]}
+
+
+class SourcesTest(Base):
+    """133c, threat 165: the notes an answer's retrieval found, as vault paths, names only."""
+
+    def sources(self, sources, role="assistant"):
+        self.setUp()
+        self.listed()
+        h = self.owui.chats[C1]["chat"]["history"]
+        a = h["messages"][h["currentId"]]
+        a["sources"] = sources
+        a["role"] = role
+        status, data, _ = self.req("GET", f"/api/chats/{C1}/last")
+        self.assertEqual(status, 200)  # odd sources are dropped, never a failed request
+        return data.get("sources")
+
+    def test_real_shape(self):
+        got = self.sources([
+            kb("julz-mem", "study__cert-map.md", "study__interview__htb-and-certs.md", "study__cert-map.md"),
+            {"source": {"name": "julz_notes/search_notes"}, "document": ["whole note"],
+             "metadata": [{"source": "julz_notes/search_notes", "parameters": {}}], "tool_result": True},
+            kb("julz-claude", "Claude__cpts__00-cpts-overview.md", "Claude__julz__11-glossary.md")])
+        self.assertEqual(got, ["study/cert-map.md", "study/interview/htb-and-certs.md",
+                               "Claude/cpts/00-cpts-overview.md", "Claude/julz/11-glossary.md"])
+
+    def test_names_only(self):
+        self.setUp()
+        self.listed()
+        h = self.owui.chats[C1]["chat"]["history"]
+        h["messages"][h["currentId"]]["sources"] = [kb("julz-mem", "study__a.md", doc="SECRET CHUNK")]
+        for target in (f"/api/chats/{C1}/last", f"/api/chats/{C1}"):
+            raw = self.app.handle("GET", target, {"Host": HOST, "Authorization": f"Bearer {TOKEN}"}, b"")[2]
+            self.assertNotIn(b"SECRET", raw)
+            self.assertIn(b"study/a.md", raw)
+
+    def test_each_collection_its_own_roots(self):
+        self.assertEqual(self.sources([kb("julz-mem", "daily__2026-10-26.md", "Claude__x.md", "Outbox__r.md",
+                                          "Inbox__claude__s.md", "feedback__f.md", "top.md")]), ["daily/2026-10-26.md"])
+        self.assertIsNone(self.sources([kb("julz-claude", "study__x.md", "daily__y.md", "x.md")]))
+        self.assertIsNone(self.sources([kb("other", "study__x.md")]))
+        self.assertIsNone(self.sources([kb("julz-mem", "study__x.md", kind="file")]))
+
+    def test_odd_names_dropped(self):
+        bad = ["study__..__x.md", "study__a..md", "study__x.txt", "study__x.md\n", "study__x", "study__.x.md",
+               "study__a____x.md", "study__a__b__c__d.md", "study__" + "x" * 200 + ".md", "study__x\u200b.md",
+               "study__x/y.md", "study__x\\y.md", "study__x\ty.md", "study__x\ny.md", "study.md",
+               "study__" + "__".join(["y" * 95] * 3) + ".md", "", 5, None, ["study__x.md"]]
+        self.assertIsNone(self.sources([kb("julz-mem", *bad)]))
+        self.assertEqual(self.sources([kb("julz-mem", "study__a__b__c.md", "study__тест заметка.md")]),
+                         ["study/a/b/c.md", "study/тест заметка.md"])
+
+    def test_odd_shapes_dropped(self):
+        for odd in (None, "x", {}, [None], ["x"], [{"source": "x"}], [{"source": {"type": "collection"}}],
+                    [{"source": {"type": "collection", "name": "julz-mem"}, "metadata": "x"}],
+                    [{"source": {"type": "collection", "name": "julz-mem"}, "metadata": [None, "x", {"name": 3}]}]):
+            self.assertIsNone(self.sources(odd), odd)
+
+    def test_at_most_six_and_not_on_mine(self):
+        many = [f"study__n{i}.md" for i in range(9)]
+        self.assertEqual(self.sources([kb("julz-mem", *many)]), [f"study/n{i}.md" for i in range(6)])
+        self.assertIsNone(self.sources([kb("julz-mem", "study__a.md")], role="user"))
+
+
 class SendTest(Base):
     def completion(self):
         posts = [d for m, p, d in self.owui.calls if p == "/api/chat/completions"]

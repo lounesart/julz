@@ -86,6 +86,12 @@ STOP_STEP = 0.5
 STOP_STILL = 2  # reads in a row with the same words: stopped before its first words
 UPSTREAM_TIMEOUT = 30
 MAX_KNOWN = 5_000
+# Notes found under an answer (133c, threat 165): each collection's upload names back to vault
+# paths, only under the roots sync-knowledge puts in it; names only, never chunk text
+SOURCE_ROOTS = {"julz-mem": ("study", "daily"), "julz-claude": ("Claude",)}
+SOURCE_PART = re.compile(r"\w[\w .-]{0,99}")
+MAX_SOURCES = 6
+MAX_SOURCE_PATH = 200
 
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 ID = re.compile(UUID)
@@ -293,7 +299,28 @@ class App:
             out["error"] = str(err["content"])[:500]
         elif out["done"] and (end := self.end_of(m)):
             out["end"] = end
+        if m["role"] == "assistant" and (found := self.sources_of(m)):
+            out["sources"] = found
         return out
+
+    @staticmethod
+    def sources_of(m: dict) -> list[str]:
+        """The vault paths of the notes retrieval found, first seen first (133c). Read from the
+        stored message, which the web page can change: anything off is dropped, never an error."""
+        found: list[str] = []
+        sources = m.get("sources")
+        for src in sources if isinstance(sources, list) else []:
+            head = src.get("source") if isinstance(src, dict) else None
+            if not isinstance(head, dict) or head.get("type") != "collection":
+                continue
+            roots, metas = SOURCE_ROOTS.get(head.get("name"), ()), src.get("metadata")
+            for meta in metas if roots and isinstance(metas, list) else []:
+                path = source_path(meta.get("name") if isinstance(meta, dict) else None, roots)
+                if path and path not in found:
+                    found.append(path)
+                    if len(found) == MAX_SOURCES:
+                        return found
+        return found
 
     @staticmethod
     def end_of(m: dict) -> str:
@@ -511,6 +538,16 @@ class App:
 
 
 # ---------- files and server ----------
+
+def source_path(name, roots: tuple[str, ...]) -> str | None:
+    """study__interview__x.md to study/interview/x.md (sync-knowledge's upload_name), or None."""
+    if not isinstance(name, str) or len(name) > MAX_SOURCE_PATH or ".." in name or not name.endswith(".md"):
+        return None
+    parts = name[:-3].split("__")
+    if parts[0] not in roots or not 2 <= len(parts) <= 4 or not all(SOURCE_PART.fullmatch(p) for p in parts[1:]):
+        return None
+    return "/".join(parts) + ".md"
+
 
 def read_token(path: Path) -> str:
     token = gate.read_private_file(path, 0o077).decode().strip()

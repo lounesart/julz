@@ -130,6 +130,7 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
         var picked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(listOf<String>()) }
         var inboxPicked by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(listOf<String>()) }
         var notesStart by remember { mutableStateOf<String?>(null) }
+        var notesOpen by remember { mutableStateOf<String?>(null) }  // a note found under an answer (133c)
         // A feedback draft survives leaving the screen and Android rebuilding the app
         var feedbackDraft by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
         var feedbackKind by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0) }
@@ -229,7 +230,8 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
                             else openChat(AskJulz.chatUrl(origins, d, answer))
                         })
                     screen == Screen.CHAT && !showWeb -> NativeChat(origins, app.julz.chat.ChatApi.origin(config.server)!!, config.token,
-                        chatId, { chatId = it }, chatDraft, { chatDraft = it }, openWeb = { webChat = true })
+                        chatId, { chatId = it }, chatDraft, { chatDraft = it }, openWeb = { webChat = true },
+                        openNote = { notesStart = it.substringBeforeLast('/'); notesOpen = it; nav = nav.open(Screen.NOTES) })
                     screen == Screen.CHAT -> androidx.compose.ui.viewinterop.AndroidView({ ctx ->
                         val web = chatHolder[0] ?: ChatWeb.create(ctx, origins, pendingUrl ?: origins.chat).also {
                             chatHolder[0] = it; pendingUrl = null
@@ -240,8 +242,8 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
                     screen == Screen.TOOLS -> ToolsScreen(origins, JulzService.lastContact(context))
                     screen == Screen.TODOS -> TodosScreen(notices, origins, picked, { picked = it }) { nav = nav.back() }
                     screen == Screen.INBOX -> InboxScreen(origins, inboxPicked, { inboxPicked = it },
-                        browse = { notesStart = it; nav = nav.open(Screen.NOTES) }, signed = { inboxSigned = it }) { nav = nav.back() }
-                    screen == Screen.NOTES -> NotesScreen(origins, notesStart) { nav = nav.back() }
+                        browse = { notesStart = it; notesOpen = null; nav = nav.open(Screen.NOTES) }, signed = { inboxSigned = it }) { nav = nav.back() }
+                    screen == Screen.NOTES -> NotesScreen(origins, notesStart, notesOpen) { notesOpen = null; nav = nav.back() }
                     screen == Screen.FEEDBACK -> FeedbackScreen(origins, feedbackDraft, { feedbackDraft = it },
                         feedbackKind, { feedbackKind = it }) { nav = nav.back() }
                     screen == Screen.LICENSES -> LicenseScreen(licenseText(context)) { nav = nav.back() }

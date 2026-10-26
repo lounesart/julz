@@ -197,6 +197,23 @@ class ChatApiTest {
         assertNull(ChatApi.parseMessage("""{"id": "a1", "role": "assistant", "text": "x", "done": true, "time": 1}""")!!.end)
     }
 
+    /** 133c, threat 165: notes found are vault paths checked again here; anything off is dropped */
+    @Test fun notesFoundAreCheckedPaths() {
+        fun found(v: String, role: String = "assistant") =
+            ChatApi.parseMessage("""{"id": "a1", "role": "$role", "text": "x", "done": true, "time": 1, "sources": $v}""")!!.sources
+        assertEquals(listOf("study/cert-map.md", "Claude/cpts/00-cpts-overview.md", "daily/2026-10-26.md", "study/a/b/c.md", "study/тест заметка.md"),
+            found("""["study/cert-map.md", "Claude/cpts/00-cpts-overview.md", "daily/2026-10-26.md", "study/a/b/c.md", "study/тест заметка.md"]"""))
+        val bad = listOf("../x.md", "study/../x.md", "study/a..md", "study/x.txt", "study/x.md\n", "Inbox/claude/s.md",
+            "Outbox/r.md", "feedback/f.md", "/study/x.md", "study.md", "study/.x.md", "study//x.md", "study/a/b/c/d.md",
+            "study/x\u200b.md", "study/x\\y.md", "study/" + "x".repeat(200) + ".md")
+        for (b in bad) assertEquals(b, emptyList<String>(), found(org.json.JSONArray(listOf(b)).toString()))
+        assertEquals(listOf("study/a.md"), found("""["study/a.md", "study/a.md", 5, null, {}]"""))
+        assertEquals((0 until 6).map { "study/n$it.md" }, found(org.json.JSONArray((0 until 9).map { "study/n$it.md" }).toString()))
+        for (v in listOf("\"study/a.md\"", "{}", "null", "1")) assertEquals(v, emptyList<String>(), found(v))
+        assertEquals(emptyList<String>(), found("""["study/a.md"]""", role = "user"))
+        assertEquals(emptyList<String>(), ChatApi.parseMessage("""{"id": "a1", "role": "assistant", "text": "x", "done": true, "time": 1}""")!!.sources)
+    }
+
     @Test fun aSendReplyNeedsTwoGoodIds() {
         val m = "a1000000-0000-4000-8000-000000000000"
         assertEquals(Sent(c1, m), ChatApi.parseSent("""{"chat": "$c1", "message": "$m"}"""))

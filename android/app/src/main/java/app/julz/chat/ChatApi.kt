@@ -11,7 +11,7 @@ data class ChatSummary(val id: String, val title: String, val updated: Long)
 enum class End { LENGTH, STOP }
 
 data class ChatMessage(val id: String, val user: Boolean, val text: String, val done: Boolean, val time: Long, val error: String?,
-                       val end: End? = null)
+                       val end: End? = null, val sources: List<String> = emptyList())
 data class ChatView(val id: String, val title: String, val busy: Boolean, val messages: List<ChatMessage>,
                     val archived: Boolean = false, val mode: String = "")
 data class Sent(val chat: String, val message: String)
@@ -29,6 +29,12 @@ object ChatApi {
     private const val MAX_REPLY = 2_000_000
     private val ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     private val MESSAGE_ID = Regex("[A-Za-z0-9-]{1,64}")
+    // Notes found (133c, threat 165): a vault path as julz-chat builds it, \\w as Python's
+    private val SOURCE = Regex("(?U)(study|daily|Claude)(/\\w[\\w .-]{0,99}){1,3}")
+    const val MAX_SOURCES = 6
+    private const val MAX_SOURCE_PATH = 200
+
+    fun isSource(p: String) = p.length <= MAX_SOURCE_PATH && p.endsWith(".md") && ".." !in p && SOURCE.matches(p)
 
     /** The push server's name on julz-chat's port: https://<name>:8445 */
     fun origin(server: String): String? =
@@ -73,8 +79,11 @@ object ChatApi {
         val id = (m.opt("id") as? String)?.takeIf { MESSAGE_ID.matches(it) } ?: return null
         val error = (m.opt("error") as? String)?.take(MAX_ERROR)
         val end = when (m.opt("end")) { "length" -> End.LENGTH; "stop" -> End.STOP; else -> null }
+        val found = (m.opt("sources") as? JSONArray)?.takeIf { !user }?.let { a ->
+            (0 until a.length()).mapNotNull { (a.opt(it) as? String)?.takeIf(::isSource) }.distinct().take(MAX_SOURCES)
+        } ?: emptyList()
         return ChatMessage(id, user, m.optString("text", "").take(MAX_ANSWER), m.optBoolean("done", true),
-            (m.opt("time") as? Number)?.toLong() ?: 0L, error, end)
+            (m.opt("time") as? Number)?.toLong() ?: 0L, error, end, found)
     }
 
     fun parseView(raw: String): ChatView? {
