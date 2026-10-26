@@ -93,6 +93,19 @@ def main():
             r = dict(zip(mc, row))
             if str(r.get("id", "")).startswith("julz"):
                 print(f"model {r.get('id'):16} access={r.get('access_control')} active={r.get('is_active')}")
+                # Which filters and tools the model runs (202: does julz_language reach julz-chat)
+                try:
+                    meta = json.loads(r.get("meta") or "{}")
+                except (ValueError, TypeError):
+                    meta = {}
+                print(f"      filterIds={meta.get('filterIds')} toolIds={meta.get('toolIds')}")
+
+    # Functions: names and switches only, never their code
+    if "function" in tables:
+        fc = cols(c, "function")
+        for row in c.execute('SELECT * FROM "function"'):
+            r = dict(zip(fc, row))
+            print(f"function {r.get('id'):20} type={r.get('type'):7} active={r.get('is_active')} global={r.get('is_global')}")
 
     for t in tables:
         if "access" in t or "grant" in t:
