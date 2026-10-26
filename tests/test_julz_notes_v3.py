@@ -199,6 +199,52 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
                     {"role": "assistant", "content": "toiletries"}]
         await self.assert_todo_refused("buy bread\ntoiletries", messages, "toiletries")
 
+    # ----- a bare yes to her offer takes my one message before it (241) -----
+
+    @staticmethod
+    def offered(*mine):
+        """My messages with her offer between them, my last one last."""
+        out = []
+        for text in mine:
+            out += [{"role": "assistant", "content": "Want me to save it as a goal?"},
+                    {"role": "user", "content": text}]
+        return out
+
+    async def test_todo_bare_yes_takes_my_message_before(self):
+        # Goals 11, 26 Oct: she offered, "yes, save it" was refused as holding no task
+        for yes_words in ("yes, save it", "Ok, save it please!", "Да, сохрани.", "tak, zapisz",
+                          "ok yes please, do save it"):  # six words, the most
+            name = f"g{len(yes_words)}"
+            out = await self.tools.create_note(
+                name, "complete climbing sesh", kind="todo", __event_call__=yes,
+                __messages__=self.offered("set me a goal for today to complete climbing sesh",
+                                          yes_words))
+            self.assertTrue(out.startswith("Saved"), (yes_words, out))
+
+    async def test_todo_bare_yes_not_her_words_or_a_tools(self):
+        for older in ({"role": "assistant", "content": "complete climbing sesh"},
+                      {"role": "tool", "content": "complete climbing sesh"}):
+            await self.assert_todo_refused(
+                "complete climbing sesh",
+                [{"role": "user", "content": "hi"}, older,
+                 {"role": "user", "content": "yes, save it"}], "complete climbing sesh")
+
+    async def test_todo_bare_yes_not_two_back(self):
+        await self.assert_todo_refused(
+            "complete climbing sesh",
+            self.offered("complete climbing sesh", "hmm, maybe", "yes, save it"),
+            "complete climbing sesh")
+
+    async def test_todo_yes_with_other_words_is_not_bare(self):
+        # Another word, seven yes words or none, and only the last message counts again
+        for last in ("yes, save it for tomorrow", "yes yes ok ok ok save it", "?!"):
+            await self.assert_todo_refused(
+                "complete climbing sesh", self.offered("complete climbing sesh", last),
+                "complete climbing sesh")
+
+    async def test_todo_bare_yes_with_no_message_before_refused(self):
+        await self.assert_todo_refused("go climbing", said("yes, save it"), "go climbing")
+
     async def test_todo_my_words_pass(self):
         # Case, "packing" for "pack", fillers and short words are not made up tasks
         messages = said("Create a to-do list for today: Buy bread, call Mum,\npacking, go to gym")
