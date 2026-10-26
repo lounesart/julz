@@ -78,6 +78,28 @@ def pinned_under_bar(sources: dict[str, str] | None = None) -> list[str]:
     return [name for name, text in sources.items() for m in PINNED.finditer(text) if "barClear()" not in m.group(1)]
 
 
+# A line drawn with border() (254): on Industrial's cut corners Compose paints it through a bitmap the
+# size of the element (a long code block asked for 210 MB, 25 Oct), and a Messages landing spent 6 to
+# 8 ms of GPU on those of its rows. outline() in Components.kt strokes the same line with no bitmap.
+# The border() calls left are the baseline, per file, Theme.kt included; it only shrinks
+BORDER = re.compile(r"\.border\(")
+BORDER_BASELINE = {
+    "Components.kt": 5, "GoalsTab.kt": 3, "History.kt": 1, "InboxScreen.kt": 1, "NativeChat.kt": 4,
+    "OtherScreens.kt": 1, "TodosScreen.kt": 3, "WorkCards.kt": 1,
+}
+
+
+def borders(sources: dict[str, str] | None = None) -> dict[str, int]:
+    if sources is None:
+        sources = {f.name: f.read_text() for f in sorted(UI.glob("*.kt"))}
+    out = {}
+    for name, text in sources.items():
+        n = sum(len(BORDER.findall(l)) for l in text.splitlines() if not l.strip().startswith(("//", "*", "/**")))
+        if n:
+            out[name] = n
+    return out
+
+
 # A text field keeps the keyboard when tapped (228): Shell ends editing on a tap outside every
 # keepsKeyboard() area, so a field without it would lose focus on its own tap and flicker
 FIELD = re.compile(r"\b(?:OutlinedTextField|BasicTextField)\(")
@@ -122,6 +144,14 @@ class DesignLintTest(unittest.TestCase):
         for bad in ('.background(Color(0xFF123456))', ".clip(RoundedCornerShape(12.dp))", "drawRoundRect(c, cornerRadius = CornerRadius(8f))",
                     "style = J.sec.copy(fontSize = 15.sp)", "Box(Modifier.size(44.dp))"):
             self.assertTrue(any(r.search(bad) for r in RULES.values()), bad)
+
+    def test_lines_are_outlines(self):
+        # no new border(), and one replaced by outline() lowers its file's number here
+        self.assertEqual(borders(), BORDER_BASELINE, "\nDraw the line with outline(width, colour, shape) (254)")
+
+    def test_the_border_lint_catches_what_it_should(self):
+        src = "Box(Modifier.border(1.dp, J.line, J.pill))\n// .border( in a comment\nBox(Modifier.outline(1.dp, J.line, J.pill))\n"
+        self.assertEqual(borders({"X.kt": src}), {"X.kt": 1})
 
     def test_pinned_bottoms_clear_the_tab_bar(self):
         found = [f.name for f in sorted(UI.glob("*.kt")) for m in PINNED.finditer(f.read_text())]

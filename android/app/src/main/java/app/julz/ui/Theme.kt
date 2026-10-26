@@ -1,7 +1,6 @@
 package app.julz.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
@@ -179,7 +178,8 @@ fun Modifier.bleed(by: Dp) = this.layout { m, c ->
 
 /** Frosted glass, without the backdrop blur (the background is a still glow, see SECURITY 97). */
 fun Modifier.glass(shape: Shape = J.rL, border: Color = J.line) =
-    this.background(J.surface, shape).border(1.dp, border, shape)
+    // outline(), not border(): a cut corner border is a bitmap the size of the card (254)
+    this.background(J.surface, shape).outline(1.dp, border, shape)
 
 /** Icons drawn from the mockups' own SVG paths, so no icon library is needed. */
 object Icons {
