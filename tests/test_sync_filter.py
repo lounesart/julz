@@ -70,6 +70,18 @@ class SyncFilterTest(unittest.TestCase):
     def test_symlink_out_of_vault_skipped(self):
         self.assertNotIn("study/link.md", self.synced())
 
+    def test_index_notes_not_synced(self):
+        # julz-vault builds them from paths and headings: a list of links, no knowledge (118)
+        (self.vault / "study" / "dns-index.md").write_text("---\nkind: moc\n---\n# dns\n- [[dns]]")
+        (self.vault / "study" / "moc-words.md").write_text("# Words\nkind: moc is how I mark one")
+        self.assertEqual(self.synced(), ["study/dns.md", "study/moc-words.md"])
+
+    def test_translation_beside_its_note_not_synced(self):
+        # One fact three times crowds the top K (118); a note only in Russian still syncs
+        (self.vault / "study" / "dns.ru.md").write_text("# DNS по-русски")
+        (self.vault / "study" / "nft.ru.md").write_text("# Основы nftables")
+        self.assertEqual(self.synced(), ["study/dns.md", "study/nft.ru.md"])
+
 
 class ClaudeSplitTest(unittest.TestCase):
     """Threat 58: kept notes go to julz-claude only, my notes to julz-mem only."""
@@ -99,6 +111,15 @@ class ClaudeSplitTest(unittest.TestCase):
         got = [str(r) for _, r in self.mod.claude_notes(self.claude)]
         # .txt in, .py out, the temp folder of a Keep in progress out, a link to my note out
         self.assertEqual(got, ["net/aaaaaaaa/labs/01.md", "net/aaaaaaaa/notes.txt"])
+
+    def test_kept_translations_not_synced(self):
+        d = self.claude / "net" / "aaaaaaaa"
+        (d / "10-interview.md").write_text("# Interview")
+        (d / "10-interview.pl.md").write_text("# Rozmowa")
+        (d / "10-interview.ru.md").write_text("# Собеседование")
+        got = [str(r) for _, r in self.mod.claude_notes(self.claude)]
+        self.assertIn("net/aaaaaaaa/10-interview.md", got)
+        self.assertFalse([n for n in got if n.endswith((".pl.md", ".ru.md"))])
 
     def test_names_say_who_wrote_it(self):
         rel = Path("net/aaaaaaaa/labs/01.md")
