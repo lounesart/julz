@@ -13,7 +13,7 @@
    "expect": ["elevation"], "source": "stride.md"},
   {"q": "What Python methods do my notes say to use for a safe path check?",
    "expect": ["resolve", "is_relative_to"], "source": "path-traversal.md"},
-  {"q": "In my notes mapping CIA and AAA to Julz, what does julz-actions.log represent?",
+  {"q": "In my notes mapping CIA and AAA to Julz, what does actions.log represent?",
    "expect": ["accounting"], "source": "cia-triad.md"},
   {"q": "When does DNS switch from UDP to TCP, per my notes?",
    "expect": ["zone transfer"], "source": "dns.md"},
