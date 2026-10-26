@@ -26,6 +26,7 @@
   {"q": "now add a line: the lease time is 24 hours",
    "history": [["user", "read my dhcp note"], ["assistant", "Here is DHCP.md: DORA, discover, offer, request, acknowledge. Server port 67, client port 68."]],
    "tool": "append_note", "args": {"note": "dhcp", "text": "24"}},
+  {"q": "add oat milk to my shopping list", "tool": "append_note", "args": {"note": "shop", "text": "oat"}},
   {"q": "in my dhcp note change \"port 68\" to \"port 67\"", "tool": "edit_note", "args": {"note": "dhcp"}},
   {"q": "move the physio note to daily", "tool": "move_note", "args": {"note": "physio", "to": "daily"}},
   {"q": "rename my vpn note to wireguard", "tool": "move_note", "args": {"note": "vpn", "to": "wireguard"}},
@@ -41,5 +42,9 @@
   {"q": "hi, how are you today?", "tool": null},
   {"q": "write me a haiku about firewalls", "tool": null},
   {"q": "what is the difference between TCP and UDP?", "tool": null},
-  {"q": "переведи на английский: доброе утро", "tool": null}
+  {"q": "переведи на английский: доброе утро", "tool": null},
+  {"q": "set me a goal for today: read the DNS chapter", "tool": null},
+  {"q": "yes, save it",
+   "history": [["user", "set me a goal for today: read the DNS chapter"], ["assistant", "Reading the DNS chapter today is a good goal. Shall I save it as a task in your daily list?"]],
+   "tool": "create_note", "args": {"content": "dns"}}
 ]
