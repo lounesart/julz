@@ -27,6 +27,26 @@ class WheelTest {
     @Test fun nearestWorksLeftOfTheMiddle() { assertEquals(1, Wheel.nearest(listOf(1 to 160f, 2 to 260f), 180f)) }
     @Test fun nearestOfNothingIsNull() { assertNull(Wheel.nearest(emptyList(), 180f)) }
 
+    // No word twice in view (my note 26 Oct): one lap round the middle holds each word once, the
+    // other slots show ticks. Two words: the next stands on the right, ticks on the left
+    @Test fun twoWordsShowEachOnce() {
+        assertEquals(0f, Wheel.shown(-1f, 2), 0f)
+        assertEquals(1f, Wheel.shown(0f, 2), 0f)
+        assertEquals(1f, Wheel.shown(1f, 2), 0f)
+        assertEquals(0f, Wheel.shown(2f, 2), 0f)
+    }
+    @Test fun manyWordsChangeNothingInView() {
+        for (d in -2..2) assertEquals("at $d", 1f, Wheel.shown(d.toFloat(), 8), 0f)
+        for (d in -1..1) assertEquals("at $d", 1f, Wheel.shown(d.toFloat(), 3), 0f)
+    }
+    @Test fun aWordAndItsCopyCrossfadeWhileRolling() {
+        // a copy sits a lap away: between them one word's worth shows, never two, never none
+        for (n in 2..5) for (k in 0..40) {
+            val d = -n / 2f - 0.5f + k / 40f
+            assertEquals("n $n d $d", 1f, Wheel.shown(d, n) + Wheel.shown(d + n, n), 0.0001f)
+        }
+    }
+
     @Test fun talkBackHearsThePlaceInTheRow() { assertEquals("Todos, 3 of 8", Wheel.say("Todos", 2, 8)) }
 
     // Messages: All, then only the kinds that have notices, in the usual order
@@ -91,4 +111,10 @@ class WheelTest {
     @Test fun aShortFlickStillStepsOne() { assertEquals(11, Wheel.landing(10, 20f, 100f, 400f, 200f)) }
     @Test fun aShortFlickBackStepsBack() { assertEquals(9, Wheel.landing(10, -20f, 100f, -400f, 200f)) }
     @Test fun aLetGoWithoutSpeedStays() { assertEquals(10, Wheel.landing(10, 5f, 100f, 50f, 200f)) }
+    // Two words: a hard fling went round to the same word and looked like nothing (my test 26 Oct)
+    @Test fun aFlingNeverComesBackRound() {
+        assertEquals(11, Wheel.landing(10, 290f, 100f, 3000f, 200f, count = 2))
+        assertEquals(9, Wheel.landing(10, -290f, 100f, -3000f, 200f, count = 2))
+        assertEquals(13, Wheel.landing(10, 290f, 100f, 3000f, 200f, count = 8))
+    }
 }

@@ -15,6 +15,21 @@ object Wheel {
     const val LOOP = 1000
     fun slots(count: Int) = if (count > 1) count * LOOP else count
 
+    /** How much of a slot's word shows, 1 whole, 0 ticks instead, from [d], its distance from the
+     *  middle in words. One lap round the middle holds each word once, so no word stands twice in
+     *  view (my note 26 Oct: with two words the other one stood on both sides); the next word on
+     *  the right when the count is even. At the lap's edge a word and its copy crossfade over half a
+     *  word while the strip rolls, so nothing pops */
+    fun shown(d: Float, count: Int): Float {
+        if (count < 2) return 1f
+        val half = count / 2f
+        val c = if (count % 2 == 0) 0.5f else 0f
+        val w = 0.5f
+        val low = (d - (c - half - w / 2)) / w
+        val high = ((c + half + w / 2) - d) / w
+        return minOf(low, high).coerceIn(0f, 1f)
+    }
+
     /** The word at slot [slot] */
     fun real(slot: Int, count: Int) = slot % count
 
@@ -48,9 +63,11 @@ object Wheel {
 
     /** The word a fling lands on: [travel] is how far a free decay would carry the middle, less how
      *  far the nearest word already sits off it, in pixels; [size] a word's width with its gap. A
-     *  flick faster than [minVelocity] moves at least one word, so no precise swipe is needed */
-    fun landing(nearest: Int, travel: Float, size: Float, velocity: Float, minVelocity: Float): Int {
-        val steps = Math.round(travel / size)
+     *  flick faster than [minVelocity] moves at least one word, so no precise swipe is needed. It
+     *  never goes further than the other [count] - 1 words: with two, a hard fling came back round
+     *  to the same word and looked like nothing (my test 26 Oct) */
+    fun landing(nearest: Int, travel: Float, size: Float, velocity: Float, minVelocity: Float, count: Int = Int.MAX_VALUE): Int {
+        val steps = Math.round(travel / size).coerceIn(-(count - 1), count - 1)
         return nearest + if (steps == 0 && kotlin.math.abs(velocity) >= minVelocity) (if (velocity > 0) 1 else -1) else steps
     }
 

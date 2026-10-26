@@ -287,8 +287,8 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val fling = remember(state, density) {
-        WheelFling(state, density, android.view.ViewConfiguration.get(context).scaledMinimumFlingVelocity * 4f)
+    val fling = remember(state, density, n) {
+        WheelFling(state, density, android.view.ViewConfiguration.get(context).scaledMinimumFlingVelocity * 4f, n)
     }
     val pillShape = J.pill
     // Counted after the touch slop, so 12 dp more is a short flick, not a precise one
@@ -363,16 +363,30 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             // The same words as Segmented: dark on the filled light, the readable accent on the outline
             val ink = if (!lit) J.muted else if (vertical || J.outline) J.accText else J.bg
             val style = J.cap
+            // Each word once in view (Wheel.shown): a copy a lap away shows quiet ticks in its place,
+            // keeps its width, takes no tap and says nothing to TalkBack
+            val laps = !vertical && loop
+            fun shown() = if (!laps) 1f else Wheel.shown(slot - (wheelPosition(state) ?: slot.toFloat()), n)
+            val real = !laps || Wheel.shown((slot - (middle ?: slot)).toFloat(), n) >= 0.5f
             Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small))
-                .clip(J.pill).clickable(role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
+                .clip(J.pill).clickable(enabled = real, role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
                 .clearAndSetSemantics {
-                    contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
-                    this.selected = i == selected; role = Role.Tab
-                }.padding(start = if (vertical) J.sp5 else J.sp3, end = J.sp3),
+                    if (real) {
+                        contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
+                        this.selected = i == selected; role = Role.Tab
+                    }
+                }.then(if (!laps) Modifier else Modifier.drawBehind {
+                    val a = 1f - shown()
+                    if (a <= 0f) return@drawBehind
+                    val r = J.sp1.toPx() / 2; val gap = J.sp3.toPx()
+                    for (k in -1..1) drawCircle(J.faint, r, androidx.compose.ui.geometry.Offset(size.width / 2 + k * gap, size.height / 2), alpha = a)
+                }).padding(start = if (vertical) J.sp5 else J.sp3, end = J.sp3),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                Text(words[i], style = style.copy(color = ink, fontWeight = J.ts.fontWeight), maxLines = 1, softWrap = false)
-                counts?.getOrNull(i)?.let {
-                    Text(" $it", style = J.monoCap.copy(color = if (lit) ink else J.faint), maxLines = 1, softWrap = false)
+                Row(Modifier.graphicsLayer { alpha = shown() }, verticalAlignment = Alignment.CenterVertically) {
+                    Text(words[i], style = style.copy(color = ink, fontWeight = J.ts.fontWeight), maxLines = 1, softWrap = false)
+                    counts?.getOrNull(i)?.let {
+                        Text(" $it", style = J.monoCap.copy(color = if (lit) ink else J.faint), maxLines = 1, softWrap = false)
+                    }
                 }
             }
         }
@@ -393,6 +407,17 @@ private fun wheelMiddle(state: androidx.compose.foundation.lazy.LazyListState): 
         (info.viewportStartOffset + info.viewportEndOffset) / 2f)
 }
 
+/** Where the middle stands in slots, between two words while the strip rolls; null when empty */
+private fun wheelPosition(state: androidx.compose.foundation.lazy.LazyListState): Float? {
+    val info = state.layoutInfo
+    val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+    val seen = info.visibleItemsInfo
+    fun centre(i: androidx.compose.foundation.lazy.LazyListItemInfo) = i.offset + i.size / 2f
+    val a = seen.lastOrNull { centre(it) <= mid } ?: return seen.firstOrNull()?.index?.toFloat()
+    val b = seen.firstOrNull { it.index == a.index + 1 } ?: return a.index.toFloat()
+    return a.index + (mid - centre(a)) / (centre(b) - centre(a))
+}
+
 /** How far slot [i]'s centre sits from the middle, negative before it; null when out of view */
 private fun wheelOffset(state: androidx.compose.foundation.lazy.LazyListState, i: Int): Float? {
     val info = state.layoutInfo
@@ -405,7 +430,7 @@ private fun wheelOffset(state: androidx.compose.foundation.lazy.LazyListState, i
  *  finger's own speed, as Compose's snap fling does; no stop and second glide. It lands on a word
  *  in view, so the distance is exact */
 private class WheelFling(val state: androidx.compose.foundation.lazy.LazyListState,
-                         val density: androidx.compose.ui.unit.Density, val minVelocity: Float) :
+                         val density: androidx.compose.ui.unit.Density, val minVelocity: Float, val count: Int) :
     androidx.compose.foundation.gestures.FlingBehavior {
     override suspend fun androidx.compose.foundation.gestures.ScrollScope.performFling(initialVelocity: Float): Float {
         val info = state.layoutInfo
@@ -416,7 +441,7 @@ private class WheelFling(val state: androidx.compose.foundation.lazy.LazyListSta
         val near = seen.minBy { kotlin.math.abs(centre(it) - mid) }
         val step = if (seen.size > 1) (centre(seen.last()) - centre(seen.first())) / (seen.size - 1) else near.size.toFloat()
         val travel = androidx.compose.animation.splineBasedDecay<Float>(density).calculateTargetValue(0f, initialVelocity)
-        val to = Wheel.landing(near.index, travel - (centre(near) - mid), step, initialVelocity, minVelocity)
+        val to = Wheel.landing(near.index, travel - (centre(near) - mid), step, initialVelocity, minVelocity, count)
             .coerceIn(seen.first().index, seen.last().index)
         val delta = centre(seen.first { it.index == to }) - mid
         var done = 0f

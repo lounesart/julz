@@ -55,7 +55,9 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   (`Segmented`) pick a destination and sit in a glass track at 48. A filter or a view inside a
   destination is one level down, like h2 under h1: the wheel (`WheelPicker`) has no track, is
   `small` (36) tall like `SmallPill`, and shows the picked word under the same light in 14.
-  It loops, so a word stands on both sides, and a short flick steps one word. In the chat box
+  It loops, and each word stands once in view: where only a copy would stand, quiet ticks
+  keep the side from looking empty (two words: the next on the right, ticks on the left). A short
+  flick steps one word, and a fling never comes back round to the same word. In the chat box
   it shows one word as tall as the send button, and a swipe up or down steps it.
 - **Wheels sit under the thumb** (257, after iOS Photos): a list's filter wheel floats at the
   bottom, right over the tab bar, on the dark end of a fade as soft as the bar's own. The list's
