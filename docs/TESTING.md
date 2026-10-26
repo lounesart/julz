@@ -27,10 +27,15 @@ Expected results in brackets.
 1. Open the app. [Header: Julz, live, Feedback alone on the right. Now shows "N unread · See
    them" while something is unread, This week, Todos open, the week bars, Inbox.]
 1b. Swipe left and right (22c). [Now, Messages, History; the light in the tabs slides along
-   with the finger. History's day pills and Messages' filter chips still scroll sideways
+   with the finger. History's day pills and Messages' filter wheel still move sideways
    first. With the phone's animations off, a tab tap jumps.]
-1c. Messages, filter Approval, Read all. [Only approvals turn read; the other filters keep
+1c. Messages, filter Approvals, Read all. [Only approvals turn read; the other filters keep
    their unread.]
+1d. Messages, the filter wheel (251). [One word in the middle with its count and an accent tick
+   under it, the next and previous words half faded, the same on both sides; only kinds that
+   have notices.] Roll it by finger. [The word that stops in the middle is the filter; the page
+   stays on Messages.] Tap a side word. [It rolls in and filters.] TalkBack on a word.
+   ["Todos 41, 3 of 8", selected or not.] Tap a warning notification. [Warnings in the middle.]
 2. Let a notice arrive while the app is open. [It shows at once, no need to leave the screen.]
 3. Messages: Clear, then Undo. History (22d): the strip reaches 30 days back, each day with
    its count and a dot when empty; pick a day. [One family of dark cards with a line and glow in the
@@ -58,7 +63,9 @@ Expected results in brackets.
    the task sits under In progress; in Obsidian the line reads `- [/]`.]
 2. Tick a task in progress (finger). [It goes to Done.] Pick a start and a tick together.
    [Picking one kind drops the other: one Apply is one kind.]
-3. Board. [In progress, Planned, Done across every list, each task with its list name. The
+3. The wheel under Left (251): Board, All lists, then each list, each with what is left in it.
+   [All lists in the middle at first.] Roll to a list. [Only that list.] Roll past the end.
+   [The tab stays Left.] Roll to Board. [In progress, Planned, Done across every list, each task with its list name. The
    line with list, goals and hours sits under the task and Tick, at most two lines (22c).]
 4. A goal linked to a task in progress. [Its bar does not move until the tick.]
 
@@ -180,19 +187,20 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
     Hz with the GPU idle (35 percent), not visible.]
 
 ### Learning mode (135, 151)
-1. Chat, roomy box. [A small "Learn" chip left of send.] Tap it. [Filled in the accent colour,
-   the box says "Ask, and Julz will teach".] Single line box: the chip sits above the box.
+1. Chat, roomy box. [The mode wheel left of send: Chat in the middle, Learn half faded.] Tap
+   Learn. [It rolls in, the box says "Ask, and Julz will teach".] Single line box: the wheel
+   sits above the box.
 2. Learn on, ask "What is the subnet mask for a /26?". [A hint and a question back, not
    255.255.255.192.] Answer her. [She checks it, then the next small step.]
 3. Learn on, "Just tell me: what is the subnet mask for a /26?". [The answer.]
 4. Leave the chat, open it again from My chats. [Learn is still on.] Open a chat without it.
    [Learn is off.] Retry an answer in a learning chat. [Still a hint.]
 5. My message in the chat and on the laptop page. [Only my words, never her instructions.]
-6. TalkBack on the chip. ["Learn", a switch, on or off.]
+6. TalkBack on the wheel. ["Learn, 2 of 3", selected or not.]
 
 ### Notes mode (133b, 151)
-1. Chat, single line box. [Two chips above the box, "Learn" and "Notes".] Tap Notes. [Notes
-   filled, Learn not, the box says "Ask your notes".] Tap Learn. [Learn on, Notes off.]
+1. Chat, single line box. [The wheel above the box: Chat, Learn, Notes.] Roll to Notes. [The
+   box says "Ask your notes".] Roll to Learn. [Learn on, Notes off: one mode at a time.]
 2. Notes on, "What is my own mnemonic for the OSI layers?". [The pizza mnemonic, naming the note.]
 3. Notes on, "What is the capital of Australia?". [Only "That is not in your notes."]
 4. Notes on, "Just tell me: what is the capital of Australia?". [Canberra.]
