@@ -69,6 +69,12 @@ KINDS = ("todo", "thought", "concept", "lab")
 # Words a task may add to mine without making it up (threat 140)
 FILLERS = {"a", "an", "to", "of", "at", "in", "on", "my", "the", "and", "for", "with", "from", "into",
            "your", "our", "then"}
+# A bare yes to her offer: my one message before it then names the tasks (241, threat 140)
+YES_WORDS = {"yes", "yeah", "yep", "yup", "ok", "okay", "sure", "please", "pls", "fine", "go",
+             "ahead", "do", "it", "that", "this", "save", "add", "sounds", "good", "right",
+             "да", "ага", "ок", "давай", "конечно", "пожалуйста", "это", "сохрани", "сохраняй",
+             "добавь", "tak", "dobra", "dobrze", "jasne", "proszę", "to", "zapisz", "dodaj"}
+MAX_YES = 6
 # A new Inbox note is the one write with no click, so my last message must ask for it (threat 161)
 SAVE_WORD = re.compile(
     r"\b(?:save[sd]?|saving|(?:make|take|create|new)\s+(?:a\s+)?(?:new\s+)?note|"
@@ -1065,16 +1071,22 @@ class Tools:
                        "list.\n" + text)
 
     @staticmethod
-    def _my_last_message(messages) -> str:
-        """The user's own last message: tool results and notes never sit there (threat 85)."""
+    def _my_messages(messages) -> list:
+        """The user's own messages, last first: tool results and notes never sit there (threat 85)."""
+        mine = []
         for m in reversed(messages or []):
             if isinstance(m, dict) and m.get("role") == "user":
                 content = m.get("content")
                 if isinstance(content, list):
                     content = " ".join(c.get("text", "") for c in content
                                        if isinstance(c, dict) and c.get("type") == "text")
-                return content if isinstance(content, str) else ""
-        return ""
+                mine.append(content if isinstance(content, str) else "")
+        return mine
+
+    @classmethod
+    def _my_last_message(cls, messages) -> str:
+        """The user's own last message (threat 85)."""
+        return (cls._my_messages(messages) or [""])[0]
 
     @classmethod
     def _my_last_words(cls, messages) -> str:
@@ -1085,8 +1097,13 @@ class Tools:
     def _made_up(cls, tasks: list, messages) -> list:
         """Tasks with a word that is not in my last message, or with no word at all (threat
         140). A word matches mine exactly, or by its first four letters ("packing" for
-        "pack"); a short one only exactly, so "rm -rf" is never mine by accident."""
-        mine = set(re.findall(r"[^\W\d_]+", cls._my_last_message(messages).lower()))
+        "pack"); a short one only exactly, so "rm -rf" is never mine by accident. After a bare
+        yes my one message before it counts too, so a task she offered can be saved (241)."""
+        said = cls._my_messages(messages)[:2]
+        last = re.findall(r"[^\W\d_]+", (said or [""])[0].lower())
+        if not (last and len(last) <= MAX_YES and all(w in YES_WORDS for w in last)):
+            said = said[:1]
+        mine = set(re.findall(r"[^\W\d_]+", " ".join(said).lower()))
         stems = {w[:4] for w in mine if len(w) >= 4}
 
         def said(w):
