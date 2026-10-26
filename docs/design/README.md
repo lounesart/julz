@@ -124,6 +124,12 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
 - At most one glowing button per screen, for the action that matters there.
 - Motion uses the HyDE standard curve, cubic-bezier(0.05, 0.9, 0.1, 1.05), about 0.7 s.
   All of it stops when the phone asks for less motion.
+- **Two weights of motion** (258), after Material 3's standard and expressive schemes. The
+  wheels are light: they stretch, magnify and pop. The tabs and the tab bar are firm (`Tabs`):
+  the light keeps its shape, slides on a fully damped spring (stiffness 700, Material's standard
+  spatial, no overshoot), sinks to 96 percent under a finger, and each word takes the light's ink
+  as the light covers it. A landing ticks once, `SegmentTick`, firmer than the wheel's frequent
+  tick and never `Confirm`, as a tab completes nothing.
 - Text contrast is at least 4.5 to 1, and no state is shown by colour alone.
 - Layouts reflow from 360 to 430 dp, in landscape and with text at 200 percent.
 

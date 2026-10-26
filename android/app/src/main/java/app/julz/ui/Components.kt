@@ -41,6 +41,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
@@ -198,7 +200,9 @@ fun IconButton(icon: ImageVector, description: String?, fill: Color, tint: Color
 
 /** Tabs in a pill. With [position] (a pager's page plus its offset) the light slides along with a
  *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. Without one it
- *  glides to a tapped option as the tab bar does (320 ms, J.ease), and jumps with animations off. */
+ *  glides to a tapped option as the tab bar does (Tabs.slide), and jumps with animations off. The
+ *  primary level's motion (258): the light keeps its shape, sinks under a finger, each word takes
+ *  its ink as the light covers it, and a landing ticks once. */
 @Composable
 fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = null, modifier: Modifier = Modifier,
               onSelect: (Int) -> Unit) {
@@ -206,10 +210,14 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
     val labelStyle = J.sec.copy(fontWeight = J.ts.fontWeight)
     val pillShape = J.pill
     val textSize = rememberRowSize(options, labelStyle, (maxWidth - J.sp1 * (options.size + 1)) / options.size - J.sp1 * 2)
+    val still = stillMotion()
     val glide by androidx.compose.animation.core.animateFloatAsState(selected.toFloat(),
-        if (stillMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(320, easing = J.ease),
-        label = "segment")
+        if (still) androidx.compose.animation.core.snap() else Tabs.slide, label = "segment")
     val at = position ?: { glide }
+    val presses = remember(options.size) { List(options.size) { androidx.compose.foundation.interaction.MutableInteractionSource() } }
+    val held = presses.map { it.collectIsPressedAsState().value }.any { it }
+    val sink by androidx.compose.animation.core.animateFloatAsState(if (held && !still) Tabs.PRESS else 1f, Tabs.press, label = "sink")
+    TabLanding(at)
     Row(Modifier.fillMaxWidth().glass(J.pill).padding(J.sp1).drawBehind {
             val gap = J.sp1.toPx()
             val w = (size.width - gap * (options.size - 1)) / options.size
@@ -218,24 +226,45 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
             // The light in the pill token's own shape, round or cut (22d: it stayed round with Industrial)
             val light = androidx.compose.ui.geometry.Size(w, size.height)
             translate(left = (w + gap) * at()) {
-                val o = pillShape.createOutline(light, layoutDirection, this)
-                if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-                else drawOutline(o, J.text)
+                scale(sink, androidx.compose.ui.geometry.Offset(w / 2, size.height / 2)) {
+                    val o = pillShape.createOutline(light, layoutDirection, this)
+                    if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                    else drawOutline(o, J.text)
+                }
             }
         },
         horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
         options.forEachIndexed { i, label ->
             val on = i == selected
-            // The words light up as the light passes halfway, not on the first frame (223c)
-            val lit = if (position == null) kotlin.math.abs(glide - i) < 0.5f else on
+            // The word takes the light's ink as the light covers it (Tabs.ink), read while drawing
+            val ink = if (J.outline) J.accText else J.bg
             Box(Modifier.weight(1f).heightIn(min = J.tap).clip(J.pill)
-                .clickable(role = Role.Tab) { onSelect(i) }
+                .clickable(presses[i], indication = androidx.compose.foundation.LocalIndication.current, role = Role.Tab) { onSelect(i) }
                 .semantics { this.selected = on }, contentAlignment = Alignment.Center) {  // TalkBack says which is on (223b)
-                Text(label, style = labelStyle.copy(color = if (!lit) J.muted else if (J.outline) J.accText else J.bg,
-                    fontSize = textSize), maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1))
+                androidx.compose.foundation.text.BasicText(label, style = labelStyle.copy(fontSize = textSize),
+                    color = { androidx.compose.ui.graphics.lerp(J.muted, ink, Tabs.ink(at(), i)) },
+                    maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1))
             }
         }
     }
+    }
+}
+
+/** One firm tick when the primary level's light lands on a tab ([at], in cells), whether a tap
+ *  glided it there or a swipe carried it; none for the first place it stands (Tabs.tick) */
+@Composable
+internal fun TabLanding(at: () -> Float) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val read by androidx.compose.runtime.rememberUpdatedState(at)
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        var landed = kotlin.math.round(read())
+        androidx.compose.runtime.snapshotFlow { read() }.collect { p ->
+            val near = kotlin.math.round(p)
+            if (kotlin.math.abs(p - near) < 0.01f && near != landed) {
+                landed = near
+                haptic.performHapticFeedback(Tabs.tick)
+            }
+        }
     }
 }
 

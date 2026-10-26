@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.mutableIntStateOf
@@ -332,14 +334,20 @@ internal fun TabBar(section: Screen, waiting: Int, vertical: Boolean, feed: () -
         else -> 0  // the tab of the place the path started from; Todos, Inbox, Notes and Feedback are the Feed's
     }
     val still = stillMotion()
+    // The primary level's motion (258, Tabs): a firm slide, a sink under the finger, the ink
+    // moving with the light and one tick on landing
     val slide by androidx.compose.animation.core.animateFloatAsState(index.toFloat(),
-        if (still) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(320, easing = J.ease), label = "tab")
+        if (still) androidx.compose.animation.core.snap() else Tabs.slide, label = "tab")
+    val presses = remember { List(TAB_NAMES.size) { androidx.compose.foundation.interaction.MutableInteractionSource() } }
+    val held = presses.map { it.collectIsPressedAsState().value }.any { it }
+    val sink by androidx.compose.animation.core.animateFloatAsState(if (held && !still) Tabs.PRESS else 1f, Tabs.press, label = "sink")
+    TabLanding { slide }
     val tabs = @Composable { m: Modifier ->
-        Tab(Icons.feed, "Feed", index == 0, 0, m, labelSize, feed)
-        Tab(Icons.chat, "Chat", index == 1, 0, m, labelSize, chat)
-        Tab(Icons.approve, "Approve", index == 2, waiting, m, labelSize, approve)
-        Tab(Icons.links, "Tools", index == 3, 0, m, labelSize, tools)
-        Tab(Icons.setup, "Settings", index == 4, 0, m, labelSize, settings)
+        Tab(Icons.feed, "Feed", index == 0, Tabs.ink(slide, 0), presses[0], 0, m, labelSize, feed)
+        Tab(Icons.chat, "Chat", index == 1, Tabs.ink(slide, 1), presses[1], 0, m, labelSize, chat)
+        Tab(Icons.approve, "Approve", index == 2, Tabs.ink(slide, 2), presses[2], waiting, m, labelSize, approve)
+        Tab(Icons.links, "Tools", index == 3, Tabs.ink(slide, 3), presses[3], 0, m, labelSize, tools)
+        Tab(Icons.setup, "Settings", index == 4, Tabs.ink(slide, 4), presses[4], 0, m, labelSize, settings)
     }
     val shape = J.pill
     // The light, drawn behind the tabs at the sliding position: one tab's cell in the pill shape
@@ -351,9 +359,11 @@ internal fun TabBar(section: Screen, waiting: Int, vertical: Boolean, feed: () -
         val at = if (vertical) androidx.compose.ui.geometry.Offset(0f, (cell.height + gap) * slide)
             else androidx.compose.ui.geometry.Offset((cell.width + gap) * slide, 0f)
         translate(at.x, at.y) {
-            val o = shape.createOutline(cell, layoutDirection, this)
-            if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-            else drawOutline(o, J.text)
+            scale(sink, androidx.compose.ui.geometry.Offset(cell.width / 2, cell.height / 2)) {
+                val o = shape.createOutline(cell, layoutDirection, this)
+                if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                else drawOutline(o, J.text)
+            }
         }
     }
     if (vertical) Box(Modifier.fillMaxHeight().navigationBarsPadding().padding(J.sp2), contentAlignment = Alignment.Center) {
@@ -374,12 +384,13 @@ internal fun TabBar(section: Screen, waiting: Int, vertical: Boolean, feed: () -
 private val TAB_NAMES = listOf("Feed", "Chat", "Approve", "Tools", "Settings")
 
 @Composable
-private fun Tab(icon: ImageVector, label: String, on: Boolean, badge: Int, modifier: Modifier,
+private fun Tab(icon: ImageVector, label: String, on: Boolean, cover: Float,
+                press: androidx.compose.foundation.interaction.MutableInteractionSource, badge: Int, modifier: Modifier,
                 labelSize: androidx.compose.ui.unit.TextUnit, onClick: () -> Unit) {
     // A long press shows the name large for a moment (22f, the large content viewer pattern):
     // a shrunk label or a tab without its name never hides what the tab is
     var named by remember { mutableStateOf(false) }
-    Column(modifier.heightIn(min = 56.dp).clip(J.pill).combinedClickable(role = Role.Tab, onClickLabel = label, onClick = onClick,
+    Column(modifier.heightIn(min = 56.dp).clip(J.pill).combinedClickable(press, androidx.compose.foundation.LocalIndication.current, role = Role.Tab, onClickLabel = label, onClick = onClick,
         onLongClickLabel = "Show the name", onLongClick = { named = true }),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         // inside the tab, so the bubble stands over its own tab; solid, so nothing shows through
@@ -395,7 +406,8 @@ private fun Tab(icon: ImageVector, label: String, on: Boolean, badge: Int, modif
         }
         // On the light: dark on a filled one, the accent on an outlined one; off it muted, not
         // faint, so an icon keeps 3:1 against the bar (WCAG 1.4.11)
-        val ink = if (!on) J.muted else if (J.outline) J.accText else J.bg
+        // as much as the light covers the tab (Tabs.ink), so the colour travels with it
+        val ink = androidx.compose.ui.graphics.lerp(J.muted, if (J.outline) J.accText else J.bg, cover)
         Box {
             Icon(icon, contentDescription = label, tint = ink, modifier = Modifier.size(24.dp))
             // The badge in the theme's shape with a ring of the bar, so it reads over the icon
