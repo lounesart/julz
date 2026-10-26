@@ -283,6 +283,10 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 22. Tailscale off on the phone, send a message (128). ["The phone cannot find the laptop. Is
     Tailscale running on the phone?", the words still in the field.] Tailscale back on, send again.
     [It goes.] After 10 idle minutes, a message: ["Thinking" for up to about 35 s, never an error.]
+23. Ask "What is CPTS?" (133c). [Once the answer is done, "Notes found" under it with up to six
+    chips, a Claude note as "Claude · name"; none while she writes.] Tap a chip. [That note opens
+    in Notes; back returns to the chat.] Ask "hi". [No chips.] Rename a found note in Obsidian,
+    wait for the notes list to update, tap its chip. ["That note is not in your notes list now."]
 
 ### Tab bar (22i)
 1. Any screen. [A glass capsule with margins, in the card shape (cut on Industrial); the active tab

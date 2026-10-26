@@ -223,4 +223,14 @@ class ScreenshotTest {
                 "```text\nplain 42 \"stays\" # plain\n```", links = true))
         }
     }
+
+    // Notes found under an answer (133c): compact chips that wrap, a Claude note marked, a long name cut
+    @Test fun notesFound() = paparazzi.snapshot {
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.bg)
+            .padding(J.gutter)) {
+            NotesFound(listOf("study/cert-map.md", "study/interview/htb-and-certs.md", "Claude/cpts/00-cpts-overview.md",
+                "daily/2026-10-26.md", "study/network-plus/" + "subnetting and vlsm practice ".repeat(3).trim() + ".md",
+                "Claude/julz/11-glossary.md")) {}
+        }
+    }
 }

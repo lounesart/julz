@@ -150,7 +150,7 @@ private sealed interface ChatsSheet {
  *  phone keeps them in memory only. [chatId] null is a new chat. */
 @Composable
 fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?, setChat: (String?) -> Unit,
-               draft: String, setDraft: (String) -> Unit, openWeb: () -> Unit) {
+               draft: String, setDraft: (String) -> Unit, openWeb: () -> Unit, openNote: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -397,7 +397,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
                     // No fade out: a removed row stayed drawn over its place while it faded, and "Thinking"
                     // lay on the first lines of the answer (found 19 Oct)
                     Box((if (still) Modifier else Modifier.animateItem(fadeOutSpec = null)).arrive(m.time >= openedAt && !still)) {
-                    if (m.user) Mine(m) { menu = m } else Answer(m, context, { menu = m }, retry = {
+                    if (m.user) Mine(m) { menu = m } else Answer(m, context, { menu = m }, openNote, retry = {
                         val vv = view
                         if (vv != null && ChatLogic.canRetry(vv, m)) start(ChatApi.retry(vv.id), "{}")
                     }) {
@@ -699,7 +699,7 @@ private fun Mine(m: ChatMessage, hold: () -> Unit) {
  *  hold it for more. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, retry: () -> Unit, copy: () -> Unit) {
+private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, open: (String) -> Unit, retry: () -> Unit, copy: () -> Unit) {
     Column(Modifier.fillMaxWidth().combinedClickable(onLongClickLabel = "More", onLongClick = hold, onClick = {}),
         verticalArrangement = Arrangement.spacedBy(J.sp3)) {
         if (m.text.isNotEmpty()) {
@@ -718,6 +718,9 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, retry: ()
             Text("Retry", style = J.sec.copy(color = J.accText, fontWeight = FontWeight(700)),
                 modifier = Modifier.heightIn(min = J.tap).clickable(role = Role.Button, onClick = retry).padding(horizontal = J.sp2, vertical = J.sp3))
         } }
+        // 133c, threat 165: the notes retrieval found, drawn by the app outside the answer's text;
+        // found, not used, so the words claim no more
+        if (m.done && m.sources.isNotEmpty()) NotesFound(m.sources, open)
         // Starts at the answer's text edge; the tap area reaches right, not left (found 18 Oct)
         androidx.compose.animation.AnimatedVisibility(m.done && m.text.isNotEmpty(), enter = androidx.compose.animation.fadeIn(
             androidx.compose.animation.core.tween(300, delayMillis = 150))) { Row(Modifier.heightIn(min = J.tap).clip(J.pill)
@@ -789,6 +792,28 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
             field(Modifier.weight(1f).padding(vertical = 14.dp))
             sendButton(Modifier.padding(vertical = inset))
+        }
+    }
+}
+
+/** Notes found under an answer (133c): a tap opens the note in the notes browser. Compact as
+ *  the mode chips; a Claude note says so, as its name does in retrieval (58). */
+@Composable
+internal fun NotesFound(paths: List<String>, open: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(J.sp2)) {
+        Text("Notes found", style = J.cap.copy(color = J.muted))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(J.sp2),
+            verticalArrangement = Arrangement.spacedBy(J.sp2)) {
+            for (p in paths) {
+                val name = p.substringAfterLast('/').removeSuffix(".md")
+                Row(Modifier.heightIn(min = 32.dp).clip(J.pill).border(1.dp, J.line, J.pill).background(J.raise)
+                    .clickable(role = Role.Button, onClickLabel = "Open the note") { open(p) }
+                    .padding(horizontal = J.sp3), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (p.startsWith("Claude/")) "Claude \u00b7 $name" else name,
+                        style = J.cap.copy(color = J.text, fontWeight = FontWeight(600)), maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+            }
         }
     }
 }

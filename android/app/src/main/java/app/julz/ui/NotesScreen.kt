@@ -36,9 +36,11 @@ import kotlinx.coroutines.withContext
 
 /** The notes browser (SECURITY.md 118, 148), read only: folders, the notes in one, a note's text.
  *  The list has no text; a note's text is asked for by its id when it opens (206). Back goes up
- *  a level, then leaves. The text lives only in memory while this screen is open. */
+ *  a level, then leaves. The text lives only in memory while this screen is open. [open] is a
+ *  note found under an answer (133c): opened by its id from the list, never by its path, and
+ *  back from it leaves. */
 @Composable
-fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
+fun NotesScreen(origins: Origins, start: String?, open: String? = null, back: () -> Unit) {
     var all by remember { mutableStateOf<List<VaultFolder>?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var reloads by remember { mutableIntStateOf(0) }
@@ -47,6 +49,8 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
     var tag by remember { mutableStateOf<String?>(null) }  // the notes with a tapped #tag (212)
     var text by remember { mutableStateOf<String?>(null) }
     var noteProblem by remember { mutableStateOf<String?>(null) }
+    var direct by remember { mutableStateOf<VaultNote?>(null) }
+    var missing by remember { mutableStateOf(false) }
     LaunchedEffect(reloads) {
         val reply = withContext(Dispatchers.IO) {
             try { ApproverApi.call(origins, ApproverApi.NOTES) } catch (e: Exception) { 0 to "" }
@@ -54,6 +58,10 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
         val parsed = if (reply.first == 200) VaultNotes.parse(reply.second) else null
         if (parsed != null) { all = parsed; problem = null }
         else problem = unreadable(reply.first, "Too many notes to show at once")
+        if (parsed != null && open != null && direct == null) {
+            direct = parsed.flatMap { it.notes }.firstOrNull { it.note == open }
+            if (direct != null) note = direct else missing = true
+        }
     }
     LaunchedEffect(note) {
         text = null; noteProblem = null
@@ -72,6 +80,7 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
     fun up() {
         val f = folder
         when {
+            note != null && note == direct -> back()
             note != null -> note = null
             tag != null -> tag = null
             f != null && f != start -> folder = if ('/' in f) f.substringBeforeLast('/') else null
@@ -97,6 +106,8 @@ fun NotesScreen(origins: Origins, start: String?, back: () -> Unit) {
         when {
             problem != null -> Text(problem!!, style = J.sec)
             all == null -> Text("Asking the laptop", style = J.sec)
+            missing && n == null -> Text("That note is not in your notes list now. It may have moved since Julz read it.",
+                style = J.sec)
             n != null && text == null -> Text(noteProblem ?: "Asking the laptop", style = J.sec)
             n != null -> {
                 // Obsidian formatting in the app's style, nothing fetched (119); a wikilink opens a note
