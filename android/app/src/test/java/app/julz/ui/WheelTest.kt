@@ -39,4 +39,11 @@ class WheelTest {
         assertTrue(Wheel.MODES.drop(1).all { it.first in ChatApi.MODES })
         assertEquals(ChatApi.MODES, Wheel.MODES.drop(1).map { it.first }.toSet())
     }
+
+    // The wheel loops (no empty side): a pick rolls to the nearest copy of the word, never far round
+    @Test fun closestCopyAhead() { assertEquals(1002, Wheel.closest(1000, 2, 5)) }
+    @Test fun closestCopyBehindAcrossTheSeam() { assertEquals(999, Wheel.closest(1000, 4, 5)) }
+    @Test fun closestCopyIsItselfWhenThere() { assertEquals(1003, Wheel.closest(1003, 3, 5)) }
+    @Test fun realIndexOfACopy() { assertEquals(4, Wheel.real(999, 5)) }
+    @Test fun oneWordDoesNotLoop() { assertEquals(1, Wheel.slots(1)); assertEquals(3 * Wheel.LOOP, Wheel.slots(3)) }
 }
