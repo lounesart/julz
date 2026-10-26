@@ -41,6 +41,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithContent
@@ -197,8 +199,10 @@ fun IconButton(icon: ImageVector, description: String?, fill: Color, tint: Color
 }
 
 /** Tabs in a pill. With [position] (a pager's page plus its offset) the light slides along with a
- *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. Without one it
- *  glides to a tapped option as the tab bar does (320 ms, J.ease), and jumps with animations off. */
+ *  swipe; it is read while drawing, so a swipe redraws the pill and nothing else. A tap moves it
+ *  as the tab bar does, with weight (258, Tabs): it leans, travels, hits its tab and squashes, the
+ *  word punches in, a finger sinks it; each word takes its ink as the light covers it. A tap ticks
+ *  at once, a swipe as it crosses into a page. It jumps with animations off. */
 @Composable
 fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = null, modifier: Modifier = Modifier,
               onSelect: (Int) -> Unit) {
@@ -206,33 +210,56 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
     val labelStyle = J.sec.copy(fontWeight = J.ts.fontWeight)
     val pillShape = J.pill
     val textSize = rememberRowSize(options, labelStyle, (maxWidth - J.sp1 * (options.size + 1)) / options.size - J.sp1 * 2)
-    val glide by androidx.compose.animation.core.animateFloatAsState(selected.toFloat(),
-        if (stillMotion()) androidx.compose.animation.core.snap() else androidx.compose.animation.core.tween(320, easing = J.ease),
-        label = "segment")
-    val at = position ?: { glide }
+    val still = stillMotion()
+    val light = rememberTabLight(selected)
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val pending = remember { arrayOfNulls<Int>(1) }
+    val first = remember { booleanArrayOf(true) }
+    LaunchedEffect(selected) {
+        if (first[0]) { first[0] = false; return@LaunchedEffect }
+        // A swipe ticks as it crosses into a page; a tap ticked at once and its way stays quiet
+        val (tick, left) = Tabs.change(pending[0], selected)
+        pending[0] = left
+        if (tick && position != null) haptic.performHapticFeedback(Tabs.tick)
+        if (position == null) light.go(selected, options.size - 1, still)
+    }
+    // Over a pager the light is the pages' position, for a tap as for a swipe: with a clock of its
+    // own it drifted from the pages and leapt when building a page froze a frame (up to 200 ms).
+    // No hit there: the pages ease to a stop, and a squash after a soft stop twitched (my notes
+    // 26 and 27 Oct: bouncy, jittery)
+    val at = position ?: { light.pos.value }
+    val presses = remember(options.size) { List(options.size) { androidx.compose.foundation.interaction.MutableInteractionSource() } }
+    val held = presses.map { it.collectIsPressedAsState().value }.any { it }
+    LaunchedEffect(held) { light.press(held, still) }
+    val tap = { i: Int ->
+        if (i != selected) {
+            haptic.performHapticFeedback(Tabs.tick)
+            pending[0] = i
+        }
+        onSelect(i)
+    }
     Row(Modifier.fillMaxWidth().glass(J.pill).padding(J.sp1).drawBehind {
             val gap = J.sp1.toPx()
             val w = (size.width - gap * (options.size - 1)) / options.size
-            val stroke = 1.dp.toPx()
-            // Outlined: a 1 dp accent line, drawn inside the light's bounds
-            // The light in the pill token's own shape, round or cut (22d: it stayed round with Industrial)
-            val light = androidx.compose.ui.geometry.Size(w, size.height)
-            translate(left = (w + gap) * at()) {
-                val o = pillShape.createOutline(light, layoutDirection, this)
-                if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+            // The light in the pill token's own shape, round or cut (22d: it stayed round with
+            // Industrial); outlined, a 1 dp accent line drawn inside the light's bounds
+            drawTabLight(light, at(), androidx.compose.ui.geometry.Size(w, size.height), w + gap, false, pillShape) { o ->
+                if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
                 else drawOutline(o, J.text)
             }
         },
         horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
         options.forEachIndexed { i, label ->
             val on = i == selected
-            // The words light up as the light passes halfway, not on the first frame (223c)
-            val lit = if (position == null) kotlin.math.abs(glide - i) < 0.5f else on
+            // The word takes the light's ink as the light covers it (Tabs.ink), read while drawing
+            val ink = if (J.outline) J.accText else J.bg
             Box(Modifier.weight(1f).heightIn(min = J.tap).clip(J.pill)
-                .clickable(role = Role.Tab) { onSelect(i) }
+                .clickable(presses[i], indication = androidx.compose.foundation.LocalIndication.current, role = Role.Tab) { tap(i) }
                 .semantics { this.selected = on }, contentAlignment = Alignment.Center) {  // TalkBack says which is on (223b)
-                Text(label, style = labelStyle.copy(color = if (!lit) J.muted else if (J.outline) J.accText else J.bg,
-                    fontSize = textSize), maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1))
+                androidx.compose.foundation.text.BasicText(label, style = labelStyle.copy(fontSize = textSize),
+                    color = { androidx.compose.ui.graphics.lerp(J.muted, ink, Tabs.ink(at(), i)) },
+                    maxLines = 1, softWrap = false, modifier = Modifier.padding(horizontal = J.sp1)
+                        .graphicsLayer { light.scaleOf(i).let { scaleX = it; scaleY = it } })
             }
         }
     }
@@ -266,10 +293,12 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     val rolling = remember { booleanArrayOf(false) }
     // A pick from outside (a tap, a notification's filter) rolls to it; the first one jumps
     val first = remember { booleanArrayOf(true) }
-    // A tick each time a new word reaches the middle, not on the first placing
+    // A tick each time a new word reaches the middle, not on the first placing (Wheel.tick)
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val ticked = remember { arrayOfNulls<Int>(1) }
     LaunchedEffect(middle) {
-        if (!first[0] && middle != null) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
+        if (Wheel.tick(ticked[0], middle, first[0])) haptic.performHapticFeedback(Wheel.tickType)
+        if (!first[0] && middle != null) ticked[0] = middle
     }
     val pop = remember { androidx.compose.animation.core.Animatable(1f) }
     LaunchedEffect(selected, state) {
@@ -278,10 +307,15 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         // centred or picked again (found flicking back and forth, my note 26 Oct)
         rolling[0] = true
         val placing = first[0]
+        val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
         try {
-            val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
             wheelRoll(state, to, still || first[0])
-        } finally { first[0] = false; rolling[0] = false }
+        } finally {
+            // The placed slot, not the middle read now: right after the jump the layout can still
+            // show the old one, and the first roll by hand stayed silent (my note 26 Oct)
+            if (first[0]) ticked[0] = to
+            first[0] = false; rolling[0] = false
+        }
         // The pick has landed: the light swells and springs back, so it reads as made (Wheel.POP)
         if (!placing && !still) {
             pop.animateTo(Wheel.POP, androidx.compose.animation.core.tween(90, easing = J.ease))

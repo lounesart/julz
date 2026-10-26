@@ -111,7 +111,10 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
     val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = tab) { 3 }
     val still = stillMotion()
     androidx.compose.runtime.LaunchedEffect(tab) {
-        if (pager.currentPage != tab) { if (still) pager.scrollToPage(tab) else pager.animateScrollToPage(tab) }
+        // The pages slide as long as a tab's light travels (Tabs); the light rides them and hits on landing
+        if (pager.currentPage != tab) { if (still) pager.scrollToPage(tab) else pager.animateScrollToPage(tab,
+            animationSpec = androidx.compose.animation.core.tween(Tabs.travelMs((tab - pager.currentPage).toFloat()),
+                easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
     }
     val current by androidx.compose.runtime.rememberUpdatedState(tab)
     val setTab by androidx.compose.runtime.rememberUpdatedState(onTab)
@@ -149,7 +152,7 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
       }
         // Pages are built as they come: building the neighbours ahead was measured worse, 6 janky
         // frames of 644 over ten swipes instead of 3 (18 Oct)
-        androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.weight(1f),
+        androidx.compose.foundation.pager.HorizontalPager(pager, Modifier.weight(1f), beyondViewportPageCount = 2,
             verticalAlignment = Alignment.Top) { page ->
             Column(Modifier.fillMaxSize().padding(horizontal = J.gutter)) {
                 when (page) {

@@ -23,6 +23,15 @@ object Wheel {
         return (pull + delta * 0.55f * give * give).coerceIn(-limit * 0.999f, limit * 0.999f)
     }
 
+    /** The tick for a new word in the middle: the same as a tab's, as the soft frequent tick
+     *  (SEGMENT_FREQUENT_TICK, allowed to be too faint) could not be felt on the Redmi (my yes 26 Oct) */
+    val tickType = androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentTick
+
+    /** Whether a new word in the middle ticks: [last] is the word that ticked or was placed last.
+     *  Not while the wheel places itself as it comes on screen ([placing]), and not for the placed
+     *  word seen a frame later: that ticked once on every arrival at Messages or Chat (my note 26 Oct) */
+    fun tick(last: Int?, middle: Int?, placing: Boolean) = !placing && middle != null && last != null && middle != last
+
     /** The word at slot [slot] */
     fun real(slot: Int, count: Int) = slot % count
 

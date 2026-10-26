@@ -4,6 +4,7 @@ import androidx.compose.animation.core.VectorConverter
 import app.julz.chat.ChatApi
 import app.julz.feed.Kind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -188,5 +189,16 @@ class WheelTest {
         assertEquals(11, Wheel.landing(10, 290f, 100f, 3000f, 200f, count = 2))
         assertEquals(9, Wheel.landing(10, -290f, 100f, -3000f, 200f, count = 2))
         assertEquals(13, Wheel.landing(10, 290f, 100f, 3000f, 200f, count = 8))
+    }
+
+    // A wheel coming on screen jumps to its word quietly: its placing ticked once, a frame after
+    // the flag was cleared, so arriving on Messages or Chat buzzed an extra time (my note 26 Oct).
+    // A new word after that ticks; the same word, or none, does not
+    @Test fun onlyANewWordAfterThePlacingTicks() {
+        assertFalse(Wheel.tick(last = null, middle = 3, placing = true))
+        assertFalse(Wheel.tick(last = 3, middle = 3, placing = false))
+        assertFalse(Wheel.tick(last = null, middle = 3, placing = false))
+        assertFalse(Wheel.tick(last = 3, middle = null, placing = false))
+        assertTrue(Wheel.tick(last = 3, middle = 4, placing = false))
     }
 }
