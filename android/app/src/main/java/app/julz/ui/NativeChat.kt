@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -781,12 +780,12 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     if (roomy) Column(box.padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset)) {
         field(Modifier.fillMaxWidth().padding(end = J.sp3, bottom = J.sp2))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            ModeChips(mode, setMode, Modifier.offset(x = -J.sp2))
+            ModeWheel(mode, setMode)
             Box(Modifier.weight(1f))
             sendButton(Modifier)
         }
     } else Column {
-        ModeChips(mode, setMode, Modifier.padding(start = J.gutter + J.sp2, top = J.sp1))
+        ModeWheel(mode, setMode, Modifier.padding(start = J.gutter + J.sp2, top = J.sp1))
         Row(box.heightIn(min = button + inset * 2).padding(start = J.sp4, end = inset),
             verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
             // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
@@ -818,22 +817,10 @@ internal fun NotesFound(paths: List<String>, open: (String) -> Unit) {
     }
 }
 
-/** The modes, at most one on: learning (135) and notes only (133b). */
+/** The modes, at most one on: learning (135) and notes only (133b), on the wheel (251): one
+ *  pick of three, where two switches read as if both could be on */
 @Composable
-private fun ModeChips(mode: String, set: (String) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-        ModeChip("Learn", mode == "learn") { set(if (it) "learn" else "") }
-        ModeChip("Notes", mode == "notes") { set(if (it) "notes" else "") }
-    }
-}
-
-/** One mode: a switch, so TalkBack reads its name and state. Compact as the tag chips;
- *  Compose widens its touch area without moving the layout. */
-@Composable
-private fun ModeChip(name: String, on: Boolean, set: (Boolean) -> Unit) {
-    Row(Modifier.toggleable(on, role = Role.Switch, onValueChange = set).heightIn(min = 32.dp).clip(J.pill)
-        .background(if (on) J.acc else J.raise).border(1.dp, if (on) J.acc else J.line, J.pill)
-        .padding(horizontal = J.sp3), verticalAlignment = Alignment.CenterVertically) {
-        Text(name, style = J.cap.copy(color = if (on) J.onAcc else J.text, fontWeight = FontWeight(600)), maxLines = 1)
-    }
+private fun ModeWheel(mode: String, set: (String) -> Unit, modifier: Modifier = Modifier) {
+    WheelPicker(Wheel.MODES.map { it.second }, Wheel.MODES.indexOfFirst { it.first == mode }.coerceAtLeast(0),
+        modifier.width(192.dp)) { set(Wheel.MODES[it].first) }
 }

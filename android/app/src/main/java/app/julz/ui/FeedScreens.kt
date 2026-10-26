@@ -101,7 +101,8 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
     var historyDay by remember { mutableIntStateOf(0) }
     // Messages: what the last Clear hid, for Undo (the filter lives in App, so a tap can set it)
     var undo by remember { mutableStateOf<Pair<ReadState, Int>?>(null) }
-    val shown = notices.filter { !cleared.isRead(it.id) && (filter == null || it.kind == filter) }
+    val kept = notices.filter { !cleared.isRead(it.id) }
+    val shown = kept.filter { filter == null || it.kind == filter }
     // A swipe pages the three tabs (22c); tab stays the one truth, so a notification tap still
     // opens Messages, and the pager follows it, jumping when the phone's animations are off
     val pager = androidx.compose.foundation.pager.rememberPagerState(initialPage = tab) { 3 }
@@ -148,7 +149,7 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
                 when (page) {
                     // See them shows every unread one: a filter left by a notification tap hid them (22d)
                     0 -> Now(notices, read, open, approve, todos, inbox, inboxCount, { setFilter(null); onTab(1) }) { d -> historyDay = d; onTab(2) }
-                    1 -> Messages(shown, read, open, filter, setFilter, markRead, clear = {
+                    1 -> Messages(kept, shown, read, open, filter, setFilter, markRead, clear = {
                             undo = cleared to shown.size
                             markRead(shown)
                             setCleared(cleared.with(shown.map { it.id }))
@@ -256,17 +257,14 @@ private fun Tile(modifier: Modifier, number: String, title: String, sub: String)
 }
 
 @Composable
-private fun Messages(shown: List<Notice>, read: ReadState, open: (Notice) -> Unit,
+private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, open: (Notice) -> Unit,
                      filter: Kind?, setFilter: (Kind?) -> Unit, markRead: (List<Notice>) -> Unit, clear: () -> Unit,
                      clearedCount: Int?, undo: () -> Unit) {
-    // The chosen filter is always in view: a tap on a warning picks Warnings, which sat off screen (22d)
-    val chips = androidx.compose.foundation.lazy.rememberLazyListState()
-    androidx.compose.runtime.LaunchedEffect(filter) { chips.animateScrollToItem(if (filter == null) 0 else Kind.entries.indexOf(filter) + 1) }
-    androidx.compose.foundation.lazy.LazyRow(Modifier.nestedScroll(KeepSideways).padding(bottom = J.sp3), state = chips,
-        horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-        item { Chip("All", filter == null) { setFilter(null) } }
-        items(Kind.entries) { k -> Chip(Words.label(k), filter == k) { setFilter(k) } }
-    }
+    // One wheel for the filters (251): All and only the kinds that have notices, each with its
+    // count; the chosen one stays in the middle, so a tap on a warning shows Warnings there (22d)
+    val kinds = Wheel.kinds(kept.map { it.kind }.toSet(), filter)
+    WheelPicker(kinds.map { if (it == null) "All" else Words.label(it) }, kinds.indexOf(filter).coerceAtLeast(0),
+        Modifier.padding(bottom = J.sp3), counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
     // Read all and Clear act on what the filter shows; Clear hides, History keeps them
     FeedLine.messages(shown, read)?.let { line ->
         QuietLine(line.text) {
@@ -321,14 +319,3 @@ private fun Messages(shown: List<Notice>, read: ReadState, open: (Notice) -> Uni
         }
     }
 }
-
-@Composable
-private fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
-    Box(Modifier.heightIn(min = J.tap).clip(J.pill)
-        .background(if (on && !J.outline) J.text else J.surface)
-        .border(1.dp, if (!on) J.line else if (J.outline) J.acc else J.text, J.pill)
-        .clickable(role = Role.Tab, onClick = onClick).padding(horizontal = J.sp4), contentAlignment = Alignment.Center) {
-        Text(label, style = J.sec.copy(color = if (!on) J.muted else if (J.outline) J.accText else J.bg, fontWeight = FontWeight(600)))
-    }
-}
-
