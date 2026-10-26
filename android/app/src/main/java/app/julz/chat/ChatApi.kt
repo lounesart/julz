@@ -29,8 +29,9 @@ object ChatApi {
     private const val MAX_REPLY = 2_000_000
     private val ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     private val MESSAGE_ID = Regex("[A-Za-z0-9-]{1,64}")
-    // Notes found (133c, threat 165): a vault path as julz-chat builds it, \\w as Python's
-    private val SOURCE = Regex("(?U)(study|daily|Claude)(/\\w[\\w .-]{0,99}){1,3}")
+    // Notes found (133c, threat 165): a vault path as julz-chat builds it. Letters as \\p{L}: ICU
+    // on the phone refuses the inline U flag and the JVM's \\w is ASCII only, so \\w differs between them
+    private val SOURCE = Regex("(study|daily|Claude)(/[\\p{L}\\p{N}_][\\p{L}\\p{N}_ .-]{0,99}){1,3}")
     const val MAX_SOURCES = 6
     private const val MAX_SOURCE_PATH = 200
 
