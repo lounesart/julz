@@ -107,4 +107,25 @@ class TabsTest {
         assertNotEquals(HapticFeedbackType.SegmentFrequentTick, Tabs.tick)
         assertNotEquals(HapticFeedbackType.Confirm, Tabs.tick)
     }
+
+    // The give is sized by a real width, not by the cell (my note 26 Oct: Todos' tabs looked too
+    // liquid): a cell as wide as the tab bar's gives all of it, one twice as wide half, so the
+    // squash, the lean and the punch move about as many pixels on every row
+    @Test fun wideTabsGiveLess() {
+        assertEquals(1f, Tabs.give(60f, 60f), 0f)
+        assertEquals(1f, Tabs.give(40f, 60f), 0f)
+        assertEquals(0.5f, Tabs.give(120f, 60f), 1e-4f)
+        val (wide, _) = Tabs.squash(1f, 0.5f)
+        val (bar, _) = Tabs.squash(1f, 1f)
+        assertEquals(1f - wide, (1f - bar) / 2, 1e-4f)
+        assertEquals(1f, Tabs.punch(0f), 0f)
+        assertTrue(Tabs.punch(0.5f) > Tabs.punch(1f))
+    }
+
+    // A swipe lands with the same hit as a tap: the light comes to rest on a new page
+    @Test fun aSwipeLandsOnANewPage() {
+        assertEquals(1, Tabs.landed(0, 1.002f))
+        assertEquals(null, Tabs.landed(1, 1.0f))
+        assertEquals(null, Tabs.landed(0, 0.6f))
+    }
 }

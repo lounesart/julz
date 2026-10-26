@@ -226,6 +226,18 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         if (position == null) light.go(selected, options.size - 1, still)
     }
     val at = { if (position != null && !light.gliding) position() else light.pos.value }
+    // A swipe that comes to rest on a new page lands with the tap's hit (Tabs.landed); a tap's
+    // glide hits by itself
+    if (position != null) LaunchedEffect(Unit) {
+        val rows = this
+        var last = selected
+        androidx.compose.runtime.snapshotFlow { position() }.collect { p ->
+            val k = Tabs.landed(last, p) ?: return@collect
+            val way = kotlin.math.sign((k - last).toFloat())
+            last = k
+            if (!light.gliding && !still) rows.launch { light.hit(k, way) }
+        }
+    }
     val presses = remember(options.size) { List(options.size) { androidx.compose.foundation.interaction.MutableInteractionSource() } }
     val held = presses.map { it.collectIsPressedAsState().value }.any { it }
     LaunchedEffect(held) { light.press(held, still) }
@@ -314,11 +326,13 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         // centred or picked again (found flicking back and forth, my note 26 Oct)
         rolling[0] = true
         val placing = first[0]
+        val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
         try {
-            val to = if (!loop) selected else Wheel.closest(wheelMiddle(state) ?: state.firstVisibleItemIndex, selected, n)
             wheelRoll(state, to, still || first[0])
         } finally {
-            if (first[0]) ticked[0] = wheelMiddle(state)
+            // The placed slot, not the middle read now: right after the jump the layout can still
+            // show the old one, and the first roll by hand stayed silent (my note 26 Oct)
+            if (first[0]) ticked[0] = to
             first[0] = false; rolling[0] = false
         }
         // The pick has landed: the light swells and springs back, so it reads as made (Wheel.POP)

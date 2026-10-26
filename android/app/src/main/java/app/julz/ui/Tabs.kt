@@ -29,8 +29,8 @@ object Tabs {
      *  is the row's end: past an end it leans only END_LEAN, inside the bar's padding */
     const val LEAN_MS = 70
     const val END_LEAN = 0.03f
-    fun lean(from: Float, to: Float, last: Int) =
-        (from - kotlin.math.sign(to - from) * 0.06f).coerceIn(-END_LEAN, last + END_LEAN) - from
+    fun lean(from: Float, to: Float, last: Int, give: Float = 1f) =
+        (from - kotlin.math.sign(to - from) * 0.06f * give).coerceIn(-END_LEAN, last + END_LEAN) - from
 
     /** The hit: in fast, out on a fully damped spring, so it settles without a bounce */
     const val HIT_MS = 45
@@ -38,10 +38,17 @@ object Tabs {
 
     /** The light's scale (along the way, across it) at [impact], 0 at rest, 1 at the hit: shorter
      *  along, a little fuller across, so it keeps its volume roughly */
-    fun squash(impact: Float) = (1f - 0.09f * impact) to (1f + 0.045f * impact)
+    fun squash(impact: Float, give: Float = 1f) = (1f - 0.09f * impact * give) to (1f + 0.045f * impact * give)
+
+    /** How much of the squash, the lean and the punch a row gives, from its cell's width along the
+     *  way and [ref], about a tab bar cell (Tabs.REF): all of it up to that width, less on wider
+     *  cells, so they move about as many pixels (my note 26 Oct: Todos' wide tabs looked liquid) */
+    val REF get() = J.row  // a tab bar cell is a little under a row's height
+    fun give(cellPx: Float, refPx: Float) = (refPx / cellPx).coerceAtMost(1f)
 
     /** The arriving word or icon starts this much smaller and grows to its size as the light lands */
     const val PUNCH = 0.9f
+    fun punch(give: Float) = 1f - (1f - PUNCH) * give
 
     /** How far the light sinks while a finger is on a tab, the spring there and back (Material 3's
      *  fast effects spring, no bounce), and the least time it stays sunk, so a quick tap shows it */
@@ -53,6 +60,13 @@ object Tabs {
     /** How much of cell [i] the light covers with the light at [at] (in cells), 0 to 1: a word
      *  takes the light's ink as much as it is under it, so the colour moves with the light */
     fun ink(at: Float, i: Int) = (1f - kotlin.math.abs(at - i)).coerceIn(0f, 1f)
+
+    /** The tab the light came to rest on at [at], if it is not [last], the one it rested on before:
+     *  a swipe's landing, which hits as a tap's does */
+    fun landed(last: Int, at: Float): Int? {
+        val k = kotlin.math.round(at).toInt()
+        return if (k != last && kotlin.math.abs(at - k) < 0.005f) k else null
+    }
 
     /** The pick moved to [now] with a tap to [pending] on its way, or none: (tick?, what is still
      *  pending). A tap ticks itself at once, so its way and its end stay quiet; a change with nothing
@@ -79,6 +93,8 @@ internal class TabLight(start: Float) {
     var arriving by mutableIntStateOf(-1)
     /** True while a tap's glide drives the light, over a pager's own position */
     var gliding by mutableStateOf(false)
+    /** The row's give (Tabs.give), set where it is drawn */
+    var give = 1f
 
     /** The arriving cell's scale: [i] punches in, the rest stand at their size */
     fun scaleOf(i: Int) = if (i == arriving) arrival.value else 1f
@@ -92,9 +108,16 @@ internal class TabLight(start: Float) {
         impact.snapTo(0f)
         arrival.snapTo(1f)
         if (kotlin.math.abs(from - kotlin.math.round(from)) < 0.01f)
-            pos.animateTo(from + Tabs.lean(from, to.toFloat(), last), androidx.compose.animation.core.tween(Tabs.LEAN_MS,
+            pos.animateTo(from + Tabs.lean(from, to.toFloat(), last, give), androidx.compose.animation.core.tween(Tabs.LEAN_MS,
                 easing = androidx.compose.animation.core.FastOutSlowInEasing))
         pos.animateTo(to.toFloat(), androidx.compose.animation.core.tween(Tabs.travelMs(to - pos.value), easing = Tabs.travel))
+        hit(to, dir)
+    }
+
+    /** The landing on [to], coming the way [way] (+1 along, -1 back): the squash and the punch.
+     *  A tap's travel ends in it, and a swipe's landing calls it alone */
+    suspend fun hit(to: Int, way: Float) {
+        dir = way
         arriving = to
         kotlinx.coroutines.coroutineScope {
             launch {
@@ -102,7 +125,7 @@ internal class TabLight(start: Float) {
                 impact.animateTo(0f, Tabs.recover)
             }
             launch {
-                arrival.snapTo(Tabs.PUNCH)
+                arrival.snapTo(Tabs.punch(give))
                 arrival.animateTo(1f, Tabs.recover)
             }
         }
@@ -121,7 +144,7 @@ internal class TabLight(start: Float) {
 
     /** The hit's scale (x, y): shorter along the way it came, fuller across */
     fun squash(vertical: Boolean): Pair<Float, Float> {
-        val (along, across) = Tabs.squash(impact.value)
+        val (along, across) = Tabs.squash(impact.value, give)
         return if (vertical) across to along else along to across
     }
 }
@@ -136,6 +159,7 @@ internal fun rememberTabLight(start: Int) = androidx.compose.runtime.remember { 
 internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTabLight(
     light: TabLight, at: Float, cell: androidx.compose.ui.geometry.Size, step: Float, vertical: Boolean,
     shape: androidx.compose.ui.graphics.Shape, draw: androidx.compose.ui.graphics.drawscope.DrawScope.(androidx.compose.ui.graphics.Outline) -> Unit) {
+    light.give = Tabs.give(if (vertical) cell.height else cell.width, Tabs.REF.toPx())
     val (sx, sy) = light.squash(vertical)
     // The hit pivots at the edge that hit, so the far edge catches up; the press at the middle
     val lead = if (light.dir > 0) 1f else 0f

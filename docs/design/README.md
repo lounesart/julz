@@ -129,7 +129,9 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   `TabLight`): the light leans back a hair, travels on a curve that arrives still moving, hits
   its tab and squashes about 9 percent against the edge that hit, then settles with no bounce.
   The arriving word or icon punches in from 90 percent, a finger sinks the light to 92 percent
-  for at least 110 ms, and each word takes the light's ink as the light covers it. A tap ticks
+  for at least 110 ms, and each word takes the light's ink as the light covers it. The squash,
+  lean and punch are sized by a row's height (`J.row`), so wide tabs (Todos, Feed) move about as
+  many pixels as the tab bar's and look no more liquid. A swipe that lands on a page hits too. A tap ticks
   at once and a swipe as it crosses into a page, `SegmentTick`, firmer than the wheel's frequent
   tick and never `Confirm`, as a tab completes nothing. A wheel never ticks as it comes on screen.
 - Text contrast is at least 4.5 to 1, and no state is shown by colour alone.
