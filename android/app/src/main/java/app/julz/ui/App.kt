@@ -299,8 +299,8 @@ internal fun Shell(wide: Boolean, bar: @Composable (Boolean) -> Unit, content: @
             // Content slides out through a short fade, then the band the bar sits on is solid
             // page colour: the glass showed the list through its icons (found 19 Oct). The
             // page is this colour at the bottom, so the band has no seam
-            Box(Modifier.fillMaxWidth().height(J.sp6).background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                listOf(Color.Transparent, J.bg))))
+            Box(Modifier.fillMaxWidth().height(J.sp6).then(if (!J.barFade) Modifier else
+                Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, J.bg)))))
             // Under the keyboard the bar is out of sight, so TalkBack must not reach it either;
             // only its semantics go, its place stays (a layout step made the chat jump, 127)
             @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)

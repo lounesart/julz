@@ -57,6 +57,10 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   `small` (36) tall like `SmallPill`, and shows the picked word under the same light in 14.
   It loops, so a word stands on both sides, and a short flick steps one word. In the chat box
   it shows one word as tall as the send button, and a swipe up or down steps it.
+- **Wheels sit under the thumb** (257, after iOS Photos): a list's filter wheel floats at the
+  bottom, right over the tab bar, on the dark end of a fade as soft as the bar's own. The list's
+  end clears it by its measured height and TalkBack still reads the filter first. A floating band
+  pads by `barClear()`, and the design check holds every one to that.
 - **Space counts what you see.** A touch area never adds visible space: Compose widens a small
   control to 48 by itself, so a 36 control takes 36 in the layout and the role gaps sit around
   its visible edge.

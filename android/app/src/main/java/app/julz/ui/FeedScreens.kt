@@ -3,6 +3,9 @@ package app.julz.ui
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.layout.onSizeChanged
 import app.julz.feed.shown
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -115,6 +118,10 @@ fun FeedScreen(notices: List<Notice>, read: ReadState, lastContact: Long, tab: I
     androidx.compose.runtime.LaunchedEffect(pager) {
         androidx.compose.runtime.snapshotFlow { pager.settledPage }.collect { if (it != current) setTab(it) }
     }
+    // Messages floats its wheel with its own fade where the bar's is (257): the bar's goes while
+    // Messages is the page, and comes back when the Feed goes
+    val ownFade = pager.currentPage == 1
+    androidx.compose.runtime.DisposableEffect(ownFade) { J.barFade = !ownFade; onDispose { J.barFade = true } }
     Column(Modifier.fillMaxSize()) {
       Column(Modifier.padding(horizontal = J.gutter)) {
         // In landscape the title, the tabs and Feedback share one line, so the notices keep the height (22d)
@@ -263,8 +270,13 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
     // One wheel for the filters (251): All and only the kinds that have notices, each with its
     // count; the chosen one stays in the middle, so a tap on a warning shows Warnings there (22d)
     val kinds = Wheel.kinds(kept.map { it.kind }.toSet(), filter)
-    WheelPicker(kinds.map { if (it == null) "All" else Words.label(it) }, kinds.indexOf(filter).coerceAtLeast(0),
-        Modifier.padding(bottom = J.gap), counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
+    // The wheel floats at the bottom, under the thumb (257, after iOS Photos): the list fades out
+    // above it and it sits on the fade's dark end, right over the tab bar. The list's end clears
+    // the band by its measured height; TalkBack still reads the filter first
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var band by remember { mutableStateOf(0.dp) }
+    Box(Modifier.fillMaxSize().semantics { isTraversalGroup = true }) {
+    Column {
     // Read all and Clear act on what the filter shows; Clear hides, History keeps them
     val line = FeedLine.messages(shown, read)
     clearedCount?.let { count ->
@@ -277,7 +289,7 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
         }
         Spacer(Modifier.height(J.sp3))
     }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(J.rowGap), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = J.end)) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(J.rowGap), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = J.end + band)) {
         var lastDay = ""
         for (n in shown) {
             val day = Words.day(n.time)
@@ -325,5 +337,19 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
         if (shown.isEmpty()) item {
             Text(if (filter == null) "All clear. Older notices are in History." else "Nothing in this channel.", style = J.sec)
         }
+    }
+    }
+    // As soft as the fade over the bar (J.sp6), then solid page colour under the wheel, right on
+    // the bar: this fade stands in for the bar's own (off on this page), which would dim the words.
+    // Solid under the wheel as well was a band of black too tall (my note 26 Oct)
+    Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = barClear())
+        .onSizeChanged { band = with(density) { it.height.toDp() } }.semantics { traversalIndex = -1f }) {
+        Box(Modifier.fillMaxWidth().height(J.sp6).background(androidx.compose.ui.graphics.Brush.verticalGradient(
+            listOf(Color.Transparent, J.bg))))
+        Box(Modifier.fillMaxWidth().background(J.bg)) {
+            WheelPicker(kinds.map { if (it == null) "All" else Words.label(it) }, kinds.indexOf(filter).coerceAtLeast(0),
+                counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
+        }
+    }
     }
 }

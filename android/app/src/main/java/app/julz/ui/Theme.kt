@@ -115,6 +115,8 @@ object J {
     /** Room at a screen's end: clear of the bottom bar, or a little with the rail */
     /** Room the floating tab bar takes at the bottom (22i), measured by App; a list's end clears it */
     var barSpace by androidx.compose.runtime.mutableStateOf(112.dp)
+    /** The fade over the bar; off while a screen floats its own band there (257, the Messages wheel) */
+    var barFade by androidx.compose.runtime.mutableStateOf(true)
     val end: Dp get() = if (rail) sp6 else barSpace + sp4
     val tap: Dp = 48.dp; val tapL: Dp = 56.dp; val row: Dp = 64.dp
     /** A secondary control's visible height (SmallPill, the wheel): one level under the tabs'
