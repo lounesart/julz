@@ -72,14 +72,14 @@ class HeadersTest(unittest.TestCase):
         self.assertEqual(added("# DNS\n", "."), ["In DNS"])
 
     def test_a_new_title_resets_the_path(self):
-        self.assertEqual(added("# A\n## a1\n# B\n### b3\n"),
+        self.assertEqual(added("# A\n## a1\nx\n# B\n### b3\ny\n"),
                          ["In cpts > A", "In cpts > A > a1", "In cpts > B", "In cpts > B > b3"])
 
     def test_deeper_headings_and_hashtags_add_nothing(self):
         self.assertEqual(added("# A\n#### deep\n#tag\n##nospace\n"), ["In cpts > A"])
 
     def test_a_comment_in_a_code_fence_is_not_a_heading(self):
-        text = "# Nmap\n```bash\n# scan the top ports\nnmap -F host\n```\n~~~\n## not this\n~~~\n## Next\n"
+        text = "# Nmap\n```bash\n# scan the top ports\nnmap -F host\n```\n~~~\n## not this\n~~~\n## Next\nx\n"
         self.assertEqual(added(text), ["In cpts > Nmap", "In cpts > Nmap > Next"])
 
     def test_front_matter_is_left_alone(self):
@@ -96,14 +96,14 @@ class HeadersTest(unittest.TestCase):
         self.assertEqual(added("# a\tb\u2028c\u00a0d\n"), ["In cpts > a b c d"])
 
     def test_the_line_is_capped(self):
-        line = added("# " + "A" * 500 + "\n## " + "B" * 500 + "\n")[1]
+        line = added("# " + "A" * 500 + "\n## " + "B" * 500 + "\nx\n")[1]
         self.assertEqual(len(line), mod.HEADER_MAX)
 
     def test_an_empty_heading_adds_nothing(self):
         self.assertEqual(added("#  \n## \u200b\n# A\n"), ["In cpts > A"])
 
     def test_trailing_hashes_of_a_closed_heading_are_dropped(self):
-        self.assertEqual(added("## Ports ##\n"), ["In cpts > Ports"])
+        self.assertEqual(added("## Ports ##\n22 ssh\n"), ["In cpts > Ports"])
 
 
 class SyncUploadsHeadersTest(unittest.TestCase):
@@ -146,3 +146,42 @@ class SyncUploadsHeadersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmptyHeadingsTest(unittest.TestCase):
+    """Template headings left empty became chunks with only a header line (BACKLOG 233)."""
+    TEMPLATE = "---\ntags:\n  - concept\n---\n\n# DNS\n\n## What it is\n\n\n## Example\n\n\n## Why it matters\n"
+
+    def upload(self, text):
+        return mod.with_headers(text, Path("study")).splitlines()
+
+    def test_an_empty_template_keeps_only_its_title(self):
+        self.assertEqual(self.upload(self.TEMPLATE),
+                         ["---", "tags:", "  - concept", "---", "", "# DNS", "In study > DNS", "", "", "", "", ""])
+
+    def test_a_filled_part_stays_beside_an_empty_one(self):
+        out = self.upload("# DNS\n## What it is\nNames to addresses.\n## Example\n\n")
+        self.assertIn("## What it is", out)
+        self.assertIn("In study > DNS > What it is", out)
+        self.assertNotIn("## Example", out)
+        self.assertNotIn("In study > DNS > Example", out)
+
+    def test_a_part_with_only_filled_subparts_stays(self):
+        out = self.upload("# T\n## Parts\n### A\ntext\n")
+        self.assertIn("## Parts", out)
+        self.assertIn("In study > T > Parts > A", out)
+
+    def test_a_part_with_only_empty_subparts_goes(self):
+        out = self.upload("# T\n## Parts\n### A\n\n### B\n## Next\nx\n")
+        self.assertEqual([line for line in out if line.startswith(("#", "In "))],
+                         ["# T", "In study > T", "## Next", "In study > T > Next"])
+
+    def test_the_section_ends_at_a_heading_of_the_same_level(self):
+        self.assertNotIn("## A", self.upload("# T\n## A\n## B\ntext\n"))
+
+    def test_a_code_fence_counts_as_text(self):
+        out = self.upload("# T\n## Run\n```\n## not a heading\n```\n")
+        self.assertIn("## Run", out)
+
+    def test_an_empty_title_stays(self):
+        self.assertEqual(self.upload("# DNS\n"), ["# DNS", "In study > DNS"])

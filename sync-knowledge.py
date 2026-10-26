@@ -90,23 +90,36 @@ def with_headers(text: str, folder: Path) -> str:
         if end is not None:
             out, start = lines[:end + 1], end + 1
     root = [] if str(folder) == "." else [str(folder)]
+    body = []  # (line, heading level or 0, title)
     for line in lines[start:]:
-        out.append(line)
         mark = line.lstrip()[:3]
         if fence:
             fence = None if mark == fence else fence
-            continue
-        if mark in ("```", "~~~"):
+        elif mark in ("```", "~~~"):
             fence = mark
+        elif (m := HEADING.match(line)) and (title := _clean(m.group(2))):
+            body.append((line, len(m.group(1)), title))
             continue
-        m = HEADING.match(line)
-        title = _clean(m.group(2)) if m else ""
-        if not title:
+        body.append((line, 0, ""))
+    for i, (line, level, title) in enumerate(body):
+        if level > 1 and _empty_section(body, i):
+            continue  # an unfilled template part is a chunk with only its header (233)
+        out.append(line)
+        if not level:
             continue
-        level = len(m.group(1))
         path = path[:level - 1] + [title]
         out.append(("In " + " > ".join(root + path))[:HEADER_MAX])
     return "\n".join(out)
+
+
+def _empty_section(body, i: int) -> bool:
+    """Nothing but blank lines and deeper headings until the next heading at its level or above."""
+    for line, level, _ in body[i + 1:]:
+        if level and level <= body[i][1]:
+            return True
+        if not level and line.strip():
+            return False
+    return True
 
 
 def upload_name(rel: Path, claude: bool) -> str:
