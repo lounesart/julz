@@ -266,12 +266,7 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
     WheelPicker(kinds.map { if (it == null) "All" else Words.label(it) }, kinds.indexOf(filter).coerceAtLeast(0),
         Modifier.padding(bottom = J.gap), counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
     // Read all and Clear act on what the filter shows; Clear hides, History keeps them
-    FeedLine.messages(shown, read)?.let { line ->
-        QuietLine(line.text) {
-            if (line.unread.isNotEmpty()) TextAction("Read all") { markRead(line.unread) }
-            TextAction("Clear", clear)
-        }
-    }
+    val line = FeedLine.messages(shown, read)
     clearedCount?.let { count ->
         Row(Modifier.fillMaxWidth().glass(J.rM).padding(start = J.sp5).heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -287,8 +282,21 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
         for (n in shown) {
             val day = Words.day(n.time)
             if (day != lastDay) {
+                val top = lastDay.isEmpty()
                 lastDay = day
-                item(key = "day-$day") { Box(Modifier.padding(top = J.sp4, bottom = J.sp1)) { SectionTitle(day) } }
+                item(key = "day-$day") {
+                    Column {
+                        // The count and its actions scroll away with the list they act on (my note 26 Oct),
+                        // in the first title's item, so the space above the title stays as it was
+                        if (top) line?.let {
+                            QuietLine(it.text) {
+                                if (it.unread.isNotEmpty()) TextAction("Read all") { markRead(it.unread) }
+                                TextAction("Clear", clear)
+                            }
+                        }
+                        Box(Modifier.padding(top = J.sp4, bottom = J.sp1)) { SectionTitle(day) }
+                    }
+                }
             }
             item(key = n.id) {
                 val unread = !read.isRead(n.id)
