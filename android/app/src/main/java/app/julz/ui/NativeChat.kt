@@ -54,6 +54,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -202,6 +203,17 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         if (code == 200) ChatApi.parseView(raw)?.let { view = it; problem = null }
         else problem = ChatApi.problem(code)
     }
+
+    // Chat opened or the box focused: julz-chat loads the model while I type (260), so the cold
+    // start is not on my message. The reply is not read: a warm that fails only leaves it slower
+    var warmedAt by remember { mutableStateOf<Long?>(null) }
+    fun warm() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!ChatLogic.warmDue(warmedAt, now)) return
+        warmedAt = now
+        scope.launch { call(ChatApi.WARM, "{}") }
+    }
+    LaunchedEffect(Unit) { warm() }
 
     LaunchedEffect(chatId) {
         problem = null
@@ -467,7 +479,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         }
         // While I edit, the button sends the edit; Cancel brings Stop back (203)
         Composer(draft, setDraft, busy = view?.busy == true && editing == null, sending = sending, focus = editing?.id, roomy = ChatPrefs.roomy,
-            mode = chatMode, setMode = { chatMode = it }, send = ::send, stop = ::stop)
+            mode = chatMode, setMode = { chatMode = it }, send = ::send, stop = ::stop, warm = ::warm)
     }
 
     // One sheet at a time: what a message offers, the text I sign, or my chats
@@ -742,10 +754,12 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, open: (St
  *  button alone at the bottom with uneven margins.) */
 @Composable
 internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, sending: Boolean, focus: String?,
-                      roomy: Boolean, mode: String, setMode: (String) -> Unit, send: () -> Unit, stop: () -> Unit) {
+                      roomy: Boolean, mode: String, setMode: (String) -> Unit, send: () -> Unit, stop: () -> Unit,
+                      warm: () -> Unit = {}) {
     val can = ChatLogic.canSend(draft, busy, sending)
     val sendNow by androidx.compose.runtime.rememberUpdatedState(send)
     val stopNow by androidx.compose.runtime.rememberUpdatedState(stop)
+    val warmNow by androidx.compose.runtime.rememberUpdatedState(warm)
     // Edit puts my words in the box: the box takes focus, the cursor at their end, the keyboard
     // up, so I can type at once (found 18 Oct: it needed a tap first)
     val requester = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -760,7 +774,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     val shape = if (roomy || lines > 1) J.rL else J.pill
     val field = @Composable { modifier: Modifier ->
         BasicTextField(value, { if (it.text.length <= ChatApi.MAX_TEXT) { value = it; setDraft(it.text) } },
-            modifier.focusRequester(requester).keepsKeyboard(), textStyle = J.bodyText, maxLines = 6,
+            modifier.focusRequester(requester).onFocusChanged { if (it.isFocused) warmNow() }.keepsKeyboard(), textStyle = J.bodyText, maxLines = 6,
             cursorBrush = SolidColor(J.acc), onTextLayout = { lines = it.lineCount },
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {

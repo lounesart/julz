@@ -1054,6 +1054,117 @@ class ModeTest(Base):
         self.assertEqual(tuple(m.strip() for m in listed.split(",")), tuple(chat.MODES))
 
 
+class WarmTest(Base):
+    """260, threat 167: Chat opened loads julz and bge-m3 through two fixed Ollama calls."""
+
+    def setUp(self):
+        super().setUp()
+        self.ollama_calls, self.jobs = [], []
+        self.ollama_fail = None
+        self.app = chat.App(TOKEN, {HOST, "127.0.0.1:8766"}, self.owui, clock=self.clock, sleep=self.sleep,
+                            ollama=self.ollama, spawn=self.jobs.append)
+
+    def ollama(self, path, data):
+        self.ollama_calls.append((path, data))
+        if self.ollama_fail:
+            raise self.ollama_fail
+
+    def warm(self, body=None, **kw):
+        return self.req("POST", "/api/warm", {} if body is None else body, **kw)
+
+    def run_jobs(self):
+        while self.jobs:
+            self.jobs.pop(0)()
+
+    def test_loads_both_models_with_the_fixed_calls(self):
+        status, data, _ = self.warm()
+        self.assertEqual((status, data), (200, {"warm": True}))
+        self.assertEqual(self.ollama_calls, [])  # in a thread, not in the request
+        self.run_jobs()
+        self.assertEqual(self.ollama_calls, [  # julz first, so she never pushes bge-m3 out
+            ("/api/generate", {"model": "julz:latest", "prompt": "hi", "stream": False,
+                               "options": {"num_predict": 1}}),
+            ("/api/embed", {"model": "bge-m3:latest", "input": "hi"})])
+        self.assertEqual(self.owui.calls, [])
+
+    def test_the_calls_are_the_chat_model_and_carry_no_keep_alive(self):
+        self.assertEqual(chat.WARM_CALLS[0][1]["model"], chat.MODEL)
+        for _, data in chat.WARM_CALLS:
+            self.assertNotIn("keep_alive", data)
+
+    def test_token_and_host_first(self):
+        self.assertEqual(self.warm(token=None)[0], 401)
+        self.assertEqual(self.warm(token=TOKEN + "x")[0], 401)
+        self.assertEqual(self.warm(host="evil.example")[0], 421)
+        self.assertEqual(self.warm(Origin="https://evil.example")[0], 403)
+        self.assertEqual(self.jobs, [])
+
+    def test_post_with_an_empty_body_only(self):
+        for body in ({"text": "rm -rf"}, {"model": "julz-pro"}, {"prompt": "x"}, [], b"not json"):
+            self.assertEqual(self.warm(body)[0], 400, body)
+        status = self.req("POST", "/api/warm", b"{}", **{"Content-Type": "text/plain"})[0]
+        self.assertEqual(status, 415)
+        self.assertEqual(self.req("GET", "/api/warm")[0], 405)
+        self.assertEqual(self.req("POST", "/api/warm?model=julz-pro", {})[0], 404)
+        self.assertEqual(self.req("DELETE", "/api/warm")[0], 405)
+        self.assertEqual(self.jobs, [])
+
+    def test_one_a_minute(self):
+        self.assertTrue(self.warm()[1]["warm"])
+        self.run_jobs()
+        self.clock.t += 59
+        self.assertEqual(self.warm()[1], {"warm": False})
+        self.assertEqual(self.jobs, [])
+        self.clock.t += 1
+        self.assertTrue(self.warm()[1]["warm"])
+
+    def test_none_while_one_runs(self):
+        self.assertTrue(self.warm()[1]["warm"])
+        self.clock.t += 300  # the load still running, a slow laptop
+        self.assertEqual(self.warm()[1], {"warm": False})
+        self.run_jobs()
+        self.assertTrue(self.warm()[1]["warm"])
+
+    def test_none_while_she_answers(self):
+        self.app.active = (C1, "a1", self.clock.t)
+        self.assertEqual(self.warm()[1], {"warm": False})
+        self.assertEqual(self.jobs, [])
+
+    def test_a_failed_load_frees_the_next(self):
+        self.ollama_fail = chat.UpstreamError(502)
+        self.warm()
+        self.run_jobs()  # never raises out of the thread
+        self.assertEqual(len(self.ollama_calls), 1)  # stops at the first failure
+        self.ollama_fail = None
+        self.clock.t += 60
+        self.assertTrue(self.warm()[1]["warm"])
+
+
+class OllamaClientTest(unittest.TestCase):
+    """The client refuses anything but the two warm calls, whatever calls it (threat 167)."""
+
+    def test_refused_before_any_socket(self):
+        up = chat.Ollama(base="http://127.0.0.1:9")  # nothing listens on 9
+        gen = {"model": "julz:latest", "prompt": "hi", "stream": False, "options": {"num_predict": 1}}
+        for path, data in (("/api/pull", {"model": "x"}), ("/api/delete", {"model": "julz:latest"}),
+                           ("/api/create", {"model": "julz:latest"}), ("/api/copy", {}),
+                           ("/api/chat", gen), ("/api/generate", {**gen, "prompt": "rm -rf"}),
+                           ("/api/generate", {**gen, "model": "julz-pro:latest"}),
+                           ("/api/generate", {**gen, "keep_alive": -1}),
+                           ("/api/generate", {**gen, "options": {"num_predict": 9999}}),
+                           ("/api/embed", {"model": "bge-m3:latest", "input": "secret"}),
+                           ("/api/generate/", gen), ("/api/generate", None)):
+            with self.assertRaises(chat.UpstreamError) as e:
+                up(path, data)
+            self.assertEqual(e.exception.status, 0, (path, data))
+
+    def test_a_listed_call_reaches_the_socket(self):
+        up = chat.Ollama(base="http://127.0.0.1:9")
+        with self.assertRaises(chat.UpstreamError) as e:
+            up(*chat.WARM_CALLS[0])
+        self.assertEqual(e.exception.status, 502)  # it tried, nothing listened
+
+
 class FilesTest(unittest.TestCase):
     def test_token_and_key_files_must_be_private(self):
         with tempfile.TemporaryDirectory() as d:

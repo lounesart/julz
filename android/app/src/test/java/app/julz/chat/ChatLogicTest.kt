@@ -12,6 +12,14 @@ class ChatLogicTest {
     private fun answer(text: String, done: Boolean, id: String = "a1") = ChatMessage(id, false, text, done, 2, null)
     private fun view(vararg m: ChatMessage, busy: Boolean = false) = ChatView("c", "t", busy, m.toList())
 
+    @Test fun warmsOnceAMinuteAtMost() {
+        assertTrue(ChatLogic.warmDue(null, 0))
+        assertFalse(ChatLogic.warmDue(1_000, 1_000))
+        assertFalse(ChatLogic.warmDue(1_000, 60_999))
+        assertTrue(ChatLogic.warmDue(1_000, 61_000))
+        assertEquals("/api/warm", ChatApi.WARM)
+    }
+
     @Test fun pollsFastWhileAnsweringThenSlower() {
         assertNull(ChatLogic.pollDelay(busy = false, sinceSendMs = 0))
         assertEquals(300L, ChatLogic.pollDelay(busy = true, sinceSendMs = 0))

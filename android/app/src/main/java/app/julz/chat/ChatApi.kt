@@ -55,6 +55,8 @@ object ChatApi {
     fun edit(id: String): String? = view(id)?.let { "$it/edit" }
     /** With the DELETE method; the same path as the chat itself */
     fun delete(id: String): String? = view(id)
+    /** POST {}: julz-chat loads the models while I type (260, threat 167); nothing of mine goes */
+    const val WARM = "/api/warm"
 
     /** The text and, when one is on, a mode's name; "" is no mode */
     fun body(text: String, mode: String = ""): String? =
@@ -249,6 +251,10 @@ object ChatLogic {
         val first = call()
         return if (first.first == 404 && list()) call() else first
     }
+
+    /** julz-chat warms at most once a minute (260), so the app asks no more often; null is never */
+    const val WARM_GAP_MS = 60_000L
+    fun warmDue(lastMs: Long?, nowMs: Long): Boolean = lastMs == null || nowMs - lastMs >= WARM_GAP_MS
 
     /** An edit goes while she answers: julz-chat stops that answer first (203) */
     fun canSend(text: String, busy: Boolean, sending: Boolean, editing: Boolean = false): Boolean =
