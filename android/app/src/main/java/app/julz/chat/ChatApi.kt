@@ -25,7 +25,7 @@ object ChatApi {
     const val MAX_ANSWER = 200_000
     const val MAX_ERROR = 500
     /** julz-chat's mode names (135, threat 151); the words for each live on the laptop */
-    val MODES = setOf("learn")
+    val MODES = setOf("learn", "notes")
     private const val MAX_REPLY = 2_000_000
     private val ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     private val MESSAGE_ID = Regex("[A-Za-z0-9-]{1,64}")
@@ -188,7 +188,7 @@ object SaveToNotes {
 object KeepCase {
     const val MAX_Q = 1_300
     const val MAX_A = 2_600
-    val MODES = setOf("none", "learn", "unknown")
+    val MODES = setOf("none", "learn", "notes", "unknown")
 
     fun body(question: String, answer: String, mode: String): org.json.JSONObject? {
         val q = question.trim().take(MAX_Q)

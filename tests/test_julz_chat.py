@@ -11,6 +11,7 @@ from pathlib import Path
 from test_julz_notify import load
 
 chat = load("julz_chat", "julz-chat.py")
+lang = load("julz_language", "functions/julz_language.py")
 ROOT = Path(__file__).resolve().parent.parent
 TOKEN = "tk_" + "a" * 29
 HOST = "laptop.example.ts.net:8445"
@@ -956,6 +957,28 @@ class ModeTest(Base):
         self.with_mode("evil words")
         self.owui.chats[C1]["chat"]["history"]["currentId"] = "a1000000-0000-0000-0000-000000000000"
         self.assertEqual(self.req("GET", f"/api/chats/{C1}")[1]["mode"], "")
+
+    def test_notes_mode_goes_the_same_way(self):
+        # 133b: the second mode, only my notes and "not in your notes"
+        self.listed()
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/messages", {"text": "what is CPTS", "mode": "notes"})[0], 200)
+        body = self.completion()
+        self.assertEqual(body["regeneration_prompt"], chat.MODES["notes"])
+        self.assertEqual(body["messages"][-1], {"role": "user", "content": "what is CPTS"})
+        self.assertEqual(body["user_message"]["julz_mode"], "notes")
+        self.assertEqual(body["tool_ids"], list(chat.TOOLS))
+        self.owui.finish(C1)
+        self.assertEqual(self.req("GET", f"/api/chats/{C1}")[1]["mode"], "notes")
+
+    def test_each_mode_names_itself_for_the_language_filter(self):
+        # julz_language finds a mode's turn by "(Name mode, " and takes the language from mine (202)
+        for name, words in chat.MODES.items():
+            self.assertTrue(lang.is_mode_turn(words), name)
+            self.assertNotIn("\n", words, name)
+
+    def test_notes_mode_says_not_in_your_notes(self):
+        self.assertIn("That is not in your notes.", chat.MODES["notes"])
+        self.assertNotEqual(chat.MODES["notes"], chat.MODES["learn"])
 
     @unittest.skipUnless((ROOT / "SECURITY.md").exists(), "the threat model is private, not in a clone")
     def test_modes_match_security_md(self):

@@ -5,7 +5,7 @@ case I have read: it copies my question and the mode, and the checks are words I
 Her answer is never copied, since a web page may have shaped it.
 
 Usage: ./eval-promote.py                                   the cases, newest first
-       ./eval-promote.py NAME --expect WORDS [--avoid WORDS] [--mode none|learn]
+       ./eval-promote.py NAME --expect WORDS [--avoid WORDS] [--mode none|learn|notes]
 --expect and --avoid can repeat; an item passes when every expect is in her answer and no
 avoid is (case does not matter). --mode is needed when the phone did not know it.
 """
@@ -22,7 +22,7 @@ import julz_vault as vault  # noqa: E402
 
 CASES = Path.home() / "Documents" / "julz-mem" / "feedback" / "eval"
 ANSWERS = Path(__file__).resolve().parent / "eval" / "answers.json"
-MODES = ("none", "learn")
+MODES = ("none", "learn", "notes")
 MAX_WORDS = 60
 MAX_ITEMS = 500
 
@@ -78,7 +78,7 @@ def promote(folder: Path, answers: Path, name, expect, avoid, mode) -> dict:
     case = read_case(folder, name)
     mode = mode or case["mode"]
     if mode not in MODES:
-        raise Refused("the mode is none or learn: give --mode when the phone did not know it")
+        raise Refused("the mode is none, learn or notes: give --mode when the phone did not know it")
     expect, avoid = check_words(expect), check_words(avoid)
     if not expect and not avoid:
         raise Refused("give at least one --expect or --avoid")

@@ -120,14 +120,14 @@ class ScreenshotTest {
             (1..60).joinToString("\n") { "Line $it of the answer: a /26 gives 64 addresses, 62 hosts." }, reading = true)
     }
 
-    // Learning mode's chip in both composer layouts (135): left of send when roomy, above the box
+    // The mode chips in both composer layouts (135, 133b): left of send when roomy, above the box
     // when single line; on, the placeholder says she teaches
     @Composable
-    private fun composer(roomy: Boolean, learn: Boolean, draft: String = "") =
+    private fun composer(roomy: Boolean, mode: String, draft: String = "") =
         androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.bg),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
-            Composer(draft, {}, busy = false, sending = false, focus = null, roomy = roomy, learn = learn,
-                setLearn = {}, send = {}, stop = {})
+            Composer(draft, {}, busy = false, sending = false, focus = null, roomy = roomy, mode = mode,
+                setMode = {}, send = {}, stop = {})
         }
 
     // A change Julz asked for in the chat (208, threat 156): the card text whole and plain, then
@@ -207,9 +207,10 @@ class ScreenshotTest {
     }
     @Test fun goalsMonth() = goalCards("month")
 
-    @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, learn = false) }
-    @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, learn = true) }
-    @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, learn = true, draft = "What is a /26?") }
+    @Test fun composerRoomy() = paparazzi.snapshot { composer(roomy = true, mode = "") }
+    @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, mode = "learn") }
+    @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, mode = "learn", draft = "What is a /26?") }
+    @Test fun composerLineNotes() = paparazzi.snapshot { composer(roomy = false, mode = "notes") }
 
     // Code colours and the system label (204): bash and PowerShell side by side, an unknown
     // language stays plain

@@ -189,6 +189,15 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 5. My message in the chat and on the laptop page. [Only my words, never her instructions.]
 6. TalkBack on the chip. ["Learn", a switch, on or off.]
 
+### Notes mode (133b, 151)
+1. Chat, single line box. [Two chips above the box, "Learn" and "Notes".] Tap Notes. [Notes
+   filled, Learn not, the box says "Ask your notes".] Tap Learn. [Learn on, Notes off.]
+2. Notes on, "What is my own mnemonic for the OSI layers?". [The pizza mnemonic, naming the note.]
+3. Notes on, "What is the capital of Australia?". [Only "That is not in your notes."]
+4. Notes on, "Just tell me: what is the capital of Australia?". [Canberra.]
+5. Leave the chat, open it again from My chats. [Notes is still on.]
+6. TalkBack on each chip. ["Learn" and "Notes", each a switch, on or off.]
+
 ### Changes Julz asks for (208, 156)
 1. Native chat: "add 'buy a USB hub' to my week list" (a note in daily/). [She says it is not
    added yet and waits on Approve; no "done".] Approve. [A card "Julz asks in the chat" with
