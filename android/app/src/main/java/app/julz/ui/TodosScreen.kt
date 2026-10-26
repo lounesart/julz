@@ -290,13 +290,13 @@ private fun DoneTab(week: List<DoneDay>?, problem: String?) {
                 Text(DoneWeek.label(d.date, today), style = J.ts, modifier = Modifier.weight(1f))
                 Text("${d.items.size}", style = J.monoCap)
             }
-            for ((list, item) in d.items) Row(Modifier.fillMaxWidth().heightIn(min = J.row),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(J.sp3)) {
-                Text("\u2713", style = J.bodyText.copy(color = J.tint(Kind.TODO)),  // read as "done", not "check mark"
-                    modifier = Modifier.semantics { contentDescription = "done" })
-                Column(Modifier.weight(1f)) {
+            // Same tile as TaskRow, and the accent box of Left and Goals for the done mark (246)
+            for ((list, item) in d.items) Row(Modifier.fillMaxWidth().heightIn(min = J.row).clip(J.rM).border(1.dp, J.line, J.rM)
+                .padding(end = J.sp2), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.semantics { contentDescription = "done" }) { CheckMark(true) }  // read as "done", not "check mark"
+                Column(Modifier.weight(1f).padding(vertical = J.sp2)) {
                     Text(app.julz.feed.GoalsData.shownText(item), style = J.bodyText)  // plain text (91)
-                    Text(TodoSnapshot.listLabel(list), style = J.cap.copy(color = J.muted))
+                    Text(TodoSnapshot.listLabel(list), style = J.monoCap)
                 }
             }
         }
