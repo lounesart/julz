@@ -97,24 +97,51 @@ object ChatApi {
         return Sent(chat, message)
     }
 
-    /** What a refusal means, in words for the screen; 0 is no answer at all. */
+    // No answer at all, by cause (128): codes no HTTP status can be
+    const val UNREACHABLE = 0
+    const val NO_NAME = -1
+    const val SLOW = -2
+    const val TLS = -3
+
+    /** What a refusal means, in words for the screen; 0 and below is no answer at all. */
     fun problem(code: Int): String = when (code) {
         409 -> "Julz is still answering"
         429 -> "Too many messages this hour"
         401 -> "The phone token was refused"
         404 -> "That chat is gone"
         413, 400 -> "That message is too long"
-        0 -> "The laptop did not answer"
+        NO_NAME -> "The phone cannot find the laptop. Is Tailscale running on the phone?"
+        SLOW -> "The laptop took too long to answer. Try again"
+        TLS -> "The laptop's certificate was refused"
+        UNREACHABLE -> "The laptop is not reachable. Is it on and Tailscale up?"
         else -> "Open WebUI did not answer"
     }
 
-    /** (status, body); status 0 when the laptop is not reachable. The phone token goes to the
-     *  derived origin only; no Origin header, so julz-chat knows no browser sent it; no redirects. */
-    fun call(origin: String, path: String, token: String, body: String? = null, delete: Boolean = false): Pair<Int, String> = try {
+    /** Why a call got no answer. A cold model never lands here: julz-chat answers at once and
+     *  the words follow (measured 26 Oct, every call under 0.1 s while Ollama loaded for 34 s). */
+    fun failure(e: Exception, connected: Boolean): Int = when {
+        e is java.net.UnknownHostException -> NO_NAME
+        e is javax.net.ssl.SSLException && !connected -> TLS  // the handshake is in connect()
+        e is java.net.SocketTimeoutException && connected -> SLOW
+        else -> UNREACHABLE
+    }
+
+    /** (status, body); status 0 or below when the laptop gave no answer, see failure. The phone
+     *  token goes to the derived origin only; no Origin header, so julz-chat knows no browser
+     *  sent it; no redirects. */
+    fun call(origin: String, path: String, token: String, body: String? = null, delete: Boolean = false,
+             readMs: Int = 35_000, connectMs: Int = 10_000): Pair<Int, String> {
+        var connected = false
+        return try { exchange(origin, path, token, body, delete, readMs, connectMs) { connected = true } }
+        catch (e: Exception) { failure(e, connected) to "" }
+    }
+
+    private fun exchange(origin: String, path: String, token: String, body: String?, delete: Boolean, readMs: Int, connectMs: Int,
+                         connected: () -> Unit): Pair<Int, String> {
         val conn = URL(origin + path).openConnection() as HttpURLConnection
-        try {
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 35_000  // julz-chat waits up to 30 s on Open WebUI
+        return try {
+            conn.connectTimeout = connectMs
+            conn.readTimeout = readMs  // julz-chat waits up to 30 s on Open WebUI
             conn.useCaches = false
             conn.instanceFollowRedirects = false
             conn.setRequestProperty("Accept", "application/json")
@@ -124,8 +151,11 @@ object ChatApi {
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.outputStream.use { it.write(body.toByteArray()) }
             }
+            // On its own, so a timeout after this is a slow laptop, not an unreachable one
+            conn.connect()
+            connected()
+            if (body != null && !delete) conn.outputStream.use { it.write(body.toByteArray()) }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.use { s ->
@@ -134,7 +164,7 @@ object ChatApi {
             } ?: ""
             code to text
         } finally { conn.disconnect() }
-    } catch (e: Exception) { 0 to "" }
+    }
 }
 
 /** An answer saved into Inbox through the approver, signed with the device key (SECURITY.md

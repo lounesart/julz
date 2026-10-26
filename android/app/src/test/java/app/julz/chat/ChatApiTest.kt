@@ -200,7 +200,39 @@ class ChatApiTest {
         assertEquals("Julz is still answering", ChatApi.problem(409))
         assertEquals("Too many messages this hour", ChatApi.problem(429))
         assertEquals("The phone token was refused", ChatApi.problem(401))
-        assertEquals("The laptop did not answer", ChatApi.problem(0))
         assertEquals("Open WebUI did not answer", ChatApi.problem(502))
+    }
+
+    /** "The laptop did not answer" named no cause (my note 19 Oct, 128): each way the network
+     *  fails gets its own words, fixed ones, never the exception's text. */
+    @Test fun noAnswerSaysWhy() {
+        val noName = ChatApi.failure(java.net.UnknownHostException("laptop.tail0.ts.net"), connected = false)
+        val unreachable = ChatApi.failure(java.net.SocketTimeoutException("connect timed out"), connected = false)
+        val refused = ChatApi.failure(java.net.ConnectException("refused"), connected = false)
+        val slow = ChatApi.failure(java.net.SocketTimeoutException("Read timed out"), connected = true)
+        val tls = ChatApi.failure(javax.net.ssl.SSLHandshakeException("bad cert"), connected = false)
+        assertEquals("The phone cannot find the laptop. Is Tailscale running on the phone?", ChatApi.problem(noName))
+        assertEquals("The laptop is not reachable. Is it on and Tailscale up?", ChatApi.problem(unreachable))
+        assertEquals(unreachable, refused)
+        assertEquals("The laptop took too long to answer. Try again", ChatApi.problem(slow))
+        assertEquals("The laptop's certificate was refused", ChatApi.problem(tls))
+        // a read that breaks after connecting is not slowness
+        assertEquals(unreachable, ChatApi.failure(java.io.IOException("reset"), connected = true))
+        assertEquals(unreachable, ChatApi.failure(javax.net.ssl.SSLException("reset"), connected = true))
+        assertEquals(4, setOf(noName, unreachable, slow, tls).size)
+        assertTrue(listOf(noName, unreachable, slow, tls).all { it <= 0 })
+    }
+
+    /** The call itself tells the two timeouts apart: a laptop that takes the connection and
+     *  never answers is slow, a port with nobody on it is not reachable. */
+    @Test fun aSilentLaptopIsSlowAClosedOneUnreachable() {
+        java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use { silent ->
+            val origin = "http://127.0.0.1:${silent.localPort}"
+            assertEquals(ChatApi.SLOW, ChatApi.call(origin, "/api/chats", "t", readMs = 300).first)
+        }
+        val closed = java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use { it.localPort }
+        assertEquals(ChatApi.UNREACHABLE, ChatApi.call("http://127.0.0.1:$closed", "/api/chats", "t", readMs = 300).first)
+        // TEST-NET-1 (RFC 5737): dropped, the connect times out; never counted as slow
+        assertEquals(ChatApi.UNREACHABLE, ChatApi.call("http://192.0.2.1", "/api/chats", "t", readMs = 300, connectMs = 300).first)
     }
 }
