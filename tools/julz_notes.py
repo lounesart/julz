@@ -69,6 +69,9 @@ KINDS = ("todo", "thought", "concept", "lab")
 # Words a task may add to mine without making it up (threat 140)
 FILLERS = {"a", "an", "to", "of", "at", "in", "on", "my", "the", "and", "for", "with", "from", "into",
            "your", "our", "then"}
+# Lines julz_language and julz_tasks append to my last message before tools run: not my words,
+# and the tasks line quotes a note (241, threats 140 and 161)
+FILTER_LINES = re.compile(r"(?:\n\n\((?:Reply in [^\n()]{1,40}\.|Tasks filter: [^\n]*Otherwise ignore this line\.)\))+\Z")
 # A bare yes to her offer: my one message before it then names the tasks (241, threat 140)
 YES_WORDS = {"yes", "yeah", "yep", "yup", "ok", "okay", "sure", "please", "pls", "fine", "go",
              "ahead", "do", "it", "that", "this", "save", "add", "sounds", "good", "right",
@@ -1072,7 +1075,8 @@ class Tools:
 
     @staticmethod
     def _my_messages(messages) -> list:
-        """The user's own messages, last first: tool results and notes never sit there (threat 85)."""
+        """The user's own messages, last first, without the filters' lines: tool results and notes
+        never sit there (threat 85)."""
         mine = []
         for m in reversed(messages or []):
             if isinstance(m, dict) and m.get("role") == "user":
@@ -1080,7 +1084,7 @@ class Tools:
                 if isinstance(content, list):
                     content = " ".join(c.get("text", "") for c in content
                                        if isinstance(c, dict) and c.get("type") == "text")
-                mine.append(content if isinstance(content, str) else "")
+                mine.append(FILTER_LINES.sub("", content) if isinstance(content, str) else "")
         return mine
 
     @classmethod
