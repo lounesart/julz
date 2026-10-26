@@ -5,6 +5,7 @@ Two collections, never mixed (SECURITY.md threat 58):
 - "julz-mem": my own notes, everything in the vault except Inbox/, Outbox/, Claude/, Templates/, feedback/
 - "julz-claude": notes Claude wrote and I kept from the phone, from Claude/ only. Their names
   start with Claude__, so a citation shows who wrote them even when julz gets the wording wrong
+Neither gets index notes (kind: moc) or a translation beside its note (BACKLOG 118).
 Diff sync, make before break (BACKLOG 129, SECURITY.md 143): notes are matched by name and the
 SHA-256 of their bytes; new and changed ones are added first, stale copies removed only after
 every add worked. The old full resync removed first and left her 4 of 32 notes on 20 Oct.
@@ -25,6 +26,17 @@ from owui import CLAUDE_KB_NAME, KB_NAME, api, find_kb, kb_files, load_key, uplo
 VAULT = (Path.home() / "Documents" / "julz-mem").resolve()
 HEADER_MAX = 200  # a long heading would be repeated into every chunk under it (163)
 HEADING = re.compile(r"^(#{1,3})[ \t]+(.*)$")
+INDEX = re.compile(r"\A---\n(?:.*\n)*?kind:[ \t]*moc[ \t]*\n(?:.*\n)*?---", re.M)
+TRANSLATION = re.compile(r"(.+)\.[a-z]{2}")  # 10-interview.ru beside 10-interview
+
+
+def _left_out(p: Path) -> bool:
+    """Index notes julz-vault builds (links, no knowledge) and translations beside their note:
+    one fact three times crowds the top K (118). A note only in Russian is not a translation."""
+    m = TRANSLATION.fullmatch(p.stem)
+    if m and p.with_name(m.group(1) + p.suffix).is_file():
+        return True
+    return p.suffix == ".md" and INDEX.match(p.read_text(errors="replace")) is not None
 
 
 def _notes(root: Path, suffixes: tuple[str, ...]):
@@ -37,6 +49,8 @@ def _notes(root: Path, suffixes: tuple[str, ...]):
         # A symlink in the vault could pull files like ~/.ssh/config into the index (CWE-22)
         if p.is_symlink() or not p.is_file() or not p.resolve().is_relative_to(root):
             print(f"skip (outside vault): {rel}")
+            continue
+        if _left_out(p):
             continue
         yield p, rel
 
