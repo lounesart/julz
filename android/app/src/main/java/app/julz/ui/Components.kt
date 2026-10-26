@@ -136,7 +136,7 @@ fun KindIcon(kind: Kind) = IconBadge(Icons.kind(kind), J.tint(kind))
 fun IconBadge(icon: ImageVector, tint: Color? = null) {
     // The theme's button shape, cut on Industrial (asked 18 Oct: the circles stayed round there)
     Box(Modifier.size(44.dp).background(tint?.copy(alpha = 0.12f) ?: J.raise, J.pill)
-        .border(1.dp, tint?.copy(alpha = 0.7f) ?: J.line, J.pill), contentAlignment = Alignment.Center) {
+        .outline(1.dp, tint?.copy(alpha = 0.7f) ?: J.line, J.pill), contentAlignment = Alignment.Center) {
         Icon(icon, contentDescription = null, tint = tint ?: J.muted, modifier = Modifier.size(22.dp))
     }
 }
