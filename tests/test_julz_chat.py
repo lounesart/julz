@@ -1081,14 +1081,14 @@ class WarmTest(Base):
         self.assertEqual((status, data), (200, {"warm": True}))
         self.assertEqual(self.ollama_calls, [])  # in a thread, not in the request
         self.run_jobs()
-        self.assertEqual(self.ollama_calls, [
-            ("/api/embed", {"model": "bge-m3:latest", "input": "hi"}),
+        self.assertEqual(self.ollama_calls, [  # julz first, so she never pushes bge-m3 out
             ("/api/generate", {"model": "julz:latest", "prompt": "hi", "stream": False,
-                               "options": {"num_predict": 1}})])
+                               "options": {"num_predict": 1}}),
+            ("/api/embed", {"model": "bge-m3:latest", "input": "hi"})])
         self.assertEqual(self.owui.calls, [])
 
     def test_the_calls_are_the_chat_model_and_carry_no_keep_alive(self):
-        self.assertEqual(chat.WARM_CALLS[1][1]["model"], chat.MODEL)
+        self.assertEqual(chat.WARM_CALLS[0][1]["model"], chat.MODEL)
         for _, data in chat.WARM_CALLS:
             self.assertNotIn("keep_alive", data)
 

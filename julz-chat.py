@@ -50,10 +50,11 @@ WINDOWS = {MODEL: 16_384}
 EMBED_MODEL = "bge-m3:latest"  # Open WebUI's embedder (Admin, Documents), the notes search
 # Warm on intent (260, threat 167): the only Ollama calls julz-chat makes, whole and fixed. Each
 # loads its model and does one step of work, since the first compute on a fresh load is the slow
-# part (27 Oct, first words: 37 s cold, 23 s after a load with no prompt, 11.5 s after these)
+# part (27 Oct, first words: 37 s cold, 23 s after a load with no prompt, 11.5 s after these).
+# julz first: loaded second, she pushed bge-m3 out when the GPU was short; bge-m3 fits after her
 WARM_CALLS = (
-    ("/api/embed", {"model": EMBED_MODEL, "input": "hi"}),
     ("/api/generate", {"model": MODEL, "prompt": "hi", "stream": False, "options": {"num_predict": 1}}),
+    ("/api/embed", {"model": EMBED_MODEL, "input": "hi"}),
 )
 WARM_EVERY = 60
 WARM_TIMEOUT = 120  # both loads together took up to 28 s
