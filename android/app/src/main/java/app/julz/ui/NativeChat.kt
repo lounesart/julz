@@ -785,9 +785,10 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             sendButton(Modifier)
         }
     } else Column {
-        ModeWheel(mode, setMode, Modifier.padding(start = J.gutter + J.sp2, top = J.sp1))
-        Row(box.heightIn(min = button + inset * 2).padding(start = J.sp4, end = inset),
+        Row(box.heightIn(min = button + inset * 2).padding(start = inset, end = inset),
             verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+            // The modes roll up and down beside the words (my note 26 Oct: smaller, vertical)
+            ModeWheel(mode, setMode, Modifier.padding(vertical = J.sp1))
             // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
             field(Modifier.weight(1f).padding(vertical = 14.dp))
             sendButton(Modifier.padding(vertical = inset))
@@ -822,5 +823,5 @@ internal fun NotesFound(paths: List<String>, open: (String) -> Unit) {
 @Composable
 private fun ModeWheel(mode: String, set: (String) -> Unit, modifier: Modifier = Modifier) {
     WheelPicker(Wheel.MODES.map { it.second }, Wheel.MODES.indexOfFirst { it.first == mode }.coerceAtLeast(0),
-        modifier.width(192.dp)) { set(Wheel.MODES[it].first) }
+        modifier.width(76.dp).height(J.tapL), vertical = true) { set(Wheel.MODES[it].first) }
 }

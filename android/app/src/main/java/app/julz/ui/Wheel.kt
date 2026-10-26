@@ -10,6 +10,20 @@ object Wheel {
     fun nearest(centres: List<Pair<Int, Float>>, mid: Float): Int? =
         centres.minByOrNull { kotlin.math.abs(it.second - mid) }?.first
 
+    /** Copies of the words in a loop: the last word is followed by the first again, so a word
+     *  always stands on both sides (an empty side was my note, 26 Oct). One word does not loop */
+    const val LOOP = 1000
+    fun slots(count: Int) = if (count > 1) count * LOOP else count
+
+    /** The word at slot [slot] */
+    fun real(slot: Int, count: Int) = slot % count
+
+    /** The slot holding word [target] nearest to slot [from], so a pick rolls the short way round */
+    fun closest(from: Int, target: Int, count: Int): Int {
+        val ahead = Math.floorMod(target - from, count)
+        return if (ahead <= count / 2) from + ahead else from + ahead - count
+    }
+
     /** What TalkBack says for a word: its place, since the row hides most of itself */
     fun say(word: String, index: Int, count: Int) = "$word, ${index + 1} of $count"
 
