@@ -40,6 +40,32 @@ def findings() -> list[str]:
     return out
 
 
+# A size typed by hand (26 Oct, session 63: the wheel shipped with 192, 76 and 280 dp picked by eye,
+# next to the 36 dp SmallPill it should have matched). Space and sizes come from Theme.kt's role
+# tokens (inset, gap, stack, small, tap...); a hairline or stroke of 0 to 2 dp is not layout. The
+# sizes already in the code are the baseline, per file, as Android Lint keeps one: a new one fails,
+# and a removed one must lower its number here, so the baseline only shrinks
+SIZE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\.dp\b")
+STROKES = {"0", "1", "1.5", "2"}
+SIZE_BASELINE = {
+    "App.kt": 7, "Components.kt": 11, "FeedScreens.kt": 7, "GoalsTab.kt": 7, "Guides.kt": 2, "History.kt": 4,
+    "MarkdownView.kt": 10, "NativeChat.kt": 11, "NotesScreen.kt": 1, "OtherScreens.kt": 5, "TodosScreen.kt": 4,
+    "WorkCards.kt": 4,
+}
+
+
+def sizes_by_hand(sources: dict[str, str] | None = None) -> dict[str, int]:
+    if sources is None:
+        sources = {f.name: f.read_text() for f in sorted(UI.glob("*.kt")) if f.name != "Theme.kt"}
+    out = {}
+    for name, text in sources.items():
+        n = sum(1 for line in text.splitlines() if not line.strip().startswith(("//", "*", "/**"))
+                for m in SIZE.finditer(line) if m.group(1) not in STROKES)
+        if n:
+            out[name] = n
+    return out
+
+
 # A screen that pins an area under its list (status, the signed text, the fingerprint button). The
 # tab bar floats over every screen since v1.66 (22i), so that area must clear it, or the button
 # hides under the bar (126: Todos lost its confirm, the last Inbox note its Move and Delete)
@@ -72,6 +98,18 @@ class DesignLintTest(unittest.TestCase):
         bad = "OutlinedTextField(x, { x = it }, Modifier.fillMaxWidth(), label = { Text(\"X\") })\n"
         good = "OutlinedTextField(x, { x = it }, Modifier.fillMaxWidth().keepsKeyboard(), label = { Text(\"X\") })\n"
         self.assertEqual(fields_without_keep({"X.kt": bad, "Y.kt": good}), ["X.kt:1"])
+    def test_no_new_size_by_hand(self):
+        over = {f: n for f, n in sizes_by_hand().items() if n > SIZE_BASELINE.get(f, 0)}
+        self.assertEqual(over, {}, "\nUse a role token from Theme.kt (docs/design/README.md, Layout system), or name a new one there")
+
+    def test_size_baseline_only_shrinks(self):
+        # a size replaced by a token lowers its file's number, so the baseline stays the truth
+        self.assertEqual(sizes_by_hand(), SIZE_BASELINE)
+
+    def test_the_size_lint_catches_what_it_should(self):
+        src = "Box(Modifier.width(192.dp).border(1.dp, J.line).padding(J.sp3).height(J.small))\n// 76.dp in a comment\n"
+        self.assertEqual(sizes_by_hand({"X.kt": src}), {"X.kt": 1})
+
     def test_screens_use_the_tokens(self):
         self.assertEqual(findings(), [], "\nUse a token from Theme.kt, or allow it here with a reason")
 

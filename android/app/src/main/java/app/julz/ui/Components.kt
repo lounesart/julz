@@ -233,8 +233,10 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
     }
 }
 
-/** The wheel picker (251), in the Segmented control's form: a glass pill track, the picked word
- *  in the middle under the same light (filled, or outlined with Look and feel's option), its
+/** The wheel picker (251): a secondary control, one level under the tabs (Material 3: secondary
+ *  tabs separate content inside a destination), as tall as SmallPill (J.small), its touch area
+ *  widened by Compose without a gap. No track, the picked word under the tabs' light (filled, or
+ *  outlined with Look and feel's option) in 14 sp, its
  *  neighbours half hidden by the same fade on both sides. A roll that stops settles the nearest word in the middle
  *  and picks it; a flick lands on a word (centre snap) and each word passing the middle ticks, as
  *  a real picker does. A tap on a word rolls it in, the visible way beside the swipe. [vertical] is
@@ -295,6 +297,23 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         if (light.value == 0f || still) light.snapTo(target)
         else light.animateTo(target, androidx.compose.animation.core.tween(160, easing = J.ease))
     }
+    // The light rides on the word nearest the middle and moves with it (my note 26 Oct: it hung
+    // in the middle like a fixed frame); when the next word takes the middle it hops over on a
+    // spring, aim assist, and on release it glides in with the word. The chat's one word stays put
+    val aim by remember { androidx.compose.runtime.derivedStateOf {
+        state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == middle }?.let { it.index to it.offset + it.size / 2f } } }
+    val lightX = remember { androidx.compose.animation.core.Animatable(Float.NaN) }
+    val hop = remember { intArrayOf(-1, 0) }  // the word aimed at, and 1 while hopping to it
+    LaunchedEffect(aim) {
+        val (i, x) = aim ?: return@LaunchedEffect
+        if (vertical || still || lightX.value.isNaN()) { lightX.snapTo(x); hop[0] = i; return@LaunchedEffect }
+        if (i != hop[0]) { hop[0] = i; hop[1] = 1 }
+        if (hop[1] == 1) {
+            lightX.animateTo(x, androidx.compose.animation.core.spring(dampingRatio = 0.8f,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow))
+            hop[1] = 0
+        } else lightX.snapTo(x)
+    }
     val pillShape = J.pill
     // Counted after the touch slop, so 12 dp more is a short flick, not a precise one
     val reach = with(androidx.compose.ui.platform.LocalDensity.current) { J.sp3.toPx() }
@@ -305,14 +324,14 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             detectVerticalDragGestures(onDragStart = { moved = 0f },
                 onDragEnd = { Wheel.step(now, n, moved, reach).let { if (it != now) pick(it) } }) { _, dy -> moved += dy }
         })
-        // Inside the chat box the box is its track, so a vertical wheel draws only the light
-        .then(if (vertical) Modifier else Modifier.glass(J.pill).padding(J.sp1))
         .drawBehind {
             if (light.value == 0f) return@drawBehind
-            // The light: the word's length across, or the track's width with words stacked
-            val size = if (vertical) androidx.compose.ui.geometry.Size(this.size.width, light.value)
-                       else androidx.compose.ui.geometry.Size(light.value, this.size.height)
-            translate(left = (this.size.width - size.width) / 2, top = (this.size.height - size.height) / 2) {
+            // The light as tall as the wheel: the word's length across, or the whole width with one word
+            val tall = this.size.height
+            val size = if (vertical) androidx.compose.ui.geometry.Size(this.size.width, tall)
+                       else androidx.compose.ui.geometry.Size(light.value, tall)
+            val left = if (vertical || lightX.value.isNaN()) (this.size.width - size.width) / 2 else lightX.value - size.width / 2
+            translate(left = left, top = (this.size.height - size.height) / 2) {
                 val o = pillShape.createOutline(size, layoutDirection, this)
                 if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
                 else drawOutline(o, J.text)
@@ -342,13 +361,13 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             val lit = middle?.let { it == slot } ?: (i == selected)
             // The same words as Segmented: dark on the filled light, the readable accent on the outline
             val ink = if (!lit) J.muted else if (J.outline) J.accText else J.bg
-            val style = if (vertical) J.cap else J.sec
-            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.heightIn(min = J.tap))
+            val style = J.cap
+            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small))
                 .clip(J.pill).clickable(role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
                 .clearAndSetSemantics {
                     contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
                     this.selected = i == selected; role = Role.Tab
-                }.padding(horizontal = if (vertical) J.sp2 else J.sp4),
+                }.padding(horizontal = J.sp3),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Text(words[i], style = style.copy(color = ink, fontWeight = J.ts.fontWeight), maxLines = 1, softWrap = false)
                 counts?.getOrNull(i)?.let {
@@ -358,7 +377,7 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         }
         if (vertical) androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().semantics { selectableGroup() },
             state = state, userScrollEnabled = false, horizontalAlignment = Alignment.CenterHorizontally) { items(slots) { word(it) } }
-        else androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().heightIn(min = J.tap).nestedScroll(KeepSideways).then(mask),
+        else androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().height(J.small).nestedScroll(KeepSideways).then(mask),
             state = state, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (loop) 0.dp else maxWidth / 2),
             horizontalArrangement = Arrangement.spacedBy(J.sp1), verticalAlignment = Alignment.CenterVertically) {
             items(slots) { word(it) }

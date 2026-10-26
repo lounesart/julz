@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -265,8 +264,7 @@ private fun Messages(kept: List<Notice>, shown: List<Notice>, read: ReadState, o
     // count; the chosen one stays in the middle, so a tap on a warning shows Warnings there (22d)
     val kinds = Wheel.kinds(kept.map { it.kind }.toSet(), filter)
     WheelPicker(kinds.map { if (it == null) "All" else Words.label(it) }, kinds.indexOf(filter).coerceAtLeast(0),
-        // Narrower than the tabs above, centred: a filter, not a second tab bar (my note 26 Oct)
-        Modifier.padding(bottom = J.sp3).fillMaxWidth().wrapContentWidth().widthIn(max = 280.dp), counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
+        Modifier.padding(bottom = J.gap), counts = kinds.map { k -> kept.count { k == null || it.kind == k } }) { setFilter(kinds[it]) }
     // Read all and Clear act on what the filter shows; Clear hides, History keeps them
     FeedLine.messages(shown, read)?.let { line ->
         QuietLine(line.text) {

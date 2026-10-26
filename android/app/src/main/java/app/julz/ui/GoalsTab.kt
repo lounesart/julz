@@ -475,7 +475,7 @@ private fun ActionRow(label: String, content: @Composable () -> Unit) {
 @Composable
 private fun SmallPill(label: String, on: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Box(Modifier.minimumInteractiveComponentSize().clickable(role = Role.Button, enabled = enabled, onClick = onClick)
-        .heightIn(min = 36.dp).clip(J.pill)
+        .heightIn(min = J.small).clip(J.pill)
         .background(if (on && !J.outline) J.text else J.raise)
         .border(1.dp, if (on && J.outline) J.acc else J.line, J.pill)
         .padding(horizontal = J.sp3), contentAlignment = Alignment.Center) {
