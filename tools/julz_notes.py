@@ -561,6 +561,26 @@ class Tools:
         return [i for i in items if i and not re.match(r"#{1,6}(?:\s|$)", i)
                 and not re.fullmatch(r"[^:]{1,40}\s*:", i)]
 
+    def _is_todo(self, rel: Path) -> bool:
+        """A note whose front matter tags hold todo, as Todos lists it."""
+        p = self.vault / rel
+        if p.is_symlink() or not p.is_file() or p.stat().st_size > MAX_NOTE_BYTES:
+            return False
+        return "todo" in self._tags(self._front(p.read_text(encoding="utf-8", errors="replace"))[0])
+
+    @staticmethod
+    def _as_tasks(text: str) -> str:
+        """Each plain line or bullet as an open task, its words and indent kept; a line with a
+        box, a heading or a blank stays (242: "- HDMI cables" never reached Todos)."""
+        out = []
+        for line in text.split("\n"):
+            indent, rest = re.match(r"(\s*)(?:[-*+](?:\s+|$))?(.*)", line).groups()
+            if not rest.strip() or re.match(r"#{1,6}(?:\s|$)|\[.\]\s", rest):
+                out.append(line)
+            else:
+                out.append(f"{indent}- [ ] {rest}")
+        return "\n".join(out)
+
     def _shown(self, content: str, whole: bool = False) -> str:
         """The saved text as the user reads it. A reply leaves out the front matter, or she
         lists the tags and the date (209); the confirm dialog shows all of it (CWE-451)."""
@@ -1145,6 +1165,11 @@ class Tools:
         rel, answer = self._resolve(note)
         if answer:
             return answer
+        # Before the dialog and the card, so what I sign is what is written (242, threat 166)
+        if self._is_todo(rel):
+            text = self._as_tasks(text)
+            if len(text) > MAX_APPEND_CHARS:
+                return f"Refused: at most {MAX_APPEND_CHARS} characters at a time."
         # Her study answers went into daily/ as cards I never asked for (158)
         mine = self._my_last_message(__messages__)
         if not (ADD_WORD.search(mine) or SAVE_WORD.search(mine)):
