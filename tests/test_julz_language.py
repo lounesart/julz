@@ -91,5 +91,60 @@ class InletTest(unittest.TestCase):
             self.assertEqual(self.f.inlet(copy.deepcopy(b)), b)
 
 
+# 202: Open WebUI 0.11.4 appends a mode's words as a user turn before the inlet filters
+LEARN = "(Learning mode, about my message above: teach me, do not solve it for me.)"
+
+
+class ModeTurnTest(unittest.TestCase):
+    def setUp(self):
+        self.f = lang.Filter()
+
+    def test_language_from_my_turn_hint_on_the_mode_turn(self):
+        b = body("как работает DNS?")
+        b["messages"].append({"role": "user", "content": LEARN})
+        out = self.f.inlet(b)
+        self.assertEqual(out["messages"][-1]["content"], LEARN + "\n\n(Reply in Russian.)")
+        self.assertEqual(out["messages"][-2]["content"], "как работает DNS?")
+
+    def test_looks_past_her_answers_to_my_turn(self):
+        b = body("что такое VLAN?", "VLAN это...", "а trunk?")
+        b["messages"].append({"role": "user", "content": LEARN})
+        out = self.f.inlet(b)
+        self.assertTrue(out["messages"][-1]["content"].endswith("(Reply in Russian.)"))
+
+    def test_my_newest_turn_decides(self):
+        b = body("what is DNS?", "DNS is...", "а по-русски?")
+        b["messages"].append({"role": "user", "content": LEARN})
+        self.assertTrue(self.f.inlet(b)["messages"][-1]["content"].endswith("(Reply in Russian.)"))
+
+    def test_list_content_turn_of_mine(self):
+        b = {"messages": [{"role": "user", "content": [{"type": "text", "text": "co to jest?"}]},
+                          {"role": "user", "content": LEARN}]}
+        self.assertTrue(self.f.inlet(b)["messages"][-1]["content"].endswith("(Reply in Polish.)"))
+
+    def test_odd_turn_of_mine_falls_back(self):
+        for mine in (None, 5, [None], [{"type": "text", "text": None}]):
+            b = {"messages": [{"role": "user", "content": mine}, None, {"role": "user", "content": LEARN}]}
+            out = self.f.inlet(b)
+            self.assertTrue(out["messages"][-1]["content"].endswith("(Reply in English.)"), mine)
+
+    def test_mode_turn_alone_falls_back(self):
+        b = {"messages": [{"role": "user", "content": LEARN}]}
+        self.assertTrue(self.f.inlet(b)["messages"][-1]["content"].endswith("(Reply in English.)"))
+
+    def test_my_own_brackets_still_decide(self):
+        b = body("привет", "Привет!", "(just tell me, what is DNS?)")
+        self.assertTrue(self.f.inlet(b)["messages"][-1]["content"].endswith("(Reply in English.)"))
+
+    def test_every_julz_chat_mode_is_recognised(self):
+        # A new mode in julz-chat.py must match, or it would decide the language again
+        spec = importlib.util.spec_from_file_location("julz_chat", ROOT / "julz-chat.py")
+        chat = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(chat)
+        self.assertTrue(chat.MODES)
+        for name, words in chat.MODES.items():
+            self.assertTrue(lang.is_mode_turn(words), name)
+
+
 if __name__ == "__main__":
     unittest.main()

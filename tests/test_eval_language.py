@@ -64,6 +64,17 @@ class RunCase(unittest.TestCase):
                                    {"role": "assistant", "content": "Hi there"},
                                    {"role": "user", "content": "А дальше?"}])
 
+    def test_mode_reaches_the_ask(self):
+        seen = []
+        lang.run_case({"q": "Как работает DNS?", "mode": "learn"},
+                      lambda msgs, mode=None: seen.append(mode) or "Что ты уже знаешь?", tries=1)
+        self.assertEqual(seen, ["learn"])
+
+    def test_modes_are_julz_chats_own(self):
+        # The eval must send the words julz-chat sends, not a copy that drifts
+        self.assertIn("learn", lang.MODES)
+        self.assertIn("Learning mode", lang.MODES["learn"])
+
 
 if __name__ == "__main__":
     unittest.main()

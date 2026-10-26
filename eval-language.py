@@ -9,14 +9,21 @@ replies are Russian (the 4B model is a coin flip). Exits 1 below the pass mark.
 
 Usage: ./eval-language.py [model]   (default julz:latest; pass mark: every case)
 """
+import importlib.util
 import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 import owui  # noqa: E402
 
-TOOLS = ["julz_notes", "julz_pocket", "julz_delegate"]  # as julz-chat.py sends them
+# julz-chat's own tools and mode words, so the eval cannot drift from what the app sends
+_spec = importlib.util.spec_from_file_location("julz_chat", HERE / "julz-chat.py")
+_chat = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_chat)
+TOOLS = list(_chat.TOOLS)
+MODES = _chat.MODES
 TRIES = 2
 FENCE = re.compile(r"```.*?(```|$)", re.S)
 INLINE = re.compile(r"`[^`\n]*`")
@@ -42,6 +49,10 @@ CASES = [
      "history": [["user", "Как закрыть порт 8080 в nftables?"],
                  ["assistant", "Remove the accept rule for tcp dport 8080 from your input chain, "
                                "then reload with `sudo nft -f /etc/nftables.conf`."]]},
+    # Learning mode: julz-chat sends its English words as a user turn after mine, and the
+    # language filter reads the last user turn
+    {"q": "Объясни, как работает DNS, когда я открываю сайт.", "mode": "learn"},
+    {"q": "Как найти открытые порты на машине в HTB?", "mode": "learn"},
 ]
 
 
@@ -58,10 +69,11 @@ def is_russian(text: str) -> bool:
 
 
 def run_case(case, ask, tries=TRIES):
-    """Ask a case `tries` times; ask(messages) returns the reply text."""
+    """Ask a case `tries` times; ask(messages[, mode]) returns the reply text."""
     msgs = [{"role": r, "content": c} for r, c in case.get("history", [])]
     msgs.append({"role": "user", "content": case["q"]})
-    shares = [cyrillic_share(ask(msgs)) for _ in range(tries)]
+    mode = case.get("mode")
+    shares = [cyrillic_share(ask(msgs, mode) if mode else ask(msgs)) for _ in range(tries)]
     return all(s >= 0.5 for s in shares), shares
 
 
@@ -69,9 +81,11 @@ def main():
     model = sys.argv[1] if len(sys.argv) > 1 else "julz:latest"
     key = owui.load_key(owui.CHAT_ENV_FILE)
 
-    def ask(msgs):
-        r = owui.api(key, "POST", "/api/chat/completions", data={
-            "model": model, "stream": False, "messages": msgs, "tool_ids": TOOLS}, timeout=300)
+    def ask(msgs, mode=None):
+        body = {"model": model, "stream": False, "messages": msgs, "tool_ids": TOOLS}
+        if mode:
+            body["regeneration_prompt"] = MODES[mode]  # as julz-chat.py sends a mode
+        r = owui.api(key, "POST", "/api/chat/completions", data=body, timeout=300)
         return r["choices"][0]["message"]["content"]
 
     passed = 0
@@ -80,6 +94,7 @@ def main():
         passed += ok
         mark = "PASS" if ok else "FAIL"
         hist = " (history)" if case.get("history") else ""
+        hist += f" ({case['mode']} mode)" if case.get("mode") else ""
         print(f"{mark}  {' '.join(f'{s:.2f}' for s in shares)}  {case['q']}{hist}")
     print(f"{passed}/{len(CASES)} stayed Russian")
     sys.exit(0 if passed == len(CASES) else 1)
