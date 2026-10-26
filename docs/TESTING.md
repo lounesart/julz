@@ -49,6 +49,8 @@ Expected results in brackets.
 1. Tick two done tasks (finger). [Bottom bar shows the exact text; after a few seconds both are
    under Done, the Left list shrinks.]
 2. Done tab. [Today, Yesterday and dates, archived lists included.]
+3. In Obsidian, a task of about 60 characters with two #goal tags, [est:: 2h] and [spent:: 1h]
+   (113b). [Within a minute it is in the list, tags hidden; the goals count it; tick it.]
 
 ### Stages (127)
 1. Left: tap the empty circle of a task, Start with fingerprint. [The circle turns half filled;
