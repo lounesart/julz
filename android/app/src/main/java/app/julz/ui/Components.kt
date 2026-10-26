@@ -224,19 +224,10 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         if (position == null) light.go(selected, options.size - 1, still)
     }
     // Over a pager the light is the pages' position, for a tap as for a swipe: with a clock of its
-    // own it drifted from the pages and leapt when building a page froze a frame (up to 200 ms,
-    // my note 26 Oct: it looked bouncy). Coming to rest on a new page, it hits (Tabs.landed)
+    // own it drifted from the pages and leapt when building a page froze a frame (up to 200 ms).
+    // No hit there: the pages ease to a stop, and a squash after a soft stop twitched (my notes
+    // 26 and 27 Oct: bouncy, jittery)
     val at = position ?: { light.pos.value }
-    if (position != null) LaunchedEffect(Unit) {
-        val rows = this
-        var last = selected
-        androidx.compose.runtime.snapshotFlow { position() }.collect { p ->
-            val k = Tabs.landed(last, p) ?: return@collect
-            val way = kotlin.math.sign((k - last).toFloat())
-            last = k
-            if (!still) rows.launch { light.hit(k, way) }
-        }
-    }
     val presses = remember(options.size) { List(options.size) { androidx.compose.foundation.interaction.MutableInteractionSource() } }
     val held = presses.map { it.collectIsPressedAsState().value }.any { it }
     LaunchedEffect(held) { light.press(held, still) }

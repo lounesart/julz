@@ -35,9 +35,14 @@ object Tabs {
     const val HIT_MS = 45
     val recover = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 700f)
 
-    /** The light's scale (along the way, across it) at [impact], 0 at rest, 1 at the hit: shorter
-     *  along, a little fuller across, so it keeps its volume roughly */
-    fun squash(impact: Float, give: Float = 1f) = (1f - 0.09f * impact * give) to (1f + 0.045f * impact * give)
+    /** The light's length along the way at [impact], 0 at rest, 1 at the hit, as a share of its
+     *  own: shorter, never fuller across, so it stays inside its track (a bulge pushed the corners
+     *  out and back, my note 27 Oct) */
+    fun squash(impact: Float, give: Float = 1f) = 1f - 0.09f * impact * give
+
+    /** Where a light [length] long starts and how long it is, squashed to [along], kept against the
+     *  edge that hit ([way] +1 the far one): drawn shorter, not stretched, so its corners keep their size */
+    fun squashed(length: Float, along: Float, way: Float) = (if (way > 0) length * (1f - along) else 0f) to length * along
 
     /** How much of the squash, the lean and the punch a row gives, from its cell's width along the
      *  way and [ref], about a tab bar cell (Tabs.REF): all of it up to that width, less on wider
@@ -59,13 +64,6 @@ object Tabs {
     /** How much of cell [i] the light covers with the light at [at] (in cells), 0 to 1: a word
      *  takes the light's ink as much as it is under it, so the colour moves with the light */
     fun ink(at: Float, i: Int) = (1f - kotlin.math.abs(at - i)).coerceIn(0f, 1f)
-
-    /** The tab the light came to rest on at [at], if it is not [last], the one it rested on before:
-     *  a swipe's landing, which hits as a tap's does */
-    fun landed(last: Int, at: Float): Int? {
-        val k = kotlin.math.round(at).toInt()
-        return if (k != last && kotlin.math.abs(at - k) < 0.005f) k else null
-    }
 
     /** The pick moved to [now] with a tap to [pending] on its way, or none: (tick?, what is still
      *  pending). A tap ticks itself at once, so its way and its end stay quiet; a change with nothing
@@ -112,7 +110,7 @@ internal class TabLight(start: Float) {
     }
 
     /** The landing on [to], coming the way [way] (+1 along, -1 back): the squash and the punch.
-     *  A tap's travel ends in it; over a pager, the page's landing calls it alone */
+     *  A tap's travel ends in it */
     suspend fun hit(to: Int, way: Float) {
         dir = way
         arriving = to
@@ -139,11 +137,7 @@ internal class TabLight(start: Float) {
         }
     }
 
-    /** The hit's scale (x, y): shorter along the way it came, fuller across */
-    fun squash(vertical: Boolean): Pair<Float, Float> {
-        val (along, across) = Tabs.squash(impact.value, give)
-        return if (vertical) across to along else along to across
-    }
+
 }
 
 /** A row's tab light, kept across recompositions, started on [start] */
@@ -152,19 +146,18 @@ internal fun rememberTabLight(start: Int) = androidx.compose.runtime.remember { 
 
 /** Draws [light]'s shape at the light's place: [cell] is one tab's size, [step] the distance from
  *  one tab to the next, along x or, [vertical], along y. The hit squashes it against its leading
- *  edge, the press about its middle */
+ *  edge, drawn shorter so its corners keep their size, the press about its middle */
 internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTabLight(
     light: TabLight, at: Float, cell: androidx.compose.ui.geometry.Size, step: Float, vertical: Boolean,
     shape: androidx.compose.ui.graphics.Shape, draw: androidx.compose.ui.graphics.drawscope.DrawScope.(androidx.compose.ui.graphics.Outline) -> Unit) {
     light.give = Tabs.give(if (vertical) cell.height else cell.width, Tabs.REF.toPx())
-    val (sx, sy) = light.squash(vertical)
-    // The hit pivots at the edge that hit, so the far edge catches up; the press at the middle
-    val lead = if (light.dir > 0) 1f else 0f
-    val pivot = if (vertical) androidx.compose.ui.geometry.Offset(cell.width / 2, cell.height * lead)
-        else androidx.compose.ui.geometry.Offset(cell.width * lead, cell.height / 2)
+    // The hit shortens it against the edge that hit, so the far edge catches up; the press sinks
+    // it about its middle
+    val (start, length) = Tabs.squashed(if (vertical) cell.height else cell.width, Tabs.squash(light.impact.value, light.give), light.dir)
+    val shown = if (vertical) androidx.compose.ui.geometry.Size(cell.width, length) else androidx.compose.ui.geometry.Size(length, cell.height)
     translate(if (vertical) 0f else step * at, if (vertical) step * at else 0f) {
         scale(light.sink.value, cell.center) {
-            scale(sx, sy, pivot) { draw(shape.createOutline(cell, layoutDirection, this)) }
+            translate(if (vertical) 0f else start, if (vertical) start else 0f) { draw(shape.createOutline(shown, layoutDirection, this)) }
         }
     }
 }

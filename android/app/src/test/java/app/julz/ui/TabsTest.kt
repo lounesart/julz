@@ -49,14 +49,20 @@ class TabsTest {
         assertTrue(kotlin.math.abs(Tabs.lean(0f, 3f, 4)) < kotlin.math.abs(Tabs.lean(2f, 4f, 4)))
     }
 
-    // The hit squashes the light along the way and it bulges across, keeping its volume roughly;
-    // nothing at rest
-    @Test fun theHitSquashesAlongTheWay() {
-        assertEquals(1f to 1f, Tabs.squash(0f))
-        val (along, across) = Tabs.squash(1f)
-        assertTrue("along $along", along in 0.88f..0.95f)
-        assertTrue("across $across", across in 1.01f..1.06f)
-        assertEquals(1f, along * across, 0.06f)
+    // The hit squashes the light along the way only: a bulge across pushed its corners out of
+    // the track and back (my note 27 Oct: the corner bounced); nothing at rest
+    @Test fun theHitSquashesAlongTheWayOnly() {
+        assertEquals(1f, Tabs.squash(0f), 0f)
+        assertTrue("along ${Tabs.squash(1f)}", Tabs.squash(1f) in 0.88f..0.95f)
+    }
+
+    // Squashed, the light keeps the edge that hit and its height; it is drawn shorter, not
+    // stretched, so a cut corner keeps its size
+    @Test fun aSquashedLightKeepsItsLeadingEdge() {
+        val (left, width) = Tabs.squashed(100f, 0.9f, way = 1f)
+        assertEquals(10f, left, 1e-4f); assertEquals(90f, width, 1e-4f)
+        val (left2, _) = Tabs.squashed(100f, 0.9f, way = -1f)
+        assertEquals(0f, left2, 0f)
     }
 
     // The arriving word punches in from a little smaller, a visible step, not a pop from nothing
@@ -116,17 +122,11 @@ class TabsTest {
         assertEquals(1f, Tabs.give(60f, 60f), 0f)
         assertEquals(1f, Tabs.give(40f, 60f), 0f)
         assertEquals(0.5f, Tabs.give(120f, 60f), 1e-4f)
-        val (wide, _) = Tabs.squash(1f, 0.5f)
-        val (bar, _) = Tabs.squash(1f, 1f)
+        val wide = Tabs.squash(1f, 0.5f)
+        val bar = Tabs.squash(1f, 1f)
         assertEquals(1f - wide, (1f - bar) / 2, 1e-4f)
         assertEquals(1f, Tabs.punch(0f), 0f)
         assertTrue(Tabs.punch(0.5f) > Tabs.punch(1f))
     }
 
-    // A swipe lands with the same hit as a tap: the light comes to rest on a new page
-    @Test fun aSwipeLandsOnANewPage() {
-        assertEquals(1, Tabs.landed(0, 1.002f))
-        assertEquals(null, Tabs.landed(1, 1.0f))
-        assertEquals(null, Tabs.landed(0, 0.6f))
-    }
 }
