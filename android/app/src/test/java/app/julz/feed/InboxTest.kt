@@ -72,4 +72,16 @@ class InboxTest {
         // the laptop sends at most MAX_NOTES, so a full list may hide more
         assertEquals("20 or more notes waiting to be sorted", InboxSnapshot.line(InboxSnapshot.MAX_NOTES))
     }
+
+    /** Back on the feed right after a move or delete, the laptop may still have the old Inbox:
+     *  its id is the one I signed, so the card reads again (13c). */
+    @Test fun theCountWaitsForTheChangeISigned() {
+        val old = InboxSnapshot.parse(snap())!!
+        val new = InboxSnapshot.parse(snap(emptyList(), id = ""))!!
+        assertEquals(true, InboxSnapshot.settled(old, null, last = false))
+        assertEquals(false, InboxSnapshot.settled(old, ID, last = false))
+        assertEquals(true, InboxSnapshot.settled(new, ID, last = false))
+        // a refused change leaves the Inbox as it was, so the last read is the true count
+        assertEquals(true, InboxSnapshot.settled(old, ID, last = true))
+    }
 }

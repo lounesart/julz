@@ -48,6 +48,15 @@ object InboxSnapshot {
         else -> "$count notes waiting to be sorted"
     }
 
+    /** julz-vault applies a signed change within seconds of the request (13c) */
+    const val SETTLE_MS = 4000L
+    const val READS = 5
+
+    /** Whether this snapshot may give the card its count: one with the id I just signed is the
+     *  Inbox from before julz-vault applied the change. The last read counts as it is, since a
+     *  refused change leaves the Inbox as it was (13c). */
+    fun settled(s: InboxSnapshotData, signed: String?, last: Boolean): Boolean = last || s.id != signed
+
     fun parse(raw: String): InboxSnapshotData? {
         val j = try { JSONObject(raw) } catch (e: Exception) { return null }
         val id = j.optString("id")

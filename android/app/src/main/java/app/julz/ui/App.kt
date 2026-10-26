@@ -152,12 +152,22 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
         LaunchedEffect(fresh, screen) { settleBadge(loadState(origins).first, loadProposals(origins)) }
         // The Inbox card counts what the laptop has now, not what an old notice said
         var liveInbox by remember { mutableStateOf<Int?>(null) }
-        LaunchedEffect(fresh, screen) {
+        // The Inbox id of the last change I signed: no notice follows a move or delete, so the
+        // feed reads again until julz-vault has applied it (13c)
+        var inboxSigned by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(fresh, screen, inboxSigned) {
             if (screen != Screen.FEED) return@LaunchedEffect
-            val reply = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try { app.julz.approve.ApproverApi.call(origins, app.julz.approve.ApproverApi.INBOX) } catch (e: Exception) { 0 to "" }
+            for (n in 1..app.julz.feed.InboxSnapshot.READS) {
+                val reply = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try { app.julz.approve.ApproverApi.call(origins, app.julz.approve.ApproverApi.INBOX) } catch (e: Exception) { 0 to "" }
+                }
+                val s = if (reply.first == 200) app.julz.feed.InboxSnapshot.parse(reply.second) else null
+                if (s == null || app.julz.feed.InboxSnapshot.settled(s, inboxSigned, n == app.julz.feed.InboxSnapshot.READS)) {
+                    liveInbox = s?.notes?.size; break
+                }
+                liveInbox = null
+                kotlinx.coroutines.delay(app.julz.feed.InboxSnapshot.SETTLE_MS / 2)
             }
-            liveInbox = if (reply.first == 200) app.julz.feed.InboxSnapshot.parse(reply.second)?.notes?.size else null
         }
         // A notification tap names a fixed screen only (13d, threat 133)
         LaunchedEffect(opened) {
@@ -230,7 +240,7 @@ fun App(version: Int, opened: app.julz.Notifier.Target? = null, openedFilter: Ki
                     screen == Screen.TOOLS -> ToolsScreen(origins, JulzService.lastContact(context))
                     screen == Screen.TODOS -> TodosScreen(notices, origins, picked, { picked = it }) { nav = nav.back() }
                     screen == Screen.INBOX -> InboxScreen(origins, inboxPicked, { inboxPicked = it },
-                        browse = { notesStart = it; nav = nav.open(Screen.NOTES) }) { nav = nav.back() }
+                        browse = { notesStart = it; nav = nav.open(Screen.NOTES) }, signed = { inboxSigned = it }) { nav = nav.back() }
                     screen == Screen.NOTES -> NotesScreen(origins, notesStart) { nav = nav.back() }
                     screen == Screen.FEEDBACK -> FeedbackScreen(origins, feedbackDraft, { feedbackDraft = it },
                         feedbackKind, { feedbackKind = it }) { nav = nav.back() }
