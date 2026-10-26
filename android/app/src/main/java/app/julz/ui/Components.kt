@@ -323,8 +323,19 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             val size = androidx.compose.ui.geometry.Size(box.second, tall)
             translate(left = box.first) {
                 val o = pillShape.createOutline(size, layoutDirection, this)
-                if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                // In the chat box the mode is a tile like the send button beside it, not a picked tab
+                if (vertical) drawOutline(o, J.raise)
+                else if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
                 else drawOutline(o, J.text)
+            }
+            // One word in view: a column of dots says where it stands and that more are there, as a
+            // pager's indicator does, so the tile reads as a wheel to swipe, not a button (my note 26 Oct)
+            if (vertical) {
+                val dot = J.sp1.toPx()
+                val on = Wheel.real(middle ?: selected, n)
+                val top = (this.size.height - dot * (2 * n - 1)) / 2
+                for (k in 0 until n) drawCircle(if (k == on) J.accText else J.faint, dot / 2,
+                    androidx.compose.ui.geometry.Offset(J.sp2.toPx() + dot / 2, top + dot / 2 + k * dot * 2))
             }
         }) {
         val mask = Modifier
@@ -350,14 +361,14 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             val i = Wheel.real(slot, n)
             val lit = middle?.let { it == slot } ?: (i == selected)
             // The same words as Segmented: dark on the filled light, the readable accent on the outline
-            val ink = if (!lit) J.muted else if (J.outline) J.accText else J.bg
+            val ink = if (!lit) J.muted else if (vertical || J.outline) J.accText else J.bg
             val style = J.cap
             Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small))
                 .clip(J.pill).clickable(role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
                 .clearAndSetSemantics {
                     contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
                     this.selected = i == selected; role = Role.Tab
-                }.padding(horizontal = J.sp3),
+                }.padding(start = if (vertical) J.sp5 else J.sp3, end = J.sp3),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Text(words[i], style = style.copy(color = ink, fontWeight = J.ts.fontWeight), maxLines = 1, softWrap = false)
                 counts?.getOrNull(i)?.let {

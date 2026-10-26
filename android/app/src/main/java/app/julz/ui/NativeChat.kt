@@ -824,12 +824,12 @@ internal fun NotesFound(paths: List<String>, open: (String) -> Unit) {
  *  pick of three, where two switches read as if both could be on */
 @Composable
 private fun ModeWheel(mode: String, set: (String) -> Unit, modifier: Modifier = Modifier) {
-    // The send button's form on the other side: as tall, the same inset, as wide as the widest word
-    // (laid out unseen, so the light never jumps with the word)
-    Box(modifier.height(J.iconButton)) {
+    // The send button's twin on the other side: its 40 dp shape where a 48 dp target would put it,
+    // as wide as the widest word (laid out unseen, so the light never jumps with the word)
+    Box(modifier.padding((J.tap - J.iconButton) / 2).height(J.iconButton)) {
         Column(Modifier.clearAndSetSemantics { }.alpha(0f)) {
             for ((_, word) in Wheel.MODES) Text(word, style = J.cap.copy(fontWeight = J.ts.fontWeight), maxLines = 1,
-                modifier = Modifier.padding(horizontal = J.sp3).height(0.dp))
+                modifier = Modifier.padding(start = J.sp5, end = J.sp3).height(0.dp))
         }
         WheelPicker(Wheel.MODES.map { it.second }, Wheel.MODES.indexOfFirst { it.first == mode }.coerceAtLeast(0),
             Modifier.matchParentSize(), vertical = true) { set(Wheel.MODES[it].first) }
