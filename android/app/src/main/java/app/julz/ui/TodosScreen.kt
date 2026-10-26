@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +44,7 @@ import app.julz.feed.DoneDay
 import app.julz.feed.DoneWeek
 import app.julz.feed.Kind
 import app.julz.feed.Notice
+import app.julz.feed.TabSwipe
 import app.julz.feed.TodoSnapshot
 
 /** A picked task, kept at app level so leaving the screen keeps my picks (HANDOFF gotcha). A
@@ -125,7 +128,14 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
         Segmented(listOf("Left", "Done", "Goals"), tab) { tab = it }
     }
     Box(Modifier.weight(1f)) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
+    // A swipe left or right moves one tab (250); the switch above stays as the visible way. It only
+    // changes the view, never a pick or a tick: those stay behind the fingerprint
+    val reach = with(androidx.compose.ui.platform.LocalDensity.current) { 80.dp.toPx() }
+    Column(Modifier.fillMaxSize().pointerInput(tab) {
+        var moved = 0f
+        detectHorizontalDragGestures(onDragStart = { moved = 0f }, onDragCancel = { moved = 0f },
+            onDragEnd = { tab = TabSwipe.next(tab, 3, moved, reach) }) { _, dx -> moved += dx }
+    }.verticalScroll(rememberScrollState()).padding(horizontal = J.gutter)
         .padding(bottom = J.sp6), verticalArrangement = Arrangement.spacedBy(J.gap)) {
         if (tab == 0) Guide(Guides.TODOS) else if (tab == 2) Guide(Guides.GOALS)
         if (tab == 2) GoalsTab(origins, goals, lists.orEmpty()) else if (tab == 1) DoneTab(week, weekProblem) else when {
