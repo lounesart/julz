@@ -123,6 +123,23 @@ class WheelTest {
         assertTrue(Wheel.squash(trail to lead) in 0.9f..0.97f)
     }
 
+    // A fast flick crossed a word every frame and the per-word stretch strobed (found on video, my
+    // note 26 Oct): the elastic edges are for slow moves, gone at speed, where the light streaks
+    // along the motion instead, more the faster it goes, and never past a limit
+    @Test fun theElasticCalmsWithSpeed() {
+        assertEquals(1f, Wheel.calm(0f), 0f); assertEquals(1f, Wheel.calm(-1.5f), 0f)
+        assertEquals(0f, Wheel.calm(8f), 0f); assertEquals(Wheel.calm(4f), Wheel.calm(-4f), 0f)
+        var last = 1f
+        for (k in 0..40) { val c = Wheel.calm(k / 4f); assertTrue(c <= last); last = c }
+    }
+    @Test fun theLightStreaksWithSpeed() {
+        assertEquals(0f, Wheel.streak(0f), 0f)
+        assertTrue(Wheel.streak(3f) > 0f)
+        assertEquals(Wheel.streak(5f), Wheel.streak(-5f), 0f)
+        var last = 0f
+        for (k in 0..40) { val v = Wheel.streak(k / 2f); assertTrue(v >= last && v <= 0.5f); last = v }
+    }
+
     // The middle word a little bigger, as a drum's middle row (my idea 26 Oct): neighbours keep
     // their 14 sp, so nothing goes under the design's smallest text
     @Test fun theMiddleWordIsALittleBigger() {
@@ -143,6 +160,22 @@ class WheelTest {
     @Test fun anyStretchThinsTheFrameAFewPercentAtMost() {
         assertEquals(1f, Wheel.squash(0f), 0f)
         assertTrue(Wheel.squash(5f) >= 0.85f)
+    }
+
+    // A landing never passes its word (found on video, 26 Oct: the strip swung up to 250 px past and
+    // back): the spring starts no faster than it can stop in the distance left; flung into an end,
+    // only the bounce swings
+    @Test fun aLandingNeverPassesItsWord() {
+        for (v in listOf(500f, 3000f, 9000f)) for (d in listOf(40f, 150f, 400f)) {
+            val anim = androidx.compose.animation.core.TargetBasedAnimation(Wheel.settle, Float.VectorConverter,
+                0f, d, Wheel.landingSpeed(v, d))
+            val end = anim.durationNanos
+            var t = 0L; var most = 0f
+            while (t <= end) { most = maxOf(most, anim.getValueFromNanos(t)); t += 4_000_000 }
+            assertTrue("v $v d $d went to $most", most <= d + 1.5f)
+        }
+        assertEquals(-3000f, Wheel.landingSpeed(-3000f, 100f), 0f)
+        assertEquals(500f, Wheel.landingSpeed(500f, 100f), 0f)
     }
 
     // One fling, one motion: where it lands, from the free decay's travel in word widths

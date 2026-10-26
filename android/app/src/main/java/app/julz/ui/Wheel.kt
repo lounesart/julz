@@ -51,6 +51,15 @@ object Wheel {
         return s((t - 0.35f) / 0.45f) to s((t - 0.2f) / 0.45f)
     }
 
+    /** How much of the elastic edges (Wheel.edges) to use at [speed], in words a second: all of
+     *  it on a slow move, none on a fast flick, where it crossed a word every frame and strobed
+     *  between stretched and gathered (found on video, my note 26 Oct) */
+    fun calm(speed: Float) = (1f - (kotlin.math.abs(speed) - 2f) / 4f).coerceIn(0f, 1f)
+
+    /** How far the light streaks along the motion at [speed], as a share of its width: squash and
+     *  stretch, more the faster the strip goes, never more than half */
+    fun streak(speed: Float) = (kotlin.math.abs(speed) / 8f).coerceAtMost(1f) * 0.5f
+
     /** The light's height while stretched, as a share of its own: thinner as it stretches, so it
      *  keeps its volume (squash and stretch), never by more than a few percent */
     fun squash(edges: Pair<Float, Float>) = squash(edges.second - edges.first)
@@ -81,6 +90,17 @@ object Wheel {
     /** How a fling lands: done within a pixel of the word, as Compose's Int and Offset springs are; the
      *  last frame puts it on the word. At the Float default, 0.01 px, it crept on unseen for about
      *  250 ms, and the pick, so Messages' list, waited for it (my note 26 Oct) */
+    /** The speed a landing starts with, toward a word [delta] pixels away: the finger's [velocity],
+     *  no faster than the settle spring can stop in that distance. A critically damped spring
+     *  passes its target only when it starts faster than its stiffness's root times the distance;
+     *  the word is often nearer than the flick would carry (in view, or the end), and the strip swung
+     *  up to 250 px past and back (found on video, 26 Oct). A flick the other way keeps its speed */
+    fun landingSpeed(velocity: Float, delta: Float): Float {
+        if (velocity * delta <= 0f) return velocity
+        val most = kotlin.math.sqrt(androidx.compose.animation.core.Spring.StiffnessMediumLow) * kotlin.math.abs(delta)
+        return velocity.coerceIn(-most, most)
+    }
+
     val settle = androidx.compose.animation.core.spring(
         stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow, visibilityThreshold = 1f)
 
