@@ -700,6 +700,14 @@ class HashAnchorTest(unittest.TestCase):
         self.assertEqual(notify.short("a" * 64), "aaaaaaaa")
         self.assertEqual(notify.short("a" * 64 + "\n"), "?")
 
+    def test_topic(self):
+        """230: load_topic strips the file today; the pattern holds without that."""
+        good = "julz-" + "a" * 32
+        self.assertTrue(notify.TOPIC.match(good))
+        for bad in (good + "\n", good + "\r", "\n" + good):
+            with self.subTest(bad=bad):
+                self.assertIsNone(notify.TOPIC.match(bad))
+
 
 class CardsUnitFileTest(unittest.TestCase):
     """160: its own unit pair, the cards folder read only and nothing else of the vault."""
