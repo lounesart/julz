@@ -101,8 +101,9 @@ Expected results in brackets.
    a bar, hours and due, Done and Left by name with a tick or a circle, counts for what the phone
    cannot name; nothing to tap but Back.] Open a current goal, Overview: Details. [The same page;
    after Back no change is picked.]
-11. Ask Julz "set me a goal for today: read the DNS chapter". [She offers a todo in daily, a
-   card to sign, not a goal; signed, it shows on Todos.]
+11. Ask Julz "set me a goal for today: read the DNS chapter". [She offers a todo, "Not saved
+   yet", and saves nothing.] Answer "yes, save it". [A todo in Inbox at once, no card, since my
+   yes is the consent (247); it shows on Todos.]
 
 ### Inbox and notes (116 to 119, 148)
 1. Inbox: Move a note, choose a folder in the sheet (finger). [The note leaves the Inbox; Notes
