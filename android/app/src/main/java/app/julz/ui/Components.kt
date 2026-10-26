@@ -50,6 +50,13 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selectableGroup
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Spacer
@@ -222,6 +229,93 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
         }
     }
     }
+}
+
+/** The wheel picker (251): the picked word in the middle under an accent tick, its neighbours half
+ *  hidden by the same fade on both sides. A roll that stops settles the nearest word in the middle
+ *  and picks it; a tap on a word rolls it in, the visible way beside the swipe. Inside the Feed's
+ *  pager the drag stays with the strip (KeepSideways). [counts], if given, stand beside the words. */
+@Composable
+fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifier, counts: List<Int>? = null,
+                onSelect: (Int) -> Unit) {
+    val state = androidx.compose.foundation.lazy.rememberLazyListState()
+    val still = stillMotion()
+    val pick by androidx.compose.runtime.rememberUpdatedState(onSelect)
+    val now by androidx.compose.runtime.rememberUpdatedState(selected)
+    // The word in the middle while it rolls, so the colours follow the finger
+    val middle by remember { androidx.compose.runtime.derivedStateOf { wheelMiddle(state) } }
+    val rolling = remember { booleanArrayOf(false) }
+    // A pick from outside (a tap, a notification's filter) rolls to it; the first one jumps
+    val first = remember { booleanArrayOf(true) }
+    LaunchedEffect(selected, words.size) {
+        androidx.compose.runtime.snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
+        rolling[0] = true
+        wheelRoll(state, selected, still || first[0]); first[0] = false
+        rolling[0] = false
+    }
+    // A roll by hand that stops: the nearest word glides to the middle and is picked
+    LaunchedEffect(state) {
+        androidx.compose.runtime.snapshotFlow { state.isScrollInProgress }.collect { moving ->
+            if (moving || rolling[0] || first[0]) return@collect
+            val i = wheelMiddle(state) ?: return@collect
+            if (i != now) pick(i) else { rolling[0] = true; wheelRoll(state, i, still); rolling[0] = false }
+        }
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+        androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().heightIn(min = J.tap).nestedScroll(KeepSideways)
+            .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                // Symmetric, from the words' own widths: the middle one whole, the fade ends at the
+                // middle of each neighbour, so their outer halves are gone at any strip width
+                val seen = state.layoutInfo.visibleItemsInfo
+                val c = seen.firstOrNull { it.index == middle } ?: return@drawWithContent
+                val near = seen.filter { kotlin.math.abs(it.index - c.index) == 1 }.map { it.size }
+                val whole = c.size / 2f + J.sp4.toPx()
+                val fade = (near.ifEmpty { listOf(c.size) }.average().toFloat() / 2f).coerceAtLeast(1f)
+                val w = size.width
+                fun at(x: Float) = (x / w).coerceIn(0f, 1f)
+                drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(
+                    at(w / 2 - whole - fade) to Color.Transparent, at(w / 2 - whole) to Color.Black,
+                    at(w / 2 + whole) to Color.Black, at(w / 2 + whole + fade) to Color.Transparent),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+            }.semantics { selectableGroup() },
+            state = state, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = maxWidth / 2),
+            horizontalArrangement = Arrangement.spacedBy(J.sp4), verticalAlignment = Alignment.CenterVertically) {
+            items(words.size) { i ->
+                val lit = i == (middle ?: selected)
+                Row(Modifier.heightIn(min = J.tap).clip(J.pill).clickable(role = Role.Tab) { pick(i) }
+                    .clearAndSetSemantics {
+                        contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
+                        this.selected = i == selected; role = Role.Tab
+                    }.padding(horizontal = J.sp2), verticalAlignment = Alignment.CenterVertically) {
+                    Text(words[i], style = J.sec.copy(color = if (lit) J.text else J.muted, fontWeight = FontWeight(600)),
+                        maxLines = 1, softWrap = false)
+                    counts?.getOrNull(i)?.let {
+                        Text(" $it", style = J.monoCap.copy(color = if (lit) J.accText else J.faint), maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+        }
+        // Where the pick sits
+        Box(Modifier.align(Alignment.BottomCenter).size(16.dp, 2.dp).clip(J.pill).background(J.acc))
+    }
+}
+
+private fun wheelMiddle(state: androidx.compose.foundation.lazy.LazyListState): Int? {
+    val info = state.layoutInfo
+    return Wheel.nearest(info.visibleItemsInfo.map { it.index to it.offset + it.size / 2f },
+        (info.viewportStartOffset + info.viewportEndOffset) / 2f)
+}
+
+private suspend fun wheelRoll(state: androidx.compose.foundation.lazy.LazyListState, i: Int, jump: Boolean) {
+    if (i !in 0 until state.layoutInfo.totalItemsCount) return
+    if (state.layoutInfo.visibleItemsInfo.none { it.index == i }) state.scrollToItem(i)
+    val info = state.layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == i } ?: return
+    val delta = item.offset + item.size / 2f - (info.viewportStartOffset + info.viewportEndOffset) / 2f
+    if (jump) state.scrollBy(delta)
+    else state.animateScrollBy(delta, androidx.compose.animation.core.tween(240, easing = J.ease))
 }
 
 /** A spec line, as on a data sheet (22e, from the planets reference): the label muted, the value

@@ -70,7 +70,8 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
     var sent by remember { mutableStateOf(emptyList<String>() to "") }
     val waiting = if (sent.second == id) sent.first.toSet() else emptySet()
     var tab by remember { mutableIntStateOf(0) }
-    var board by remember { mutableStateOf(false) }
+    // The view on the wheel (251): the board, all lists, or one list by its name
+    var view by remember { mutableStateOf(Wheel.ALL) }
     val goals = remember { GoalsUi() }
     // The Done tab (114): asked from the approver when shown, and again when the snapshot changes
     var week by remember { mutableStateOf<List<DoneDay>?>(null) }
@@ -142,13 +143,16 @@ fun TodosScreen(notices: List<Notice>, origins: Origins, picked: List<String>, s
             lists == null -> Text("Nothing here yet. Julz sends your tasks when they change.", style = J.sec)
             lists.isEmpty() -> Text("Every task is done.", style = J.bodyText)
             else -> {
-                Row(horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-                    Pill("Lists", !board, true) { board = false }
-                    Pill("Board", board, true) { board = true }
-                }
+                val names = lists.map { it.name }
+                val at = Wheel.todoIndex(view, names)
+                val board = at == 0
+                // Each view with what is left in it, so the wheel says where the work is
+                val left = lists.map { it.open.size + it.doing.size }
+                WheelPicker(listOf("Board", "All lists") + names.map { TodoSnapshot.listLabel(it) }, at,
+                    counts = listOf(left.sum(), left.sum()) + left) { view = Wheel.todoViews(names)[it] }
                 @Composable fun task(list: String, t: String, inProgress: Boolean, showList: Boolean) =
                     TaskRow(list, t, inProgress, showList, live, waiting, busy, ::toggle)
-                if (!board) for (l in lists) Column(Modifier.fillMaxWidth().glass().padding(J.inset),
+                if (!board) for (l in if (at == 1) lists else listOf(lists[at - 2])) Column(Modifier.fillMaxWidth().glass().padding(J.inset),
                     verticalArrangement = Arrangement.spacedBy(J.sp2)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(TodoSnapshot.listLabel(l.name), style = J.ts, modifier = Modifier.weight(1f))
