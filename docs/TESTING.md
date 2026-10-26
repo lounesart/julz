@@ -296,6 +296,10 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
     chips, a Claude note as "Claude · name"; none while she writes.] Tap a chip. [That note opens
     in Notes; back returns to the chat.] Ask "hi". [No chips.] Rename a found note in Obsidian,
     wait for the notes list to update, tap its chip. ["That note is not in your notes list now."]
+24. After 10 idle minutes, open Chat and type a short question for about half a minute, then send
+    (260, threat 167). [Her first words in about 12 s, not 35; `curl -s 127.0.0.1:11434/api/ps` on
+    the laptop lists julz and bge-m3 while I type.] Close and open Chat again within a minute.
+    [No second load: still listed, nothing slower.]
 
 ### Tab bar (22i)
 1. Any screen. [A glass capsule with margins, in the card shape (cut on Industrial); the active tab

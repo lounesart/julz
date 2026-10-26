@@ -15,6 +15,7 @@ grow, so the phone polls /last and loses nothing when it sleeps.
   POST /api/chats/<id>/stop       {}: stop the answer
   POST /api/chats/<id>/edit       {"text", "mode"?}: my last message again, a running answer
                                   stopped first (203)
+  POST /api/warm                  {}: load julz and bge-m3 while I type (260)
 
 Runs on 127.0.0.1:8766; `tailscale serve --bg --https=8445 http://127.0.0.1:8766` publishes it
 to the tailnet. Config ~/.config/julz/chat.json: {"origin": "https://<name>:8445", "port": 8766}.
@@ -23,6 +24,7 @@ import hmac
 import json
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -40,10 +42,21 @@ CONFIG_FILE = HOME / ".config" / "julz" / "chat.json"
 KEY_FILE = HOME / ".config" / "julz" / "chat.env"  # user@julz.local's key (14)
 TOKEN_FILE = HOME / ".config" / "julz" / "ntfy" / "phone-token"
 BACKEND = "http://127.0.0.1:3100"
+OLLAMA = "http://127.0.0.1:11434"
 
 MODEL = "julz:latest"
 # Each model's num_ctx (26k): an answer whose prompt and output fill it was cut by the window
 WINDOWS = {MODEL: 16_384}
+EMBED_MODEL = "bge-m3:latest"  # Open WebUI's embedder (Admin, Documents), the notes search
+# Warm on intent (260, threat 167): the only Ollama calls julz-chat makes, whole and fixed. Each
+# loads its model and does one step of work, since the first compute on a fresh load is the slow
+# part (27 Oct, first words: 37 s cold, 23 s after a load with no prompt, 11.5 s after these)
+WARM_CALLS = (
+    ("/api/embed", {"model": EMBED_MODEL, "input": "hi"}),
+    ("/api/generate", {"model": MODEL, "prompt": "hi", "stream": False, "options": {"num_predict": 1}}),
+)
+WARM_EVERY = 60
+WARM_TIMEOUT = 120  # both loads together took up to 28 s
 # Deny by default (137): Open WebUI runs only the tools a request names, so this is the set
 TOOLS = ("julz_notes", "julz_pocket", "julz_delegate")
 # The phone names a mode, julz-chat owns its words (151). They go as Open WebUI's regeneration
@@ -149,10 +162,36 @@ class Upstream:
             raise UpstreamError(502) from None
 
 
+class Ollama:
+    """Ollama, which has no login: only the calls in WARM_CALLS, anything else refused before a
+    socket opens. Replies are read and dropped."""
+
+    def __init__(self, base: str = OLLAMA):
+        self.base = base
+
+    def __call__(self, path, data):
+        if (path, data) not in WARM_CALLS:
+            raise UpstreamError(0)
+        req = urllib.request.Request(self.base + path, data=json.dumps(data).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=WARM_TIMEOUT) as resp:
+                resp.read()
+        except urllib.error.HTTPError as e:
+            raise UpstreamError(e.code) from None
+        except OSError:
+            raise UpstreamError(502) from None
+
+
+def in_thread(job):
+    threading.Thread(target=job, daemon=True).start()
+
+
 class App:
     """julz-chat without sockets: handle() takes a request and returns a response."""
 
-    def __init__(self, token: str, hosts: set[str], upstream, clock=time.time, sleep=time.sleep):
+    def __init__(self, token: str, hosts: set[str], upstream, clock=time.time, sleep=time.sleep,
+                 ollama=None, spawn=in_thread):
         if not TOKEN.fullmatch(token or ""):
             raise ValueError("the phone token looks wrong")
         self.token = token.encode()
@@ -167,6 +206,10 @@ class App:
         self.deletes: deque[float] = deque()
         self.active: tuple[str, str, float] | None = None  # chat, message, since
         self.stopped: set[str] = set()  # answers stopped here: 0.11.4 may leave them unfinished
+        self.ollama = ollama or Ollama()
+        self.spawn = spawn
+        self.warmed = float("-inf")
+        self.warming = False
 
     # ---------- plumbing ----------
 
@@ -183,6 +226,11 @@ class App:
             if not hmac.compare_digest(given, self.token):
                 raise HTTPError(401, "token")
             path, _, query = target.partition("?")
+            if target == "/api/warm":
+                if method != "POST":
+                    raise HTTPError(405, "method not allowed")
+                self.read_json(headers, body, set())
+                return self.json(200, self.warm())
             if path == "/api/chats/archived":
                 if method != "GET":
                     raise HTTPError(405, "method not allowed")
@@ -360,6 +408,26 @@ class App:
         if self.active and self.active[0] == cid and msgs and msgs[-1].get("id") == self.active[1] \
                 and not self.running(msgs[-1]):
             self.active = None
+
+    # ---------- warming ----------
+
+    def warm(self) -> dict:
+        """Chat opened (260): load the models in a thread, the server answers one request at a time"""
+        now = self.clock()
+        if self.warming or self.active or now - self.warmed < WARM_EVERY:
+            return {"warm": False}
+        self.warmed, self.warming = now, True
+        self.spawn(self.load_models)
+        return {"warm": True}
+
+    def load_models(self):
+        try:
+            for path, data in WARM_CALLS:
+                self.ollama(path, data)
+        except UpstreamError:
+            pass  # the chat still works, only slower
+        finally:
+            self.warming = False
 
     # ---------- writing ----------
 
