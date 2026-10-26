@@ -28,6 +28,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -234,8 +236,10 @@ fun Segmented(options: List<String>, selected: Int, position: (() -> Float)? = n
 /** The wheel picker (251), in the Segmented control's form: a glass pill track, the picked word
  *  in the middle under the same light (filled, or outlined with Look and feel's option), its
  *  neighbours half hidden by the same fade on both sides. A roll that stops settles the nearest word in the middle
- *  and picks it; a tap on a word rolls it in, the visible way beside the swipe. [vertical] rolls it
- *  up and down in small words, for a tight spot (the chat box); the caller gives its size. Inside the Feed's
+ *  and picks it; a flick lands on a word (centre snap) and each word passing the middle ticks, as
+ *  a real picker does. A tap on a word rolls it in, the visible way beside the swipe. [vertical] is
+ *  one word in the light for a tight spot (the chat box, my note 26 Oct: no neighbours there): a
+ *  swipe up or down steps one, a tap steps to the next; the caller gives its size. Inside the Feed's
  *  pager the drag stays with the strip (KeepSideways). [counts], if given, stand beside the words. */
 @Composable
 fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifier, counts: List<Int>? = null,
@@ -254,6 +258,11 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     val rolling = remember { booleanArrayOf(false) }
     // A pick from outside (a tap, a notification's filter) rolls to it; the first one jumps
     val first = remember { booleanArrayOf(true) }
+    // A tick each time a new word reaches the middle, not on the first placing
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    LaunchedEffect(middle) {
+        if (!first[0] && middle != null) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentFrequentTick)
+    }
     LaunchedEffect(selected, state) {
         androidx.compose.runtime.snapshotFlow { state.layoutInfo.totalItemsCount }.first { it > 0 }
         rolling[0] = true
@@ -261,11 +270,18 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         wheelRoll(state, to, still || first[0]); first[0] = false
         rolling[0] = false
     }
-    // A roll by hand that stops: the nearest word glides to the middle and is picked
+    // A roll by hand that stops: the nearest word glides to the middle and is picked; a short
+    // flick still steps one (Wheel.settle), so no precise swipe is needed (my note 26 Oct)
+    val nudge = with(androidx.compose.ui.platform.LocalDensity.current) { J.sp3.toPx() }
     LaunchedEffect(state) {
+        var start: Int? = null
         androidx.compose.runtime.snapshotFlow { state.isScrollInProgress }.collect { moving ->
-            if (moving || rolling[0] || first[0]) return@collect
-            val slot = wheelMiddle(state) ?: return@collect
+            if (rolling[0] || first[0]) return@collect
+            if (moving) { if (start == null) start = wheelMiddle(state); return@collect }
+            val near = wheelMiddle(state) ?: return@collect
+            val from = start ?: near
+            start = null
+            val slot = if (!loop) near else Wheel.settle(from, near, wheelOffset(state, from) ?: 0f, nudge)
             val i = Wheel.real(slot, n)
             if (i != now) pick(i) else { rolling[0] = true; wheelRoll(state, slot, still); rolling[0] = false }
         }
@@ -280,7 +296,15 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         else light.animateTo(target, androidx.compose.animation.core.tween(160, easing = J.ease))
     }
     val pillShape = J.pill
+    // Counted after the touch slop, so 12 dp more is a short flick, not a precise one
+    val reach = with(androidx.compose.ui.platform.LocalDensity.current) { J.sp3.toPx() }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.then(if (vertical) Modifier else Modifier.fillMaxWidth())
+        // One word, one step a swipe: no precise swipe needed (my note 26 Oct)
+        .then(if (!vertical) Modifier else Modifier.pointerInput(n) {
+            var moved = 0f
+            detectVerticalDragGestures(onDragStart = { moved = 0f },
+                onDragEnd = { Wheel.step(now, n, moved, reach).let { if (it != now) pick(it) } }) { _, dy -> moved += dy }
+        })
         // Inside the chat box the box is its track, so a vertical wheel draws only the light
         .then(if (vertical) Modifier else Modifier.glass(J.pill).padding(J.sp1))
         .drawBehind {
@@ -319,8 +343,8 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             // The same words as Segmented: dark on the filled light, the readable accent on the outline
             val ink = if (!lit) J.muted else if (J.outline) J.accText else J.bg
             val style = if (vertical) J.cap else J.sec
-            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().heightIn(min = J.sp6) else Modifier.heightIn(min = J.tap))
-                .clip(J.pill).clickable(role = Role.Tab) { pick(i) }
+            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.heightIn(min = J.tap))
+                .clip(J.pill).clickable(role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
                 .clearAndSetSemantics {
                     contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
                     this.selected = i == selected; role = Role.Tab
@@ -332,9 +356,8 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
                 }
             }
         }
-        if (vertical) androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().then(mask), state = state,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = if (loop) 0.dp else maxHeight / 2),
-            horizontalAlignment = Alignment.CenterHorizontally) { items(slots) { word(it) } }
+        if (vertical) androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().semantics { selectableGroup() },
+            state = state, userScrollEnabled = false, horizontalAlignment = Alignment.CenterHorizontally) { items(slots) { word(it) } }
         else androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().heightIn(min = J.tap).nestedScroll(KeepSideways).then(mask),
             state = state, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (loop) 0.dp else maxWidth / 2),
             horizontalArrangement = Arrangement.spacedBy(J.sp1), verticalAlignment = Alignment.CenterVertically) {
@@ -347,6 +370,13 @@ private fun wheelMiddle(state: androidx.compose.foundation.lazy.LazyListState): 
     val info = state.layoutInfo
     return Wheel.nearest(info.visibleItemsInfo.map { it.index to it.offset + it.size / 2f },
         (info.viewportStartOffset + info.viewportEndOffset) / 2f)
+}
+
+/** How far slot [i]'s centre sits from the middle, negative before it; null when out of view */
+private fun wheelOffset(state: androidx.compose.foundation.lazy.LazyListState, i: Int): Float? {
+    val info = state.layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == i } ?: return null
+    return item.offset + item.size / 2f - (info.viewportStartOffset + info.viewportEndOffset) / 2f
 }
 
 private suspend fun wheelRoll(state: androidx.compose.foundation.lazy.LazyListState, i: Int, jump: Boolean) {

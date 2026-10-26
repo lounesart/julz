@@ -46,4 +46,18 @@ class WheelTest {
     @Test fun closestCopyIsItselfWhenThere() { assertEquals(1003, Wheel.closest(1003, 3, 5)) }
     @Test fun realIndexOfACopy() { assertEquals(4, Wheel.real(999, 5)) }
     @Test fun oneWordDoesNotLoop() { assertEquals(1, Wheel.slots(1)); assertEquals(3 * Wheel.LOOP, Wheel.slots(3)) }
+
+    // The chat wheel: one swipe, one step, round the loop; a short one stays (no precise swipe needed)
+    @Test fun swipeUpStepsToTheNext() { assertEquals(1, Wheel.step(0, 3, -60f, 40f)) }
+    @Test fun swipeDownStepsBack() { assertEquals(0, Wheel.step(1, 3, 60f, 40f)) }
+    @Test fun stepWrapsAtTheEnd() { assertEquals(0, Wheel.step(2, 3, -60f, 40f)) }
+    @Test fun stepWrapsAtTheStart() { assertEquals(2, Wheel.step(0, 3, 60f, 40f)) }
+    @Test fun shortSwipeStays() { assertEquals(1, Wheel.step(1, 3, -39f, 40f)) }
+    @Test fun longSwipeIsStillOneStep() { assertEquals(2, Wheel.step(1, 3, -900f, 40f)) }
+
+    // A short flick that leaves the word near the middle still steps one, in its direction
+    @Test fun settleStepsOnAfterAShortFlickLeft() { assertEquals(11, Wheel.settle(10, 10, -40f, 30f)) }
+    @Test fun settleStepsBackAfterAShortFlickRight() { assertEquals(9, Wheel.settle(10, 10, 40f, 30f)) }
+    @Test fun settleKeepsATinyNudge() { assertEquals(10, Wheel.settle(10, 10, 20f, 30f)) }
+    @Test fun settleTakesTheNearestAfterARoll() { assertEquals(14, Wheel.settle(10, 14, -5f, 30f)) }
 }
