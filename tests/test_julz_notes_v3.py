@@ -608,6 +608,64 @@ class NotesV3Test(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("week", out)
         self.assertNotIn("network-plus.md", out)
 
+    # ----- an added line in a todo list is a task (242, threat 166) -----
+    # "add HDMI cables to my list" came as "- HDMI cables": signed, written, never on Todos
+
+    def todo_list(self, front="---\ntags:\n  - todo\ncreated: 2026-10-16\n---\n"):
+        (self.vault / "daily" / "shop.md").write_text(front + "\n# Shop\n\n- [ ] milk\n")
+
+    async def test_append_to_a_todo_list_makes_tasks_on_the_card(self):
+        self.todo_list()
+        await self.tools.append_note("daily/shop.md", "- HDMI cables\n* mouse pad\n+ cable ties\nUSB hub",
+                                     __event_call__=disconnected, __messages__=said("add HDMI cables"))
+        self.assertEqual(self.proposals()[0]["text"],
+                         "- [ ] HDMI cables\n- [ ] mouse pad\n- [ ] cable ties\n- [ ] USB hub")
+
+    async def test_append_to_a_todo_list_shows_and_writes_what_it_asked(self):
+        # What I confirm is what is written (109): the change happens before the dialog
+        self.todo_list(front="---\ntags: [todo]\n---\n")
+        seen = []
+
+        async def confirm(event):
+            seen.append(event)
+            return True
+
+        await self.tools.append_note("daily/shop.md", "- HDMI cables", __event_call__=confirm,
+                                     __messages__=said("add HDMI cables"))
+        self.assertIn("- [ ] HDMI cables", seen[0]["data"]["message"])
+        self.assertEqual(self.requests_written()[0]["text"], "- [ ] HDMI cables")
+
+    async def test_append_to_a_todo_list_keeps_boxes_headings_blanks_and_indent(self):
+        self.todo_list()
+        text = "## Weekend\n\n- [ ] drill\n- [x] saw\n  - blades\n- [/] glue"
+        await self.tools.append_note("daily/shop.md", text, __event_call__=disconnected,
+                                     __messages__=said("add these"))
+        self.assertEqual(self.proposals()[0]["text"],
+                         "## Weekend\n\n- [ ] drill\n- [x] saw\n  - [ ] blades\n- [/] glue")
+
+    async def test_append_to_a_todo_list_keeps_the_cap_after_the_boxes(self):
+        # Every line gains "[ ] ": text under the cap can grow over it
+        self.todo_list()
+        lines = "\n".join(["- x"] * (self.mod.MAX_APPEND_CHARS // 4))
+        self.assertLessEqual(len(lines), self.mod.MAX_APPEND_CHARS)
+        out = await self.tools.append_note("daily/shop.md", lines, __event_call__=disconnected,
+                                           __messages__=said("add these"))
+        self.assertTrue(out.startswith("Refused: at most"), out)
+        self.assertEqual(self.proposals(), [])
+
+    async def test_append_elsewhere_is_left_as_given(self):
+        # A study note, a daily note that only says todo in its words, one whose tag only holds
+        # the word, and a list too big to read (Todos skips it too)
+        (self.vault / "daily" / "plan.md").write_text("---\ntags:\n  - plan\n---\n\nMy todo for the week.\n")
+        (self.vault / "daily" / "ideas.md").write_text("---\ntags: [todo-ideas]\n---\n\n# Ideas\n")
+        (self.vault / "daily" / "big.md").write_text("---\ntags: [todo]\n---\n\n"
+                                                     + "x" * self.mod.MAX_NOTE_BYTES)
+        notes = ("dhcp", "daily/plan.md", "daily/ideas.md", "daily/big.md")
+        for note in notes:
+            await self.tools.append_note(note, "- a point\nplain words", __event_call__=disconnected,
+                                         __messages__=said("add this"))
+        self.assertEqual([p["text"] for p in self.proposals()], ["- a point\nplain words"] * len(notes))
+
 
 if __name__ == "__main__":
     unittest.main()
