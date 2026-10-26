@@ -61,7 +61,9 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
   A short flick steps one word. A count that only repeats another (Board's) is left off. The light is elastic: between two
   words its edge on the way runs ahead and the other catches up, a few percent thinner while
   stretched (squash and stretch), and a landing pick swells it for a moment with a springy settle;
-  a plain slide when the phone asks for less motion. In the chat box
+  a plain slide when the phone asks for less motion. The middle word draws a tenth bigger,
+  as a drum's middle row, and its neighbours keep 14 sp. Past an end the light stretches toward
+  the pull, never over the ticks, and the ticks spread like a stretched spring. In the chat box
   it shows one word as tall as the send button, and a swipe up or down steps it.
 - **Wheels sit under the thumb** (257, after iOS Photos): a list's filter wheel floats at the
   bottom, right over the tab bar, on the dark end of a fade as soft as the bar's own. The list's

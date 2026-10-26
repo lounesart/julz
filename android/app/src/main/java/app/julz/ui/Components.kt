@@ -311,6 +311,28 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
     val pillShape = J.pill
     // Counted after the touch slop, so 12 dp more is a short flick, not a precise one
     val reach = with(androidx.compose.ui.platform.LocalDensity.current) { J.sp3.toPx() }
+    // Quiet ticks past each end, so a side never looks empty, a word's room away from the end word;
+    // those at a pulled end spread with the pull, as a stretched spring (Wheel.spread)
+    val ticks: androidx.compose.ui.graphics.drawscope.DrawScope.(Float, Float) -> Unit = { pull, limit ->
+        val info = state.layoutInfo
+        val seen = info.visibleItemsInfo
+        val r = J.sp1.toPx() / 2; val gap = J.sp3.toPx()
+        val off = J.sp1.toPx() + J.sp3.toPx() + gap + r
+        fun dots(cx: Float, side: Float) {
+            val g = gap * if (pull * side < 0f) Wheel.spread(pull, limit) else 1f
+            for (k in -1..1) drawCircle(J.faint, r, androidx.compose.ui.geometry.Offset(cx + side * (k + 1) * g - side * gap, size.height / 2))
+        }
+        seen.firstOrNull { it.index == 0 }?.let { dots(it.offset - info.viewportStartOffset - off, -1f) }
+        seen.firstOrNull { it.index == info.totalItemsCount - 1 }?.let { dots(it.offset + it.size - info.viewportStartOffset + off, 1f) }
+    }
+    val ends = remember(state, still) { WheelEnds(state, still, ticks) }
+    // A pull left by a touch that never became a drag springs back once the strip is still; a new
+    // drag cancels the spring
+    if (!vertical) LaunchedEffect(ends) {
+        androidx.compose.runtime.snapshotFlow { state.isScrollInProgress || !ends.pulled }.collectLatest { busy ->
+            if (!busy) ends.settle(0f)
+        }
+    }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.then(if (vertical) Modifier else Modifier.fillMaxWidth())
         // One word, one step a swipe: no precise swipe needed (my note 26 Oct)
         .then(if (!vertical) Modifier else Modifier.pointerInput(n) {
@@ -318,6 +340,8 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             detectVerticalDragGestures(onDragStart = { moved = 0f },
                 onDragEnd = { Wheel.step(now, n, moved, reach).let { if (it != now) pick(it) } }) { _, dy -> moved += dy }
         })
+        // Room for the light to swell: at the bottom of a screen the tab bar's band covered its lower edge
+        .then(if (vertical) Modifier else Modifier.padding(vertical = J.sp1))
         .drawBehind {
             // The light from where the words are, every frame, no clock of its own (my note 26 Oct:
             // the animation was jumpy): between the two words around the middle, its edges by
@@ -325,6 +349,8 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             // and swelling for a moment when a pick lands (pop). Still motion: a plain slide
             val tall = this.size.height
             var e = 0f to 0f
+            var mag = 1f
+            var pulled = 0f
             val box = if (vertical || n == 1) {
                 val c = state.layoutInfo.visibleItemsInfo.firstOrNull() ?: return@drawBehind
                 val w = if (vertical) this.size.width else c.size.toFloat()
@@ -338,19 +364,40 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
                 val ca = a.offset + a.size / 2f; val cb = b.offset + b.size / 2f
                 val t = if (b === a) 0f else ((mid - ca) / (cb - ca)).coerceIn(0f, 1f)
                 e = if (still) t to t else Wheel.edges(t)
+                // Each word's extent as it draws, the middle one magnified (Wheel.magnify)
+                val step = (cb - ca).takeIf { it > 0f } ?: (a.size.toFloat())
+                val ma = Wheel.magnify((ca - mid) / step); val mb = Wheel.magnify((cb - mid) / step)
+                mag = ma + (mb - ma) * (e.first + e.second) / 2
                 val start = info.viewportStartOffset
-                val left = a.offset + (b.offset - a.offset) * e.first - start
-                val right = a.offset + a.size + (b.offset + b.size - a.offset - a.size) * e.second - start
+                var left = (ca - a.size / 2f * ma) + ((cb - b.size / 2f * mb) - (ca - a.size / 2f * ma)) * e.first - start
+                var right = (ca + a.size / 2f * ma) + ((cb + b.size / 2f * mb) - (ca + a.size / 2f * ma)) * e.second - start
+                // Past an end the light stretches toward the pull: its edge on that side goes with the
+                // word, the other lags (Liquid Glass; my note 26 Oct: it looked static there)
+                val p = ends.now
+                val rest = right - left
+                // ...but never over the ticks, which go with the words: the lagging edge stops a small
+                // gap short of the nearest one (sp1 + sp3 past the end word, as the ticks stand)
+                val clear = (J.sp1 + J.sp3 - J.sp2).toPx()
+                if (p < 0f) { left += p; right = minOf(right + p * 0.3f, a.offset + a.size - start + p + clear) }
+                else if (p > 0f) { right += p; left = maxOf(left + p * 0.3f, a.offset - start + p - clear) }
+                pulled = kotlin.math.abs(p) * 0.7f / rest.coerceAtLeast(1f)
                 left to right - left
             }
             val grow = pop.value
-            val size = androidx.compose.ui.geometry.Size(box.second * grow, tall * Wheel.squash(e) * grow)
+            val size = androidx.compose.ui.geometry.Size(box.second * grow,
+                tall * mag * Wheel.squash((e.second - e.first) + pulled) * grow)
             translate(left = box.first - (size.width - box.second) / 2, top = (tall - size.height) / 2) {
-                val o = pillShape.createOutline(size, layoutDirection, this)
                 // In the chat box the mode is a tile like the send button beside it, not a picked tab
-                if (vertical) drawOutline(o, J.raise)
-                else if (J.outline) drawOutline(o, J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-                else drawOutline(o, J.text)
+                if (vertical) drawOutline(pillShape.createOutline(size, layoutDirection, this), J.raise)
+                else if (J.outline) {
+                    // The line inside the light's own box, so no half of it falls outside
+                    val w = 1.dp.toPx()
+                    translate(w / 2, w / 2) {
+                        drawOutline(pillShape.createOutline(androidx.compose.ui.geometry.Size(size.width - w, size.height - w), layoutDirection, this),
+                            J.acc, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+                    }
+                }
+                else drawOutline(pillShape.createOutline(size, layoutDirection, this), J.text)
             }
             // One word in view: a column of dots says where it stands and that more are there, as a
             // pager's indicator does, so the tile reads as a wheel to swipe, not a button (my note 26 Oct)
@@ -387,7 +434,14 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
             // The same words as Segmented: dark on the filled light, the readable accent on the outline
             val ink = if (!lit) J.muted else if (vertical || J.outline) J.accText else J.bg
             val style = J.cap
-            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small))
+            Row(Modifier.then(if (vertical) Modifier.fillMaxWidth().height(maxHeight) else Modifier.height(J.small).graphicsLayer {
+                    // The middle word a little bigger, by where it stands now (Wheel.magnify), no relayout
+                    val info = state.layoutInfo
+                    val item = info.visibleItemsInfo.firstOrNull { it.index == slot }
+                    val m = if (item == null) 1f else Wheel.magnify((item.offset + item.size / 2f -
+                        (info.viewportStartOffset + info.viewportEndOffset) / 2f) / (item.size + J.sp1.toPx()))
+                    scaleX = m; scaleY = m
+                })
                 .clip(J.pill).clickable(role = Role.Tab) { pick(if (vertical) (i + 1) % n else i) }
                 .clearAndSetSemantics {
                     contentDescription = Wheel.say(words[i] + (counts?.getOrNull(i)?.let { " $it" } ?: ""), i, words.size)
@@ -403,25 +457,8 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
         if (vertical) androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().semantics { selectableGroup() },
             state = state, userScrollEnabled = false, horizontalAlignment = Alignment.CenterHorizontally) { items(slots) { word(it) } }
         else {
-          // Quiet ticks past each end, so a side never looks empty, a word's room away from the end word
-          val ticks: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit = {
-              val info = state.layoutInfo
-              val seen = info.visibleItemsInfo
-              val r = J.sp1.toPx() / 2; val gap = J.sp3.toPx()
-              val off = J.sp1.toPx() + J.sp3.toPx() + gap + r
-              fun dots(cx: Float) { for (k in -1..1) drawCircle(J.faint, r, androidx.compose.ui.geometry.Offset(cx + k * gap, size.height / 2)) }
-              seen.firstOrNull { it.index == 0 }?.let { dots(it.offset - info.viewportStartOffset - off) }
-              seen.firstOrNull { it.index == info.totalItemsCount - 1 }?.let { dots(it.offset + it.size - info.viewportStartOffset + off) }
-          }
           val reachPx = with(density) { (maxWidth / 4).toPx() }
-          val ends = remember(state, reachPx, still) { WheelEnds(state, reachPx, still, ticks) }
-          // A pull left by a touch that never became a drag springs back once the strip is still;
-          // a new drag cancels the spring
-          LaunchedEffect(ends) {
-              androidx.compose.runtime.snapshotFlow { state.isScrollInProgress || !ends.pulled }.collectLatest { busy ->
-                  if (!busy) ends.settle(0f)
-              }
-          }
+          androidx.compose.runtime.SideEffect { ends.limit = reachPx }
           androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().height(J.small).nestedScroll(KeepSideways).then(mask),
             state = state, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = if (loop) 0.dp else maxWidth / 2),
             flingBehavior = fling, overscrollEffect = ends,
@@ -436,10 +473,14 @@ fun WheelPicker(words: List<String>, selected: Int, modifier: Modifier = Modifie
  *  is not cyclic. A drag scrolls until an end word stands in the middle; past that the strip
  *  follows the finger less and less (Wheel.rubber) and springs back when let go, and a flick into
  *  an end bounces. The ticks past each end move with the strip. Still motion: no spring, it snaps */
-private class WheelEnds(val state: androidx.compose.foundation.lazy.LazyListState, val limit: Float, val still: Boolean,
-                        val ticks: androidx.compose.ui.graphics.drawscope.DrawScope.() -> Unit) :
+private class WheelEnds(val state: androidx.compose.foundation.lazy.LazyListState, val still: Boolean,
+                        val ticks: androidx.compose.ui.graphics.drawscope.DrawScope.(Float, Float) -> Unit) :
     androidx.compose.foundation.OverscrollEffect {
+    /** How far a pull may go, a quarter of the strip; set by the wheel once it is measured */
+    var limit = 1f
     private val pullState = androidx.compose.runtime.mutableFloatStateOf(0f)
+    /** The pull now, read by the light, which stretches toward it */
+    val now get() = pullState.floatValue
     private var pull: Float
         get() = pullState.floatValue
         set(v) { pullState.floatValue = v; if (node.isAttached) node.invalidateDraw() }
@@ -496,7 +537,7 @@ private class WheelEnds(val state: androidx.compose.foundation.lazy.LazyListStat
     inner class Shift : Modifier.Node(), androidx.compose.ui.node.DrawModifierNode {
         override fun androidx.compose.ui.graphics.drawscope.ContentDrawScope.draw() {
             val scope = this
-            translate(left = pull) { scope.drawContent(); ticks() }
+            translate(left = pull) { scope.drawContent(); ticks(pull, limit) }
         }
     }
     override val node: Shift = Shift()

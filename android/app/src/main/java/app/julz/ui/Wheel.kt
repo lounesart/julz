@@ -53,7 +53,24 @@ object Wheel {
 
     /** The light's height while stretched, as a share of its own: thinner as it stretches, so it
      *  keeps its volume (squash and stretch), never by more than a few percent */
-    fun squash(edges: Pair<Float, Float>) = 1f - 0.15f * (edges.second - edges.first)
+    fun squash(edges: Pair<Float, Float>) = squash(edges.second - edges.first)
+
+    /** The same for any [stretch], the extra width as a share of the light's own: a pull past an
+     *  end stretches it too */
+    fun squash(stretch: Float) = 1f - 0.15f * stretch.coerceIn(0f, 1f)
+
+    /** How big a word draws, from [d], its distance from the middle in words: the middle one a
+     *  little bigger, as a drum's middle row, falling off smoothly to its own size a word away (my
+     *  idea 26 Oct). Only the middle grows: the neighbours keep 14 sp, the design's smallest */
+    const val MAG = 1.1f
+    fun magnify(d: Float): Float {
+        val x = kotlin.math.abs(d).coerceIn(0f, 1f)
+        return 1f + (MAG - 1f) * (1f - x * x * (3 - 2 * x))
+    }
+
+    /** How far apart the ticks past an end stand while it is pulled, as a share of their gap at rest:
+     *  they spread as a stretched spring and close again (my note 26 Oct: they lacked life) */
+    fun spread(pull: Float, limit: Float) = 1f + 1.5f * (kotlin.math.abs(pull) / limit).coerceIn(0f, 1f)
 
     /** A pick landing: the light swells this much and springs back, with the haptic tick, so the
      *  choice reads as made (Liquid Glass's press); a little bounce, settled in about 300 ms */

@@ -123,6 +123,28 @@ class WheelTest {
         assertTrue(Wheel.squash(trail to lead) in 0.9f..0.97f)
     }
 
+    // The middle word a little bigger, as a drum's middle row (my idea 26 Oct): neighbours keep
+    // their 14 sp, so nothing goes under the design's smallest text
+    @Test fun theMiddleWordIsALittleBigger() {
+        assertEquals(Wheel.MAG, Wheel.magnify(0f), 0f)
+        assertTrue(Wheel.MAG in 1.05f..1.15f)
+        assertEquals(1f, Wheel.magnify(1f), 0f); assertEquals(1f, Wheel.magnify(-2.5f), 0f)
+        var last = Wheel.magnify(0f)
+        for (k in 1..20) { val m = Wheel.magnify(k / 20f); assertTrue(m <= last); last = m }
+        assertEquals(Wheel.magnify(0.3f), Wheel.magnify(-0.3f), 0f)
+    }
+    // At an end the ticks spread as the pull grows, as a stretched spring, and close again
+    @Test fun ticksSpreadWithThePull() {
+        assertEquals(1f, Wheel.spread(0f, 200f), 0f)
+        assertTrue(Wheel.spread(-100f, 200f) > 1.3f)
+        assertEquals(Wheel.spread(100f, 200f), Wheel.spread(-100f, 200f), 0f)
+        assertTrue(Wheel.spread(200f, 200f) <= 2.6f)
+    }
+    @Test fun anyStretchThinsTheFrameAFewPercentAtMost() {
+        assertEquals(1f, Wheel.squash(0f), 0f)
+        assertTrue(Wheel.squash(5f) >= 0.85f)
+    }
+
     // One fling, one motion: where it lands, from the free decay's travel in word widths
     @Test fun flingLandsWhereTheDecayEnds() { assertEquals(13, Wheel.landing(10, 290f, 100f, 500f, 200f)) }
     @Test fun aShortFlickStillStepsOne() { assertEquals(11, Wheel.landing(10, 20f, 100f, 400f, 200f)) }
