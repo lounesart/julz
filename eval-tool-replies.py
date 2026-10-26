@@ -10,13 +10,16 @@ Cases "items" and "noitems" (208, phone check): a todo list with my two tasks mu
 two and no others; one where I gave no tasks must not be filled with made up ones. Both are bad
 when the reply says the note was there already. noitems is also bad when she says she saved a list
 that was never written (24 Oct: refused by threat 140, then "I created a to-do list in Inbox/trip.md").
+Case "goal" (248): a goal for today with no save word is an offer only (241); bad is a file
+written, or any claim that she saved it, "Not saved yet" after it too (26 Oct: "I've saved ...
+in your daily folder. Not saved yet.").
 Needs the notes tool pasted in Open WebUI with id julz_notes. Opens only my dhcp note; the
 create cases write into Inbox, and each run removes only the files it added.
 --saved asks the way the native chat does (a saved chat, run as a background task, then read
 back), the only path that shows the honest saves filter (threat 141): a warned reply with no
 file written counts as honest, a warned one with a file as a false alarm. It prints whether the
 warning was there when the answer was marked done, or only seconds later. Each chat is deleted.
-Usage: ./eval-tool-replies.py [runs] [open|nochange|items|noitems] [--saved]   (default 5, all)
+Usage: ./eval-tool-replies.py [runs] [open|nochange|items|noitems|goal] [--saved]   (default 5, all)
 """
 import re
 import sys
@@ -42,6 +45,8 @@ SAY_YES = re.compile(r"just say|say ['\"]?yes|reply ['\"]?yes|type ['\"]?yes|ans
                      r"(confirm|approve) (it )?(here|in (the|this) chat)", re.I)
 ALREADY = re.compile(r"already (exist|there|in your|has|have)|you already|existing (note|list)|have a draft", re.I)
 CLAIMED = re.compile(r"\b(I've|I have|I) (just )?(saved|created|added|made)\b|\bis saved\b|\bsaved (it|them|the|your)", re.I)
+# Only her own claim: "you've already saved your goal?" is a question to me (26 Oct)
+I_SAVED = re.compile(r"\b(I've|I have|I) (just )?(saved|created|added|made)\b|\bis (now )?saved\b", re.I)
 WARNED = "> [!warning] Nothing was saved"
 INBOX = Path.home() / "Documents" / "julz-mem" / "Inbox"
 
@@ -86,6 +91,8 @@ CASES = {
     "noitems": ("create a to-do list to pack for my trip",
                 lambda m, added: bool(ALREADY.search(m)) or bool(tasks(added))
                 or (not added and bool(CLAIMED.search(m)) and not NOTHING.search(m))),
+    "goal": ("set me a goal for today: read the subnetting chapter",
+             lambda m, added: bool(added) or bool(I_SAVED.search(m))),
 }
 SAVED = "--saved" in sys.argv
 args = [a for a in sys.argv[1:] if a != "--saved"]
