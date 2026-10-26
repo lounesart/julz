@@ -41,6 +41,7 @@ class FakeOwui:
         }
         self.fail = None
         self.toggles = 0
+        self.on_get = None  # what Open WebUI does to a chat between two reads
 
     def __call__(self, method, path, data=None):
         self.calls.append((method, path, data))
@@ -67,6 +68,8 @@ class FakeOwui:
             cid = path.rsplit("/", 1)[1]
             if cid not in self.chats:
                 raise chat.UpstreamError(401)
+            if self.on_get:
+                self.on_get(self.chats[cid]["chat"]["history"])
             return json.loads(json.dumps(self.chats[cid]))
         if method == "POST" and path == "/api/chat/completions":
             cid = data.get("chat_id") or "99999999-9999-4999-8999-999999999999"
@@ -99,7 +102,12 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.owui = FakeOwui()
         self.clock = Clock()
-        self.app = chat.App(TOKEN, {HOST, "127.0.0.1:8766"}, self.owui, clock=self.clock)
+        self.sleeps = []
+        self.app = chat.App(TOKEN, {HOST, "127.0.0.1:8766"}, self.owui, clock=self.clock, sleep=self.sleep)
+
+    def sleep(self, s):
+        self.sleeps.append(s)
+        self.clock.t += s
 
     def req(self, method, target, body=None, token=TOKEN, host=HOST, **headers):
         h = {"Host": host, **headers}
@@ -717,11 +725,11 @@ class RetryEditTest(Base):
                                             {"role": "assistant", "content": "Discover, Offer, Request, Ack"},
                                             {"role": "user", "content": "and DHCP snooping?"}])
 
-    def test_retry_and_edit_wait_for_a_running_answer(self):
+    def test_retry_waits_for_a_running_answer(self):
         self.listed()
         self.req("POST", f"/api/chats/{C1}/messages", {"text": "x"})
         self.assertEqual(self.req("POST", f"/api/chats/{C1}/retry", {})[0], 409)
-        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 409)
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/messages", {"text": "y"})[0], 409)
 
     def test_retry_needs_an_answer_and_edit_a_message_of_mine(self):
         self.listed()
@@ -756,6 +764,99 @@ class RetryEditTest(Base):
             self.assertEqual(self.req("POST", f"/api/chats/{C1}/retry", {})[0], 200, i)
             self.owui.finish(C1)
         self.assertEqual(self.req("POST", f"/api/chats/{C1}/retry", {})[0], 429)
+
+
+class EditWhileAnsweringTest(Base):
+    """203: an edit while she answers stops that answer, waits for its last write, then sends."""
+    U1, A1 = RetryEditTest.U1, RetryEditTest.A1
+
+    def running(self, text="x"):
+        self.listed()
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/messages", {"text": text})[0], 200)
+        h = self.owui.chats[C1]["chat"]["history"]
+        self.old = h["currentId"]
+        self.owui.calls.clear()
+        return h
+
+    def writes(self):
+        return [(m, p) for m, p in self.upstream_paths() if m != "GET"]
+
+    def test_edit_stops_then_sends_one_new_answer(self):
+        h = self.running()
+        h["messages"][self.old]["content"] = "half an ans"
+        status, data, _ = self.req("POST", f"/api/chats/{C1}/edit", {"text": "and DHCP relay?"})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.writes(), [("POST", f"/api/tasks/chat/{C1}/stop"), ("POST", "/api/chat/completions")])
+        body = [d for m, p, d in self.owui.calls if p == "/api/chat/completions"][0]
+        self.assertEqual(body["parent_id"], self.A1)
+        self.assertEqual(body["messages"][-1], {"role": "user", "content": "and DHCP relay?"})
+        self.assertEqual(h["currentId"], data["message"])
+        self.assertIn(self.old, h["messages"])  # the stopped answer stays in Open WebUI
+        self.assertTrue(self.req("GET", f"/api/chats/{C1}")[1]["busy"])
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 200)
+
+    def test_it_waits_until_open_webui_marks_it_done(self):
+        h = self.running()
+        reads = []
+
+        def grow(hist):  # the task writes two more words after the stop, then done
+            reads.append(1)
+            m = hist["messages"][self.old]
+            if self.owui.calls[-1][1] == "/api/chat/completions":
+                return
+            if any(p.endswith("/stop") for _, p, _ in self.owui.calls):
+                m["content"] += " w"
+                if len(reads) >= 5:
+                    m["done"] = True
+        self.owui.on_get = grow
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 200)
+        paths = self.upstream_paths()
+        done_at = max(i for i, (m, p) in enumerate(paths) if m == "GET")
+        self.assertEqual(paths[done_at + 1], ("POST", "/api/chat/completions"))
+        self.assertTrue(h["messages"][self.old]["done"])
+        self.assertTrue(self.sleeps)
+
+    def test_stopped_before_any_words_it_goes_on_once_nothing_changes(self):
+        self.running()  # stays done false with no words, as 0.11.4 leaves it (18 Oct)
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 200)
+        self.assertGreaterEqual(sum(self.sleeps), 1)
+        self.assertLessEqual(sum(self.sleeps), chat.STOP_WAIT)
+
+    def test_an_answer_that_keeps_growing_is_left_alone(self):
+        self.running()
+        self.owui.on_get = lambda hist: hist["messages"][self.old].update(
+            content=hist["messages"][self.old]["content"] + " w")
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 409)
+        self.assertNotIn(("POST", "/api/chat/completions"), self.upstream_paths())
+        self.assertLessEqual(sum(self.sleeps), chat.STOP_WAIT)
+
+    def test_a_bad_edit_does_not_stop_the_answer(self):
+        self.running()
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": ""})[0], 400)
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y", "parent": "x"})[0], 400)
+        self.app.sends.extend([self.clock()] * chat.SENDS_PER_HOUR)
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 429)
+        self.assertEqual(self.writes(), [])
+        self.assertTrue(self.req("GET", f"/api/chats/{C1}")[1]["busy"])
+
+    def test_an_answer_in_another_chat_is_not_stopped(self):
+        self.listed()
+        self.req("POST", f"/api/chats/{C2}/messages", {"text": "x"})
+        self.owui.calls.clear()
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 409)
+        self.assertEqual(self.writes(), [])
+
+    def test_only_an_answer_to_my_last_message(self):
+        # Running at the end of the branch, but my message is not right before it
+        h = self.running()
+        mine = h["messages"][self.old]["parentId"]
+        h["messages"]["a9"] = msg("a9", "assistant", "", self.old, done=False,
+                                  timestamp=int(self.clock()))
+        h["messages"][self.old]["done"] = True
+        h["currentId"] = "a9"
+        self.assertNotEqual(mine, None)
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/edit", {"text": "y"})[0], 409)
+        self.assertEqual(self.writes(), [])
 
 
 class ModeTest(Base):

@@ -250,7 +250,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
 
     fun send() {
         val draft = draftNow
-        if (!ChatLogic.canSend(draft, view?.busy == true, sending)) {
+        if (!ChatLogic.canSend(draft, view?.busy == true, sending, editing != null)) {
             app.julz.AppLog.add("chat: send refused here (busy ${view?.busy}, sending $sending, ${draft.length} chars)")
             return
         }
@@ -464,7 +464,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
                         .padding(horizontal = J.sp3, vertical = J.sp3))
             }
         }
-        Composer(draft, setDraft, busy = view?.busy == true, sending = sending, focus = editing?.id, roomy = ChatPrefs.roomy,
+        // While I edit, the button sends the edit; Cancel brings Stop back (203)
+        Composer(draft, setDraft, busy = view?.busy == true && editing == null, sending = sending, focus = editing?.id, roomy = ChatPrefs.roomy,
             learn = learn, setLearn = { learn = it }, send = ::send, stop = ::stop)
     }
 
@@ -485,7 +486,12 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
                     // Always shown, greyed with its reason when it cannot be used: a menu with only
                     // Copy looked broken (found 18 Oct)
                     val can = ChatLogic.canEdit(v, held)
-                    MenuRow(Icons.edit, "Edit", if (can) "Change it and send again" else "Only your last message, when Julz is done",
+                    val sub = when {
+                        !can -> "Only your last message"
+                        v.busy -> "Stops her answer, then sends your new words"
+                        else -> "Change it and send again"
+                    }
+                    MenuRow(Icons.edit, "Edit", sub,
                         enabled = can) { menu = null; editing = held; setDraft(held.text) }
                 } else {
                     val can = ChatLogic.canRetry(v, held)

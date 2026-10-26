@@ -61,7 +61,22 @@ class ChatLogicTest {
         assertFalse(ChatLogic.canEdit(v, answer("x", true)))
         val older = ChatMessage("u0", true, "old", true, 0, null)
         assertFalse(ChatLogic.canEdit(view(older, answer("a", true, id = "a0"), user, answer("x", true)), older))
-        assertFalse(ChatLogic.canEdit(view(user, answer("x", false), busy = true), user))
+    }
+
+    /** 203: an edit while she answers stops that answer first (julz-chat does it) */
+    @Test fun editWhileSheAnswersOnlyTheMessageSheAnswers() {
+        assertTrue(ChatLogic.canEdit(view(user, answer("x", false), busy = true), user))
+        assertTrue(ChatLogic.canEdit(view(user, answer("", false), busy = true), user))
+        // busy, but her running answer does not follow my message right away
+        val other = answer("y", false, id = "a2")
+        assertFalse(ChatLogic.canEdit(view(user, answer("x", true), other, busy = true), user))
+        assertFalse(ChatLogic.canEdit(view(user, busy = true), user))
+    }
+
+    @Test fun anEditSendsWhileSheAnswers() {
+        assertTrue(ChatLogic.canSend("hi", busy = true, sending = false, editing = true))
+        assertFalse(ChatLogic.canSend("hi", busy = true, sending = true, editing = true))
+        assertFalse(ChatLogic.canSend(" ", busy = true, sending = false, editing = true))
     }
 
     /** 26k: a long chat cut an answer mid sentence and called it done; the screen marks it. */

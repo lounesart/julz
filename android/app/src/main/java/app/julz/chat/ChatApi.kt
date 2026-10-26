@@ -210,8 +210,9 @@ object ChatLogic {
         return if (first.first == 404 && list()) call() else first
     }
 
-    fun canSend(text: String, busy: Boolean, sending: Boolean): Boolean =
-        !busy && !sending && text.isNotBlank() && text.length <= ChatApi.MAX_TEXT
+    /** An edit goes while she answers: julz-chat stops that answer first (203) */
+    fun canSend(text: String, busy: Boolean, sending: Boolean, editing: Boolean = false): Boolean =
+        (!busy || editing) && !sending && text.isNotBlank() && text.length <= ChatApi.MAX_TEXT
 
     /** Julz is working (a tool, the model loading) and has no words yet */
     fun thinking(v: ChatView): Boolean {
@@ -225,9 +226,13 @@ object ChatLogic {
         return !v.busy && !m.user && n >= 2 && v.messages[n - 1].id == m.id && v.messages[n - 2].user
     }
 
-    /** Edit my last message only, while nothing runs */
-    fun canEdit(v: ChatView, m: ChatMessage): Boolean =
-        !v.busy && m.user && v.messages.lastOrNull { it.user }?.id == m.id
+    /** Edit my last message only: when nothing runs, or while she answers it (203) */
+    fun canEdit(v: ChatView, m: ChatMessage): Boolean {
+        if (!m.user || v.messages.lastOrNull { it.user }?.id != m.id) return false
+        if (!v.busy) return true
+        val n = v.messages.size
+        return n >= 2 && !v.messages[n - 1].user && v.messages[n - 2].id == m.id
+    }
 
     private val LIST_LINE = Regex("""^\s*([-*+]|\d{1,3}[.)])\s""")
     private const val SHORT_WORDS = 6
