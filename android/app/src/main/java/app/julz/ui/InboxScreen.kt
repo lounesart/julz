@@ -48,7 +48,7 @@ import kotlinx.coroutines.withContext
  *  text I sign, shown whole in the bar while I sign. */
 @Composable
 fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>) -> Unit, browse: (String?) -> Unit,
-                back: () -> Unit) {
+                signed: (String) -> Unit, back: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var snap by remember { mutableStateOf<InboxSnapshotData?>(null) }
@@ -84,8 +84,9 @@ fun InboxScreen(origins: Origins, picked: List<String>, setPicked: (List<String>
             busy = false
             if (word != null) {
                 setPicked(emptyList())
+                signed(s.id)
                 status = word.replaceFirstChar { it.uppercase() } + ". The Inbox updates in a few seconds."
-                scope.launch { delay(4000); reloads++ }  // julz-vault applies them, then writes a new Inbox
+                scope.launch { delay(InboxSnapshot.SETTLE_MS); reloads++ }  // julz-vault applies them, then writes a new Inbox
             } else status = why
         }
     }

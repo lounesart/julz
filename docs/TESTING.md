@@ -40,7 +40,8 @@ Expected results in brackets.
 4. Tap a notification from the tray, app closed, then again with the app open on another
    screen: an approval, a todo, an inbox, a run and a warning notice (13d, 133). [Approve, Todos,
    Inbox, Messages filtered to Runs, to Warnings, the chosen filter in view. Then open Julz from recent apps: it stays where I am, no jump back.]
-5. Sort one Inbox note, go back to Now. [The Inbox card says the new count at once.]
+5. Sort one Inbox note, go back to Now straight after the fingerprint (13c). [The Inbox card says the new
+   count within a few seconds, never the old one.]
 6. On Messages, Inbox or Approve, let a notice for that screen arrive. [No tray entry or sound;
    the screen shows it at once.] Go home and let another notice arrive. [It rings, and the one
    already seen does not come back.] A warning still rings on Approve.
