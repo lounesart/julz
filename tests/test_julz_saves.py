@@ -30,6 +30,10 @@ def meta(*sources):
     return {"chat_id": "c1", "message_id": "m2", "sources": list(sources)}
 
 
+# What a write tool answers when the change went to the phone as a card (tools/julz_notes.py)
+CARD = ("Not {} yet: this chat has no confirm button, so the change went to Approve on the user's "
+        "phone as a card. Nothing changes until they sign it there. Tell the user exactly that; "
+        "do not say it is done.")
 CLAIM = "I've saved your tasks in Inbox/today.md:\n- [ ] buy bread"
 
 
@@ -44,6 +48,13 @@ class HonestSavesTest(unittest.TestCase):
         out = self.reply(text, metadata)
         self.assertTrue(out.startswith("> [!warning] Nothing was saved"), out)
         self.assertTrue(out.endswith("\n\n" + text), out)  # her words stay, whole
+        return out
+
+    def assert_carded(self, text, metadata):
+        out = self.reply(text, metadata)
+        self.assertTrue(out.startswith("> [!warning] Not saved yet"), out)
+        self.assertNotIn("no note tool reported a change", out)
+        self.assertTrue(out.endswith("\n\n" + text), out)
         return out
 
     def assert_kept(self, text, metadata):
@@ -76,6 +87,34 @@ class HonestSavesTest(unittest.TestCase):
                      "No problem, I've saved it."):
             with self.subTest(text=text):
                 self.assert_warned(text, meta())
+
+    def test_claim_after_a_card_says_it_waits(self):
+        # 241, 26 Oct: a real card (create_note_proposed), then "I saved the new test-cards list"
+        for name, what in (("create_note", "saved"), ("append_note", "added"), ("edit_note", "changed"),
+                           ("move_note", "moved"), ("delete_note", "deleted"), ("save_feedback", "saved")):
+            with self.subTest(tool=name):
+                self.assert_carded("I saved the new test-cards todo list in daily.",
+                                   meta(tool(f"julz_notes/{name}", CARD.format(what))))
+
+    def test_card_words_count_only_from_a_write_tool(self):
+        # A note read aloud, a knowledge file or another tool may carry the card's words too
+        for src in (tool("julz_notes/read_note", CARD.format("saved")),
+                    tool("julz_notes/create_note", CARD.format("saved"), flag=False),
+                    tool("other_tool/create_note", CARD.format("saved")),
+                    tool("julz_notes/create_note", "Refused: " + CARD.format("saved"))):
+            with self.subTest(src=src["source"]["name"]):
+                self.assert_warned(CLAIM, meta(src))
+
+    def test_a_save_and_a_card_in_one_turn_is_kept(self):
+        saved = tool("julz_notes/append_note", "Added to the end of daily/week.md under a dated heading.")
+        self.assert_kept(CLAIM, meta(tool("julz_notes/create_note", CARD.format("saved")), saved))
+
+    def test_a_card_described_right_is_kept(self):
+        card = meta(tool("julz_notes/append_note", CARD.format("added")))
+        for text in ("Nothing is saved yet: the change waits on Approve on your phone.",
+                     "It went to your phone as a card; sign it there and the line goes in."):
+            with self.subTest(text=text):
+                self.assert_kept(text, card)
 
     def test_a_read_result_cannot_fake_a_save(self):
         # A note opened with read_note may start with any words, planted ones too
@@ -138,9 +177,17 @@ class HonestSavesTest(unittest.TestCase):
                 with self.subTest(tool=name, words=w):
                     self.assertRegex(src, r'return \(?f?"' + w.replace("(", r"\("))
 
+    def test_card_words_match_the_tool(self):
+        src = (ROOT / "tools" / "julz_notes.py").read_text()
+        self.assertIn('return f"Not {what}" + ON_THE_PHONE', src)
+        self.assertIn('ON_THE_PHONE = ("' + saves.CARD, src)
+
     def test_warned_once(self):
         once = self.reply(CLAIM, meta())
         self.assertEqual(self.reply(once, meta()), once)
+        card = meta(tool("julz_notes/create_note", CARD.format("saved")))
+        once = self.reply(CLAIM, card)
+        self.assertEqual(self.reply(once, card), once)
 
     def test_only_her_last_answer(self):
         b = body(CLAIM)

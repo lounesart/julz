@@ -1148,7 +1148,8 @@ class Tools:
                           __messages__=None) -> str:
         """
         Add text to the end of one of the user's notes, after they confirm it. Use it when
-        the user asks to add, append or save something into an existing note. It never
+        the user asks to add, append or save something into an existing note or list, also
+        by a name of their own: "add X to my <name> list" is note "<name> list". It never
         changes or removes what is already there. Plain text only, no links or HTML.
         :param note: the note's path, like "daily/week.md", or the user's words for it
         :param text: the text to add, readable markdown (lists, a table, a "> [!tip]" callout),
@@ -1307,7 +1308,10 @@ class Tools:
         """
         Save a new note, only when the user asks to save, note or write something down ("make
         a note", "save this", "запиши"). Never to keep your own answer or an explanation you
-        gave. By default it goes into the Inbox. Save what the user said in their own words;
+        gave. Not to add to a list or note the user already has ("add X to my <name> list"):
+        that is append_note. A goal or plan with no save word ("set me a goal for <day>:
+        X") is not a save yet: offer to save it and wait; their "yes, save it" is. By default it
+        goes into the Inbox. Save what the user said in their own words;
         do not invent lines. Pick a kind and the code adds the right headings:
         "todo" (each line becomes a checkbox), "thought", "concept" (a study topic), "lab".
         Outside the Inbox the user confirms first.
