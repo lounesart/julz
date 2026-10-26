@@ -58,9 +58,23 @@ class WheelTest {
     @Test fun shortSwipeStays() { assertEquals(1, Wheel.step(1, 3, -39f, 40f)) }
     @Test fun longSwipeIsStillOneStep() { assertEquals(2, Wheel.step(1, 3, -900f, 40f)) }
 
-    // A short flick that leaves the word near the middle still steps one, in its direction
-    @Test fun settleStepsOnAfterAShortFlickLeft() { assertEquals(11, Wheel.settle(10, 10, -40f, 30f)) }
-    @Test fun settleStepsBackAfterAShortFlickRight() { assertEquals(9, Wheel.settle(10, 10, 40f, 30f)) }
-    @Test fun settleKeepsATinyNudge() { assertEquals(10, Wheel.settle(10, 10, 20f, 30f)) }
-    @Test fun settleTakesTheNearestAfterARoll() { assertEquals(14, Wheel.settle(10, 14, -5f, 30f)) }
+
+    // The light rides on a word, then slides across while the middle passes, then rides the next:
+    // a pure function of the scroll, so it never jumps (my note 26 Oct: the animation is jumpy)
+    @Test fun aimRidesTheFirstWord() { assertEquals(0f, Wheel.aim(0.2f), 0f) }
+    @Test fun aimRidesTheNextWord() { assertEquals(1f, Wheel.aim(0.8f), 0f) }
+    @Test fun aimIsHalfwayInTheMiddle() { assertEquals(0.5f, Wheel.aim(0.5f), 1e-6f) }
+    @Test fun aimNeverGoesBack() {
+        var last = -1f
+        for (k in 0..100) { val v = Wheel.aim(k / 100f); assertTrue(v >= last); last = v }
+    }
+    @Test fun aimHasNoStep() {
+        for (k in 0 until 100) assertTrue(kotlin.math.abs(Wheel.aim((k + 1) / 100f) - Wheel.aim(k / 100f)) < 0.05f)
+    }
+
+    // One fling, one motion: where it lands, from the free decay's travel in word widths
+    @Test fun flingLandsWhereTheDecayEnds() { assertEquals(13, Wheel.landing(10, 290f, 100f, 500f, 200f)) }
+    @Test fun aShortFlickStillStepsOne() { assertEquals(11, Wheel.landing(10, 20f, 100f, 400f, 200f)) }
+    @Test fun aShortFlickBackStepsBack() { assertEquals(9, Wheel.landing(10, -20f, 100f, -400f, 200f)) }
+    @Test fun aLetGoWithoutSpeedStays() { assertEquals(10, Wheel.landing(10, 5f, 100f, 50f, 200f)) }
 }

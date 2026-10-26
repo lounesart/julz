@@ -32,14 +32,20 @@ object Wheel {
         else -> selected
     }
 
-    /** Where a roll by hand settles: the nearest word, but a short flick that left the start word
-     *  nearest still steps one in its direction ([moved] is how far that word's centre now sits
-     *  from the middle, negative when it went left or up), so no precise swipe is needed */
-    fun settle(start: Int, nearest: Int, moved: Float, threshold: Float): Int = when {
-        nearest != start -> nearest
-        moved <= -threshold -> start + 1
-        moved >= threshold -> start - 1
-        else -> start
+    /** Where the light sits between two words, 0 on the first, 1 on the next, from [t], how far the
+     *  middle has gone from one to the other: it rides the word for the first 30 percent, slides
+     *  across on a smoothstep while the middle passes, then rides the next. Pure, so no clock */
+    fun aim(t: Float): Float {
+        val u = ((t - 0.3f) / 0.4f).coerceIn(0f, 1f)
+        return u * u * (3 - 2 * u)
+    }
+
+    /** The word a fling lands on: [travel] is how far a free decay would carry the middle, less how
+     *  far the nearest word already sits off it, in pixels; [size] a word's width with its gap. A
+     *  flick faster than [minVelocity] moves at least one word, so no precise swipe is needed */
+    fun landing(nearest: Int, travel: Float, size: Float, velocity: Float, minVelocity: Float): Int {
+        val steps = Math.round(travel / size)
+        return nearest + if (steps == 0 && kotlin.math.abs(velocity) >= minVelocity) (if (velocity > 0) 1 else -1) else steps
     }
 
     /** What TalkBack says for a word: its place, since the row hides most of itself */
