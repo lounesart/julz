@@ -338,12 +338,10 @@ fun AccessibilityScreen(back: () -> Unit) {
             Text("On top of Android's font size. This whole screen follows it.", style = J.sec)
             // Applied when I let go (22f): applying while dragging re-laid the screen out under the
             // finger, and Android dropped the drag, so only taps worked
-            androidx.compose.material3.Slider(value = draft, onValueChange = { draft = (it * 20).roundToInt() / 20f },
-                onValueChangeFinished = { A11y.set(context, p.copy(scale = A11yPrefs.clampScale(draft))) },
-                valueRange = 0.85f..2.0f, steps = 22, modifier = Modifier.heightIn(min = J.tap),
-                // It snaps in 5 percent steps without drawing a dot for each (asked 18 Oct)
-                colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = J.acc, activeTrackColor = J.acc,
-                    activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
+            // It snaps in 5 percent steps without drawing a dot for each (asked 18 Oct)
+            JulzSlider(draft, { draft = (it * 20).roundToInt() / 20f }, 0.85f..2.0f, 22) {
+                A11y.set(context, p.copy(scale = A11yPrefs.clampScale(draft)))
+            }
             if (p.scale != 1.0f) PlainButton("Reset to 100%") { draft = 1.0f; A11y.set(context, p.copy(scale = 1.0f)) }
         }
         Column(Modifier.fillMaxWidth().glass().padding(horizontal = J.inset)) {
@@ -373,8 +371,7 @@ private fun Toggle(title: String, sub: String, on: Boolean, set: (Boolean) -> Un
             Text(title, style = J.item)
             Text(sub, style = J.sec)
         }
-        androidx.compose.material3.Switch(checked = on, onCheckedChange = null,
-            colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = J.acc))
+        JulzSwitch(on)
     }
 }
 

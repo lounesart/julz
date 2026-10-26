@@ -318,6 +318,27 @@ private suspend fun wheelRoll(state: androidx.compose.foundation.lazy.LazyListSt
     else state.animateScrollBy(delta, androidx.compose.animation.core.tween(240, easing = J.ease))
 }
 
+/** The app's switch (F1, D1): every colour from the theme, so no Material lavender shows. It
+ *  only shows the state; the row around it is the one TalkBack stop and takes the tap. */
+@Composable
+fun JulzSwitch(on: Boolean) {
+    androidx.compose.material3.Switch(checked = on, onCheckedChange = null,
+        colors = androidx.compose.material3.SwitchDefaults.colors(
+            checkedThumbColor = J.onAcc, checkedTrackColor = J.acc, checkedBorderColor = J.acc,
+            // Off: the thumb in muted grey, 3:1 and more on every theme, on a faint glass track
+            uncheckedThumbColor = J.muted, uncheckedTrackColor = J.raise, uncheckedBorderColor = J.faint))
+}
+
+/** The app's slider (F1, D1): the accent for the part chosen, a hairline for the rest, no tick dots. */
+@Composable
+fun JulzSlider(value: Float, onChange: (Float) -> Unit, range: ClosedFloatingPointRange<Float>, steps: Int,
+               onDone: () -> Unit) {
+    androidx.compose.material3.Slider(value = value, onValueChange = onChange, onValueChangeFinished = onDone,
+        valueRange = range, steps = steps, modifier = Modifier.heightIn(min = J.tap),
+        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = J.acc, activeTrackColor = J.acc,
+            inactiveTrackColor = J.lineStrong, activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent))
+}
+
 /** A spec line, as on a data sheet (22e, from the planets reference): the label muted, the value
  *  mono in the readable accent. Plain text only. */
 @Composable
