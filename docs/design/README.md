@@ -125,11 +125,13 @@ own fixes. They live in `Theme.kt` (tokens) and `Components.kt` (pieces).
 - Motion uses the HyDE standard curve, cubic-bezier(0.05, 0.9, 0.1, 1.05), about 0.7 s.
   All of it stops when the phone asks for less motion.
 - **Two weights of motion** (258), after Material 3's standard and expressive schemes. The
-  wheels are light: they stretch, magnify and pop. The tabs and the tab bar are firm (`Tabs`):
-  the light keeps its shape, slides on a fully damped spring (stiffness 700, Material's standard
-  spatial, no overshoot), sinks to 96 percent under a finger, and each word takes the light's ink
-  as the light covers it. A landing ticks once, `SegmentTick`, firmer than the wheel's frequent
-  tick and never `Confirm`, as a tab completes nothing.
+  wheels are light: they stretch, magnify and pop. The tabs and the tab bar are heavy (`Tabs`,
+  `TabLight`): the light leans back a hair, travels on a curve that arrives still moving, hits
+  its tab and squashes about 9 percent against the edge that hit, then settles with no bounce.
+  The arriving word or icon punches in from 90 percent, a finger sinks the light to 92 percent
+  for at least 110 ms, and each word takes the light's ink as the light covers it. A tap ticks
+  at once and a swipe as it crosses into a page, `SegmentTick`, firmer than the wheel's frequent
+  tick and never `Confirm`, as a tab completes nothing. A wheel never ticks as it comes on screen.
 - Text contrast is at least 4.5 to 1, and no state is shown by colour alone.
 - Layouts reflow from 360 to 430 dp, in landscape and with text at 200 percent.
 
