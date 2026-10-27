@@ -22,6 +22,11 @@ Text is in sp and space in dp, so the phone's font size scales everything.
 - Every tap target is at least 48. Main buttons are 56, list rows and tabs 64, small controls
   (`SmallPill`, the wheel) look 36.
 - An icon in a button or a menu row is 22 (`J.icon`), in a 40 shape (`J.iconButton`).
+- A new icon is drawn on the 24 grid: 1 unit padding, a circle fills the 20 keyline, one 2 stroke,
+  2 units between parts, few details, a sign people already know. Industrial draws it sharp (butt
+  ends, mitred corners, 45 degree cuts, no tip past the keyline) and the round look round, both from
+  one getter in `Icons`, as `Icons.web(on)`. A toggle changes its icon's shape with its state, not
+  only its colour (the web switch: a globe off, an eye on).
 - Corners are 12 for small things, 20 for rows and 28 for cards.
 
 ## Layout system

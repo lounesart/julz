@@ -225,6 +225,14 @@ class ScreenshotTest {
             "gets, then quiz me on it with three questions")
     }
     @Test fun composerLineBreak() = paparazzi.snapshot { composer(roomy = false, mode = "", draft = "Two lines\nhere") }
+    // The web icon in the Industrial look (264): the cut globe off, the slit eye on
+    @Test fun composerWebOffCut() = industrial { composer(roomy = true, mode = "", draft = "What is SearXNG?") }
+    @Test fun composerWebOnCut() = industrial { composer(roomy = true, mode = "", draft = "What is SearXNG?", web = true) }
+
+    private fun industrial(content: @Composable () -> Unit) {
+        Look.prefs = LookPrefs(industrial = true)
+        try { paparazzi.snapshot { content() } } finally { Look.prefs = LookPrefs() }
+    }
 
     // Code colours and the system label (204): bash and PowerShell side by side, an unknown
     // language stays plain
