@@ -791,9 +791,10 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     var value by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(draft)) }
     if (value.text != draft) value = androidx.compose.ui.text.input.TextFieldValue(draft, androidx.compose.ui.text.TextRange(draft.length))
     LaunchedEffect(focus) { if (focus != null) requester.requestFocus() }
-    // The shared icon button: a 40 dp shape in a 48 dp target, so 2 dp here puts the shape 6 dp
-    // from the box on its three outer sides, as before
-    val inset = 2.dp
+    // The shared icon button: a 40 dp shape in a 48 dp target, so 4 dp here puts every control's
+    // shape 8 dp from the box, as Claude's (266: 6 was off the 4 grid). The words keep 16 dp from
+    // the box edges by their own padding, as Material's text fields
+    val inset = J.sp1
     val button = J.tap
     var lines by remember { mutableStateOf(1) }
     val shape = if (roomy || lines > 1) J.rL else J.pill
@@ -824,8 +825,8 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     }
     val box = { s: androidx.compose.ui.graphics.Shape -> Modifier.fillMaxWidth().padding(horizontal = J.gutter, vertical = J.sp2)
         .clip(s).background(J.surface).border(1.dp, J.lineStrong, s) }
-    if (roomy) Column(box(shape).padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset)) {
-        field(Modifier.fillMaxWidth().padding(end = J.sp3, bottom = J.sp2))
+    if (roomy) Column(box(shape).padding(start = inset, end = inset, top = J.sp3, bottom = inset)) {
+        field(Modifier.fillMaxWidth().padding(start = J.sp4 - inset, end = J.sp4 - inset, bottom = J.sp2))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             ModeWheel(mode, setMode)
             WebSwitch(web, ChatLogic.webAllowed(mode), setWeb)
@@ -836,9 +837,9 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
         // One row while the draft fits beside the controls, the roomy two rows once it would wrap
         // (262: a long draft wrapped every dozen characters between the wheel, the globe and send).
         // The one row field is the box less its gutters and insets, the wheel, the globe, send and
-        // the three gaps; it never depends on the draft, so the rows cannot flip back and forth
+        // the two gaps by the words; it never depends on the draft, so the rows cannot flip back and forth
         val measurer = androidx.compose.ui.text.rememberTextMeasurer()
-        val oneRow = maxWidth - J.gutter * 2 - inset * 2 - modeWheelWidth(measurer) - button * 2 - J.sp2 * 3
+        val oneRow = maxWidth - J.gutter * 2 - inset * 2 - modeWheelWidth(measurer) - button * 2 - J.sp2 * 2
         val textWidth = if ('\n' in draft) 0 else measurer.measure(draft, J.bodyText, maxLines = 1).size.width
         val two = ChatLogic.composerTwoRows(draft, textWidth, with(LocalDensity.current) { oneRow.roundToPx() })
         val edge = if (two) 0.dp else inset
@@ -847,11 +848,11 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             // The modes roll up and down beside the words (my note 26 Oct: smaller, vertical)
             ModeWheel(mode, setMode, Modifier.padding(vertical = edge))
             WebSwitch(web, ChatLogic.webAllowed(mode), setWeb, Modifier.padding(vertical = edge), word = two)
-            // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
-            field(if (two) Modifier.padding(end = J.sp3, bottom = J.sp2) else Modifier.padding(vertical = 14.dp))
+            // One line of 24 sp, centred in the 56 dp row: (56 - 24) / 2 above and below
+            field(if (two) Modifier.padding(start = J.sp4 - inset, end = J.sp4 - inset, bottom = J.sp2) else Modifier.padding(vertical = J.sp4))
             sendButton(Modifier.padding(vertical = edge))
         }, box(if (two || lines > 1) J.rL else J.pill).heightIn(min = button + inset * 2)
-            .then(if (two) Modifier.padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset) else Modifier.padding(horizontal = inset))
+            .then(if (two) Modifier.padding(start = inset, end = inset, top = J.sp3, bottom = inset) else Modifier.padding(horizontal = inset))
         ) { parts, c ->
             val loose = c.copy(minWidth = 0, minHeight = 0)
             val (wheel, globe, send) = listOf(parts[0], parts[1], parts[3]).map { it.measure(loose) }
@@ -866,13 +867,15 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
                     send.place(c.maxWidth - send.width, words.height + (row - send.height) / 2)
                 }
             } else {
+                // Wheel and globe touch target to target, 8 dp between their shapes; 8 dp more by the
+                // words puts them 12 dp from a shape, as Material's text beside an icon
                 val gap = J.sp2.roundToPx()
-                val rest = (c.maxWidth - wheel.width - globe.width - send.width - gap * 3).coerceAtLeast(0)
+                val rest = (c.maxWidth - wheel.width - globe.width - send.width - gap * 2).coerceAtLeast(0)
                 val words = parts[2].measure(loose.copy(minWidth = rest, maxWidth = rest))
                 val h = maxOf(c.minHeight, wheel.height, globe.height, words.height, send.height)
                 layout(c.maxWidth, h) {
                     var x = 0
-                    for (p in listOf(wheel, globe, words, send)) { p.place(x, h - p.height); x += p.width + gap }
+                    for ((p, after) in listOf(wheel to 0, globe to gap, words to gap, send to 0)) { p.place(x, h - p.height); x += p.width + after }
                 }
             }
         }
@@ -906,8 +909,8 @@ internal fun SourcesBody(m: ChatMessage, openNote: (String) -> Unit, openLink: (
     }
 }
 
-/** Web search for this chat (26d, 168): the globe alone when off; on, the eye (264) and "Web" in an
- *  accent pill, as Claude shows a tool that is on, so on is a shape and a word, not a colour only.
+/** Web search for this chat (26d, 168): the globe in the wheel's quiet pill when off (266, so the
+ *  shapes in the row sit 8 dp apart, as Claude's); on, the eye (264) and "Web" in an accent pill, as Claude shows a tool that is on, so on is a shape and a word, not a colour only.
  *  Greyed with Notes, which means only my notes. A switch to TalkBack, its state read out. In the
  *  single line box's one row the word stays off: it squeezed my words; the pill still says on by
  *  its shape */
@@ -920,10 +923,12 @@ private fun WebSwitch(on: Boolean, enabled: Boolean, set: (Boolean) -> Unit, mod
             contentDescription = "Web search"
             if (!enabled) stateDescription = "Off with Notes"
         }, contentAlignment = Alignment.Center) {
-        Row(Modifier.height(J.iconButton).clip(J.pill)
-            .then(if (on && enabled) Modifier.background(J.acc.copy(alpha = 0.16f)).border(1.dp, J.acc.copy(alpha = 0.5f), J.pill) else Modifier)
+        // The shape 4 dp in from its target on each side, as the wheel's and send's
+        Row(Modifier.padding(horizontal = (J.tap - J.iconButton) / 2).height(J.iconButton).widthIn(min = J.iconButton).clip(J.pill)
+            .then(if (on && enabled) Modifier.background(J.acc.copy(alpha = 0.16f)).border(1.dp, J.acc.copy(alpha = 0.5f), J.pill)
+                else Modifier.background(J.raise))
             .padding(horizontal = if (on && enabled && word) J.sp3 else J.sp2), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
+            horizontalArrangement = Arrangement.spacedBy(J.sp1, Alignment.CenterHorizontally)) {
             Icon(Icons.web(on && enabled), null, tint = tint, modifier = Modifier.size(J.icon))
             if (on && enabled && word) Text("Web", style = J.cap.copy(color = J.accText, fontWeight = J.ts.fontWeight), maxLines = 1)
         }
