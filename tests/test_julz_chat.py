@@ -1148,6 +1148,11 @@ class WebTest(Base):
         self.assertNotIn("\n", chat.WEB_WORDS)
         self.assertTrue(lang.is_mode_turn(chat.MODES["learn"] + " " + chat.WEB_WORDS))
 
+    def test_the_web_words_cover_a_search_that_found_nothing(self):
+        # 27 Oct: every engine blocked, no results, and she asked me to turn web search on (268)
+        self.assertIn("If no web search results are given to you", chat.WEB_WORDS)
+        self.assertIn("never ask me to turn web search on", chat.WEB_WORDS)
+
     def test_the_web_words_quote_my_message_before_never_hers(self):
         self.listed()
         self.req("POST", f"/api/chats/{C1}/messages", {"text": "and what license?", "web": True})
