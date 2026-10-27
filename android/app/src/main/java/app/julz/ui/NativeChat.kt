@@ -906,7 +906,7 @@ internal fun SourcesBody(m: ChatMessage, openNote: (String) -> Unit, openLink: (
     }
 }
 
-/** Web search for this chat (26d, 168): the globe alone when off; on, the globe and "Web" in an
+/** Web search for this chat (26d, 168): the globe alone when off; on, the eye (264) and "Web" in an
  *  accent pill, as Claude shows a tool that is on, so on is a shape and a word, not a colour only.
  *  Greyed with Notes, which means only my notes. A switch to TalkBack, its state read out. In the
  *  single line box's one row the word stays off: it squeezed my words; the pill still says on by
@@ -924,7 +924,7 @@ private fun WebSwitch(on: Boolean, enabled: Boolean, set: (Boolean) -> Unit, mod
             .then(if (on && enabled) Modifier.background(J.acc.copy(alpha = 0.16f)).border(1.dp, J.acc.copy(alpha = 0.5f), J.pill) else Modifier)
             .padding(horizontal = if (on && enabled && word) J.sp3 else J.sp2), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
-            Icon(Icons.globe, null, tint = tint, modifier = Modifier.size(J.icon))
+            Icon(Icons.web(on && enabled), null, tint = tint, modifier = Modifier.size(J.icon))
             if (on && enabled && word) Text("Web", style = J.cap.copy(color = J.accText, fontWeight = J.ts.fontWeight), maxLines = 1)
         }
     }

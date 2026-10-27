@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -261,13 +262,19 @@ fun Modifier.glass(shape: Shape = J.rL, border: Color = J.line) =
 
 /** Icons drawn from the mockups' own SVG paths, so no icon library is needed. */
 object Icons {
-    private fun icon(name: String, d: String, stroke: Float = 2f) = ImageVector.Builder(
+    /** An outline icon. Sharp (264, the Industrial set): butt ends and mitred corners, as the
+     *  cut corners; [fill] adds solid parts, even-odd, so a hole cut in them shows through */
+    private fun icon(name: String, d: String, stroke: Float = 2f, sharp: Boolean = false, fill: String? = null) = ImageVector.Builder(
         name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f,
     ).addPath(
         pathData = PathParser().parsePathString(d).toNodes(), fill = null,
         stroke = SolidColor(Color.White), strokeLineWidth = stroke,
-        strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
-    ).build()
+        strokeLineCap = if (sharp) StrokeCap.Butt else StrokeCap.Round,
+        strokeLineJoin = if (sharp) StrokeJoin.Miter else StrokeJoin.Round, strokeLineMiter = 4f,
+    ).apply {
+        if (fill != null) addPath(PathParser().parsePathString(fill).toNodes(), pathFillType = PathFillType.EvenOdd,
+            fill = SolidColor(Color.White))
+    }.build()
 
     val feed = icon("feed", "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z", 1.9f)
     val chat = icon("chat", "M4 5h16v11H9l-5 4z", 1.9f)
@@ -307,8 +314,21 @@ object Icons {
     val question = icon("question", "M12 21a9 9 0 100-18 9 9 0 000 18z M9.5 9.5a2.5 2.5 0 114 2c-1 .7-1.5 1.2-1.5 2.5 M12 17h.01", 1.9f)
     val down = icon("down", "M6 9l6 6 6-6", 2.2f)
     val toEnd = icon("toEnd", "M12 5v14 M6 13l6 6 6-6", 2.2f)
-    // Web search (26d): the composer's switch and a result page's row
-    val globe = icon("globe", "M12 21a9 9 0 100-18 9 9 0 000 18z M3 12h18 M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9 M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9", 1.9f)
+    // Web search (26d, 264): the globe on the 20 keyline, one 2 stroke; Industrial cuts it to an
+    // octagon. On, an eye opens in it, a solid iris with a slit (private/design/web-icon)
+    private const val SLIT = " M12 9.75L12.9 11.1V12.9L12 14.25L11.1 12.9V11.1Z"
+    private const val OCT = "M8 2H16L22 8V16L16 22H8L2 16V8Z"
+    // Cubics, not arcs: the arc form drew half the circle here
+    private const val CIRCLE = "M12 2C17.52 2 22 6.48 22 12S17.52 22 12 22 2 17.52 2 12 6.48 2 12 2Z"
+    private val globeRound = icon("globe", "$CIRCLE M2 12h20 M12 2c2.8 3 4.2 6.3 4.2 10s-1.4 7-4.2 10 M12 2c-2.8 3-4.2 6.3-4.2 10s1.4 7 4.2 10")
+    private val globeCut = icon("globeCut", "$OCT M2 12H22 M12 2L16 8V16L12 22 M12 2L8 8V16L12 22", sharp = true)
+    private val eyeRound = icon("webOn", "$CIRCLE M2 12Q12 0 22 12 M2 12Q12 24 22 12",
+        fill = "M12 9C13.66 9 15 10.34 15 12S13.66 15 12 15 9 13.66 9 12 10.34 9 12 9Z$SLIT")
+    private val eyeCut = icon("webOnCut", "$OCT M2 12L8 6H16L22 12 M2 12L8 18H16L22 12", sharp = true,
+        fill = "M10.5 9H13.5L15 10.5V13.5L13.5 15H10.5L9 13.5V10.5Z$SLIT")
+    val globe get() = if (Look.prefs.industrial) globeCut else globeRound
+    /** The web switch: the globe off, the eye on */
+    fun web(on: Boolean) = if (!on) globe else if (Look.prefs.industrial) eyeCut else eyeRound
     val folder = icon("folder", "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z")
 
     fun kind(kind: Kind) = when (kind) {
