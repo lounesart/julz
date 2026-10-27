@@ -121,6 +121,16 @@ class CaseVaultTest(VaultBase):
         self.run_vault()
         self.assertEqual(vault_mod.feedback_snapshot(self.vault)["items"], [])
 
+    def test_the_keep_file_stays_beside_cases_and_is_committed(self):
+        # 269: the folder must outlive its last case, git keeps no empty folder
+        keep = self.vault / "feedback" / "eval" / ".keep"
+        keep.parent.mkdir(parents=True)
+        keep.write_text("")
+        vault_mod.write_request(self.requests, vault_mod.case_request(TEXT, NOW))
+        self.assertEqual(self.run_vault()[0][1], "ok")
+        self.assertIn("feedback/eval/.keep", self.git("ls-files"))
+        self.assertEqual(vault_mod.feedback_snapshot(self.vault)["items"], [])
+
     def test_no_new_create_root(self):
         self.assertEqual(vault_mod.OPS["create"][1], ("study", "daily", "feedback", "Inbox"))
 

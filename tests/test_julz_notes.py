@@ -84,6 +84,7 @@ class JulzNotesTest(unittest.IsolatedAsyncioTestCase):
         case = self.vault / "feedback" / "eval" / "2026-10-25 nft 210509.md"
         case.parent.mkdir(parents=True)
         case.write_text("# Bad answer\n\n## Answer\n\nsudo iptables -L zebracode\n")
+        (case.parent / ".keep").write_text("zebracode\n")
         (self.vault / "feedback" / "voice.md").write_text("# Feedback\nvoice zebracode\n")
         out = await self.tools.search_notes("zebracode")
         self.assertIn("feedback/voice.md", out)

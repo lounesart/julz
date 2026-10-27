@@ -117,6 +117,15 @@ class PromoteTest(unittest.TestCase):
         self.assertEqual(promote.list_cases(self.cases, self.answers),
                          [(other, False, "second question"), (self.name, True, QUESTION)])
 
+    def test_the_keep_file_is_not_a_case(self):
+        # 269: feedback/eval/.keep holds the folder in git, so Open WebUI's tmpfs can mount at boot
+        (self.cases / ".keep").write_text("")
+        self.assertEqual([r[0] for r in promote.list_cases(self.cases, self.answers)], [self.name])
+        (self.cases / f"{self.name}.md").unlink()
+        self.assertEqual(promote.list_cases(self.cases, self.answers), [])
+        with self.assertRaises(promote.Refused):
+            promote.read_case(self.cases, ".keep")
+
 
 if __name__ == "__main__":
     unittest.main()
