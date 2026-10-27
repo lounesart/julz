@@ -49,7 +49,7 @@ SIZE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\.dp\b")
 STROKES = {"0", "1", "1.5", "2"}
 SIZE_BASELINE = {
     "App.kt": 7, "Components.kt": 10, "FeedScreens.kt": 7, "GoalsTab.kt": 7, "Guides.kt": 2, "History.kt": 4,
-    "MarkdownView.kt": 10, "NativeChat.kt": 9, "NotesScreen.kt": 1, "OtherScreens.kt": 5, "TodosScreen.kt": 4,
+    "MarkdownView.kt": 10, "NativeChat.kt": 8, "NotesScreen.kt": 1, "OtherScreens.kt": 5, "TodosScreen.kt": 4,
     "WorkCards.kt": 4,
 }
 
