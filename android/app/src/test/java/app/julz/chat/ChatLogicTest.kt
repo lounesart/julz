@@ -12,6 +12,18 @@ class ChatLogicTest {
     private fun answer(text: String, done: Boolean, id: String = "a1") = ChatMessage(id, false, text, done, 2, null)
     private fun view(vararg m: ChatMessage, busy: Boolean = false) = ChatView("c", "t", busy, m.toList())
 
+    /** The single line box (262): one row while the draft fits beside the controls, Claude's two rows
+     *  once it would wrap or has a line break; decided by the draft's width, never the line count */
+    @Test fun composerTwoRowsOnlyOnceTheDraftWouldWrap() {
+        assertFalse(ChatLogic.composerTwoRows("What is a /26?", textWidth = 120, oneRowWidth = 180))
+        assertFalse(ChatLogic.composerTwoRows("", textWidth = 0, oneRowWidth = 180))
+        assertFalse(ChatLogic.composerTwoRows("exactly", textWidth = 180, oneRowWidth = 180))
+        assertTrue(ChatLogic.composerTwoRows("a long message", textWidth = 181, oneRowWidth = 180))
+        assertTrue(ChatLogic.composerTwoRows("one\ntwo", textWidth = 30, oneRowWidth = 180))
+        // Not measured yet: one row, as before
+        assertFalse(ChatLogic.composerTwoRows("a long message", textWidth = 900, oneRowWidth = 0))
+    }
+
     /** The Sources sheet (238): Notes | Links, only the tabs with something in them, Links first after a web turn */
     @Test fun sourcesTabsShowOnlyWhatIsThere() {
         val notes = answer("x", true).copy(sources = listOf("study/a.md"))

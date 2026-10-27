@@ -218,6 +218,13 @@ class ScreenshotTest {
     @Test fun composerRoomyWeb() = paparazzi.snapshot { composer(roomy = true, mode = "learn", draft = "What is SearXNG?", web = true) }
     @Test fun composerRoomyNotesNoWeb() = paparazzi.snapshot { composer(roomy = true, mode = "notes", web = true) }
     @Test fun composerLineWeb() = paparazzi.snapshot { composer(roomy = false, mode = "", draft = "and its license?", web = true) }
+    // The single line box with a long draft (262): words full width on top, controls in a row
+    // under them, never squeezed between the wheel, the globe and send
+    @Test fun composerLineLong() = paparazzi.snapshot {
+        composer(roomy = false, mode = "learn", web = true, draft = "Explain how a /26 subnet splits a /24 and how many hosts each part " +
+            "gets, then quiz me on it with three questions")
+    }
+    @Test fun composerLineBreak() = paparazzi.snapshot { composer(roomy = false, mode = "", draft = "Two lines\nhere") }
 
     // Code colours and the system label (204): bash and PowerShell side by side, an unknown
     // language stays plain
