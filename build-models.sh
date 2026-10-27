@@ -4,9 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/modelfiles"
 
-# name        base model           context  temperature  extra prompt
+# name        base model           context  temperature  extra prompt (none: no prompt at all)
+# julz-task is Open WebUI's Task Model (queries, titles): julz's base and window, so Ollama can
+# keep one copy loaded, and none of her prompt about me, which reached search queries (168)
 models=(
   "julz        qwen3.5:4b           16384    0.6          -"
+  "julz-task   qwen3.5:4b           16384    0.6          none"
   "julz-pro    qwen3.5:9b           8192     0.6          -"
   "julz-sec    qwen2.5-coder:7b     8192     0.3          sec-addon.txt"
 )
@@ -20,10 +23,12 @@ for row in "${models[@]}"; do
     echo "FROM $base"
     echo "PARAMETER num_ctx $ctx"
     echo "PARAMETER temperature $temp"
-    echo 'SYSTEM """'
-    cat personality.txt
-    [ "$addon" != "-" ] && cat "$addon"
-    echo '"""'
+    if [ "$addon" != "none" ]; then
+      echo 'SYSTEM """'
+      cat personality.txt
+      [ "$addon" != "-" ] && cat "$addon"
+      echo '"""'
+    fi
   } > "$name.Modelfile"
   ollama create "$name" -f "$name.Modelfile"
 done

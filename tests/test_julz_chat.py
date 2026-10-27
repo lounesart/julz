@@ -355,6 +355,17 @@ class EndTest(Base):
             if line.startswith("PARAMETER num_ctx"):
                 self.assertEqual(chat.WINDOWS[chat.MODEL], int(line.split()[2]))
 
+    def test_the_task_model_is_julz_without_her_prompt(self):
+        # 168: Open WebUI's queries and titles are written by julz-task; her prompt about me
+        # must not reach a search engine, and the same base and window let Ollama share one copy
+        def params(name):
+            text = (ROOT / "modelfiles" / f"{name}.Modelfile").read_text()
+            return text, [l for l in text.splitlines() if l.startswith(("FROM ", "PARAMETER num_ctx"))]
+        task, julz = params("julz-task"), params("julz")
+        self.assertEqual(task[1], julz[1])
+        self.assertNotIn("SYSTEM", task[0])
+        self.assertNotIn("Arch", task[0])
+
 
 def kb(name, *files, kind="collection", doc="chunk words"):
     """One stored source as Open WebUI 0.11.4 keeps it (probed 26 Oct, 133c)."""
