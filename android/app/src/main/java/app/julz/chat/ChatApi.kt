@@ -304,6 +304,12 @@ object ChatLogic {
     fun canSend(text: String, busy: Boolean, sending: Boolean, editing: Boolean = false): Boolean =
         (!busy || editing) && !sending && text.isNotBlank() && text.length <= ChatApi.MAX_TEXT
 
+    /** The single line box goes to two rows once the draft would wrap beside the controls, or has a
+     *  line break (262). The draft's measured width, not the field's line count: the two row field
+     *  is wider, so a line count would flip back to one row and wrap again. 0 is not measured yet */
+    fun composerTwoRows(draft: String, textWidth: Int, oneRowWidth: Int): Boolean =
+        '\n' in draft || (oneRowWidth > 0 && textWidth > oneRowWidth)
+
     /** Julz is working (a tool, the model loading) and has no words yet */
     fun thinking(v: ChatView): Boolean {
         val last = v.messages.lastOrNull() ?: return false

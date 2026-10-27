@@ -773,7 +773,8 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, sources: 
 /** Pinned at the bottom (26b, 26l). Roomy (the default, asked 19 Oct): two rows as Claude and
  *  ChatGPT draw a tall box, the text across the whole width and a thin row of controls under
  *  it with send on the right (release 2's + goes on the left). Single line: one row with send
- *  inside, the same 6 dp from the box on its three outer sides. Either way the box grows with
+ *  inside, the same 6 dp from the box on its three outer sides, until the draft would wrap: then
+ *  the roomy two rows (262). Either way the box grows with
  *  the text to six lines. (The first try, two empty lines with send in the corner, left the
  *  button alone at the bottom with uneven margins.) */
 @Composable
@@ -821,9 +822,9 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             }
         }
     }
-    val box = Modifier.fillMaxWidth().padding(horizontal = J.gutter, vertical = J.sp2)
-        .clip(shape).background(J.surface).border(1.dp, J.lineStrong, shape)
-    if (roomy) Column(box.padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset)) {
+    val box = { s: androidx.compose.ui.graphics.Shape -> Modifier.fillMaxWidth().padding(horizontal = J.gutter, vertical = J.sp2)
+        .clip(s).background(J.surface).border(1.dp, J.lineStrong, s) }
+    if (roomy) Column(box(shape).padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset)) {
         field(Modifier.fillMaxWidth().padding(end = J.sp3, bottom = J.sp2))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             ModeWheel(mode, setMode)
@@ -831,15 +832,49 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             Box(Modifier.weight(1f))
             sendButton(Modifier)
         }
-    } else Column {
-        Row(box.heightIn(min = button + inset * 2).padding(start = inset, end = inset),
-            verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+    } else BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // One row while the draft fits beside the controls, the roomy two rows once it would wrap
+        // (262: a long draft wrapped every dozen characters between the wheel, the globe and send).
+        // The one row field is the box less its gutters and insets, the wheel, the globe, send and
+        // the three gaps; it never depends on the draft, so the rows cannot flip back and forth
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val oneRow = maxWidth - J.gutter * 2 - inset * 2 - modeWheelWidth(measurer) - button * 2 - J.sp2 * 3
+        val textWidth = if ('\n' in draft) 0 else measurer.measure(draft, J.bodyText, maxLines = 1).size.width
+        val two = ChatLogic.composerTwoRows(draft, textWidth, with(LocalDensity.current) { oneRow.roundToPx() })
+        val edge = if (two) 0.dp else inset
+        // One layout for both, so the field keeps its place in the tree and my keyboard stays up
+        androidx.compose.ui.layout.Layout({
             // The modes roll up and down beside the words (my note 26 Oct: smaller, vertical)
-            ModeWheel(mode, setMode, Modifier.padding(vertical = inset))
-            WebSwitch(web, ChatLogic.webAllowed(mode), setWeb, Modifier.padding(vertical = inset), word = false)
+            ModeWheel(mode, setMode, Modifier.padding(vertical = edge))
+            WebSwitch(web, ChatLogic.webAllowed(mode), setWeb, Modifier.padding(vertical = edge), word = two)
             // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
-            field(Modifier.weight(1f).padding(vertical = 14.dp))
-            sendButton(Modifier.padding(vertical = inset))
+            field(if (two) Modifier.padding(end = J.sp3, bottom = J.sp2) else Modifier.padding(vertical = 14.dp))
+            sendButton(Modifier.padding(vertical = edge))
+        }, box(if (two || lines > 1) J.rL else J.pill).heightIn(min = button + inset * 2)
+            .then(if (two) Modifier.padding(start = J.sp4, end = inset, top = J.sp3, bottom = inset) else Modifier.padding(horizontal = inset))
+        ) { parts, c ->
+            val loose = c.copy(minWidth = 0, minHeight = 0)
+            val (wheel, globe, send) = listOf(parts[0], parts[1], parts[3]).map { it.measure(loose) }
+            if (two) {
+                // As roomy: the words across the whole width, then wheel and globe left, send right
+                val words = parts[2].measure(loose.copy(minWidth = c.maxWidth))
+                val row = maxOf(wheel.height, globe.height, send.height)
+                layout(c.maxWidth, maxOf(c.minHeight, words.height + row)) {
+                    words.place(0, 0)
+                    wheel.place(0, words.height + (row - wheel.height) / 2)
+                    globe.place(wheel.width, words.height + (row - globe.height) / 2)
+                    send.place(c.maxWidth - send.width, words.height + (row - send.height) / 2)
+                }
+            } else {
+                val gap = J.sp2.roundToPx()
+                val rest = (c.maxWidth - wheel.width - globe.width - send.width - gap * 3).coerceAtLeast(0)
+                val words = parts[2].measure(loose.copy(minWidth = rest, maxWidth = rest))
+                val h = maxOf(c.minHeight, wheel.height, globe.height, words.height, send.height)
+                layout(c.maxWidth, h) {
+                    var x = 0
+                    for (p in listOf(wheel, globe, words, send)) { p.place(x, h - p.height); x += p.width + gap }
+                }
+            }
         }
     }
 }
@@ -874,8 +909,8 @@ internal fun SourcesBody(m: ChatMessage, openNote: (String) -> Unit, openLink: (
 /** Web search for this chat (26d, 168): the globe alone when off; on, the globe and "Web" in an
  *  accent pill, as Claude shows a tool that is on, so on is a shape and a word, not a colour only.
  *  Greyed with Notes, which means only my notes. A switch to TalkBack, its state read out. In the
- *  single line box the word stays off: it squeezed my words onto a second line; the pill still
- *  says on by its shape */
+ *  single line box's one row the word stays off: it squeezed my words; the pill still says on by
+ *  its shape */
 @Composable
 private fun WebSwitch(on: Boolean, enabled: Boolean, set: (Boolean) -> Unit, modifier: Modifier = Modifier, word: Boolean = true) {
     val tint = when { !enabled -> J.faint; on -> J.accText; else -> J.muted }
@@ -893,6 +928,14 @@ private fun WebSwitch(on: Boolean, enabled: Boolean, set: (Boolean) -> Unit, mod
             if (on && enabled && word) Text("Web", style = J.cap.copy(color = J.accText, fontWeight = J.ts.fontWeight), maxLines = 1)
         }
     }
+}
+
+/** [ModeWheel]'s width in its target: its widest word with the same paddings, for the single line
+ *  box to know the room its words have (262) */
+@Composable
+private fun modeWheelWidth(measurer: androidx.compose.ui.text.TextMeasurer): androidx.compose.ui.unit.Dp {
+    val widest = Wheel.MODES.maxOf { measurer.measure(it.second, J.cap.copy(fontWeight = J.ts.fontWeight), maxLines = 1).size.width }
+    return with(LocalDensity.current) { widest.toDp() } + J.sp5 + J.sp3 + (J.tap - J.iconButton)
 }
 
 /** The modes, at most one on: learning (135) and notes only (133b), on the wheel (251): one
