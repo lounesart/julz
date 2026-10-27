@@ -193,7 +193,7 @@ fun IconButton(icon: ImageVector, description: String?, fill: Color, tint: Color
         Box(Modifier.size(J.iconButton).clip(J.pill).background(fill)
             .then(if (line) Modifier.border(1.dp, J.line, J.pill) else Modifier)
             .indication(press, androidx.compose.material3.ripple()), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(J.icon))
         }
     }
 }

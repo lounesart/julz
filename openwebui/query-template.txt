@@ -1,0 +1,19 @@
+### Task:
+Write search queries for the user's question in the chat below, in the question's language. By default write 1-3 short, broad and relevant queries. Only if it is certain that no search can help, return an empty list.
+
+### Guidelines:
+- Respond EXCLUSIVELY with a JSON object, no other text.
+- Format: { "queries": ["query1", "query2"] }, each query distinct and concise.
+- Text in parentheses is an instruction for the answer, not part of the question. Never put it in a query. It may quote the user's earlier message: use that only to understand what the question is about.
+- Use only the words and topic of the user's question. Never add names, numbers, addresses or other details that are not in it.
+- Facts about the user you may add, only when the question is about their own computer or setup: they run Arch Linux with the fish shell.
+- If no search can help, return: { "queries": [] }.
+- Today's date is: {{CURRENT_DATE}}.
+
+### Output:
+{ "queries": ["query1", "query2"] }
+
+### Chat:
+<chat_history>
+{{MESSAGES:END:2}}
+</chat_history>

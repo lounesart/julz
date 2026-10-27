@@ -133,6 +133,8 @@ object J {
     val small: Dp = 36.dp
     /** An icon button's visible size, inside a [tap] target (Material 3: 40 in 48) */
     val iconButton: Dp = 40.dp
+    /** An icon in a button or a menu row: 22, as Material 3's 24 in a 40 shape less the stroke room */
+    val icon: Dp = 22.dp
     // Corners by role (22b): round, or cut like a spec sheet with Look and feel's Industrial
     private val shapes get() = if (Look.prefs.industrial) ShapeSet.cut else ShapeSet.round
     val rS: Shape get() = shapes.small
@@ -305,6 +307,8 @@ object Icons {
     val question = icon("question", "M12 21a9 9 0 100-18 9 9 0 000 18z M9.5 9.5a2.5 2.5 0 114 2c-1 .7-1.5 1.2-1.5 2.5 M12 17h.01", 1.9f)
     val down = icon("down", "M6 9l6 6 6-6", 2.2f)
     val toEnd = icon("toEnd", "M12 5v14 M6 13l6 6 6-6", 2.2f)
+    // Web search (26d): the composer's switch and a result page's row
+    val globe = icon("globe", "M12 21a9 9 0 100-18 9 9 0 000 18z M3 12h18 M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9 M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9", 1.9f)
     val folder = icon("folder", "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z")
 
     fun kind(kind: Kind) = when (kind) {

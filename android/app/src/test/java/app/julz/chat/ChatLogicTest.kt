@@ -12,6 +12,33 @@ class ChatLogicTest {
     private fun answer(text: String, done: Boolean, id: String = "a1") = ChatMessage(id, false, text, done, 2, null)
     private fun view(vararg m: ChatMessage, busy: Boolean = false) = ChatView("c", "t", busy, m.toList())
 
+    /** The Sources sheet (238): Notes | Links, only the tabs with something in them, Links first after a web turn */
+    @Test fun sourcesTabsShowOnlyWhatIsThere() {
+        val notes = answer("x", true).copy(sources = listOf("study/a.md"))
+        val web = answer("x", true).copy(links = listOf(WebLink("https://a.example/", "a.example", "A")))
+        val both = notes.copy(links = web.links)
+        val searchedOnly = answer("x", true).copy(searched = listOf("q"))
+        assertEquals(emptyList<String>(), ChatLogic.sourceTabs(answer("x", true)))
+        assertEquals(listOf("Notes"), ChatLogic.sourceTabs(notes))
+        assertEquals(listOf("Links"), ChatLogic.sourceTabs(web))
+        assertEquals(listOf("Links"), ChatLogic.sourceTabs(searchedOnly))
+        assertEquals(listOf("Notes", "Links"), ChatLogic.sourceTabs(both))
+        assertEquals(1, ChatLogic.firstSourceTab(both))
+        assertEquals(0, ChatLogic.firstSourceTab(notes))
+        assertEquals(0, ChatLogic.firstSourceTab(web))
+        assertEquals(0, ChatLogic.firstSourceTab(answer("x", true)))
+    }
+
+    /** The web switch (26d): greyed with Notes, and Notes picked turns it off (julz-chat refuses the pair) */
+    @Test fun webNeverWithNotes() {
+        assertTrue(ChatLogic.webAllowed(""))
+        assertTrue(ChatLogic.webAllowed("learn"))
+        assertFalse(ChatLogic.webAllowed("notes"))
+        assertTrue(ChatLogic.webWith(true, "learn"))
+        assertFalse(ChatLogic.webWith(true, "notes"))
+        assertFalse(ChatLogic.webWith(false, ""))
+    }
+
     @Test fun warmsOnceAMinuteAtMost() {
         assertTrue(ChatLogic.warmDue(null, 0))
         assertFalse(ChatLogic.warmDue(1_000, 1_000))

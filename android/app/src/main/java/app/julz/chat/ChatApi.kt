@@ -10,10 +10,15 @@ data class ChatSummary(val id: String, val title: String, val updated: Long)
 /** Why an answer ended, from julz-chat (26k): the window filled, or the model stopped */
 enum class End { LENGTH, STOP }
 
+/** A result page under a web answer (238, threat 168): the host is the address's own, the title the page's */
+data class WebLink(val url: String, val host: String, val title: String)
+
 data class ChatMessage(val id: String, val user: Boolean, val text: String, val done: Boolean, val time: Long, val error: String?,
-                       val end: End? = null, val sources: List<String> = emptyList())
+                       val end: End? = null, val sources: List<String> = emptyList(),
+                       val searched: List<String> = emptyList(), val links: List<WebLink> = emptyList())
+/** [web]: the chat had a web turn, so julz-chat sends it no tools any more (168) */
 data class ChatView(val id: String, val title: String, val busy: Boolean, val messages: List<ChatMessage>,
-                    val archived: Boolean = false, val mode: String = "")
+                    val archived: Boolean = false, val mode: String = "", val web: Boolean = false)
 data class Sent(val chat: String, val message: String)
 
 /** julz-chat on the laptop, the native chat's only way to Open WebUI (SECURITY.md 136, 138).
@@ -34,6 +39,12 @@ object ChatApi {
     private val SOURCE = Regex("(study|daily|Claude)(/[\\p{L}\\p{N}_][\\p{L}\\p{N}_ .-]{0,99}){1,3}")
     const val MAX_SOURCES = 6
     private const val MAX_SOURCE_PATH = 200
+
+    // A web turn's queries and result pages (26d, 238), julz-chat's own caps
+    const val MAX_LINKS = 10
+    const val MAX_QUERIES = 5
+    const val MAX_QUERY = 200
+    const val MAX_LINK_TITLE = 200
 
     fun isSource(p: String) = p.length <= MAX_SOURCE_PATH && p.endsWith(".md") && ".." !in p && SOURCE.matches(p)
 
@@ -58,10 +69,12 @@ object ChatApi {
     /** POST {}: julz-chat loads the models while I type (260, threat 167); nothing of mine goes */
     const val WARM = "/api/warm"
 
-    /** The text and, when one is on, a mode's name; "" is no mode */
-    fun body(text: String, mode: String = ""): String? =
-        if (text.isBlank() || text.length > MAX_TEXT || '\u0000' in text || (mode != "" && mode !in MODES)) null
-        else JSONObject().put("text", text).apply { if (mode != "") put("mode", mode) }.toString()
+    /** The text and, when one is on, a mode's name; "" is no mode. [web] searches the web for this
+     *  turn (26d); never with Notes, which means only my notes (168) */
+    fun body(text: String, mode: String = "", web: Boolean = false): String? =
+        if (text.isBlank() || text.length > MAX_TEXT || '\u0000' in text || (mode != "" && mode !in MODES) ||
+            (web && mode == "notes")) null
+        else JSONObject().put("text", text).apply { if (mode != "") put("mode", mode); if (web) put("web", true) }.toString()
 
     private fun obj(raw: String): JSONObject? = try { JSONObject(raw) } catch (e: Exception) { null }
 
@@ -85,8 +98,39 @@ object ChatApi {
         val found = (m.opt("sources") as? JSONArray)?.takeIf { !user }?.let { a ->
             (0 until a.length()).mapNotNull { (a.opt(it) as? String)?.takeIf(::isSource) }.distinct().take(MAX_SOURCES)
         } ?: emptyList()
+        val searched = (m.opt("searched") as? JSONArray)?.takeIf { !user }?.let { a ->
+            (0 until a.length()).mapNotNull { (a.opt(it) as? String)?.takeIf { q -> q.length <= MAX_QUERY }?.let(::plain) }
+                .filter { it.isNotEmpty() }.distinct().take(MAX_QUERIES)
+        } ?: emptyList()
+        val links = (m.opt("links") as? JSONArray)?.takeIf { !user }?.let { a ->
+            (0 until a.length()).mapNotNull { (a.opt(it) as? JSONObject)?.let(::link) }.distinctBy { it.url }.take(MAX_LINKS)
+        } ?: emptyList()
         return ChatMessage(id, user, m.optString("text", "").take(MAX_ANSWER), m.optBoolean("done", true),
-            (m.opt("time") as? Number)?.toLong() ?: 0L, error, end, found)
+            (m.opt("time") as? Number)?.toLong() ?: 0L, error, end, found, searched, links)
+    }
+
+    /** Page text as one plain line, as julz-chat makes it: control, format (bidi, zero width),
+     *  private and unassigned characters gone, a line break a space (168) */
+    fun plain(s: String): String {
+        val out = StringBuilder()
+        s.codePoints().forEach { c ->
+            when (Character.getType(c).toByte()) {
+                Character.CONTROL -> if (Character.isWhitespace(c)) out.append(' ')
+                Character.FORMAT, Character.PRIVATE_USE, Character.SURROGATE, Character.UNASSIGNED -> {}
+                else -> out.appendCodePoint(c)
+            }
+        }
+        return out.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
+    }
+
+    /** A result page julz-chat checked, checked again: an address a tap may open (138), ASCII so
+     *  a look-alike host shows as its xn-- form, and the host shown must be the address's own */
+    private fun link(o: JSONObject): WebLink? {
+        val url = (o.opt("url") as? String)?.takeIf { u -> u.all { it.code in 0x21..0x7e } }
+            ?.let { app.julz.feed.ObsidianMd.webLink(it) } ?: return null
+        val host = try { java.net.URI(url).host?.lowercase() } catch (e: Exception) { null } ?: return null
+        if (o.opt("host") != host) return null
+        return WebLink(url, host, plain(o.opt("title") as? String ?: "").take(MAX_LINK_TITLE))
     }
 
     fun parseView(raw: String): ChatView? {
@@ -95,7 +139,7 @@ object ChatApi {
         val rows = o.optJSONArray("messages") ?: JSONArray()
         val messages = (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let { message(it) } }
         return ChatView(id, o.optString("title", "").take(MAX_TITLE), o.optBoolean("busy", false), messages,
-            o.opt("archived") == true, (o.opt("mode") as? String)?.takeIf { it in MODES } ?: "")
+            o.opt("archived") == true, (o.opt("mode") as? String)?.takeIf { it in MODES } ?: "", o.opt("web") == true)
     }
 
     fun parseArchived(raw: String): Boolean? = obj(raw)?.opt("archived") as? Boolean
@@ -299,6 +343,17 @@ object ChatLogic {
             last.startsWith("```")) return false
         return last.last() !in ENDS
     }
+
+    /** The Sources sheet's tabs (238): only those with something in them */
+    fun sourceTabs(m: ChatMessage): List<String> = listOfNotNull(
+        "Notes".takeIf { m.sources.isNotEmpty() }, "Links".takeIf { m.links.isNotEmpty() || m.searched.isNotEmpty() })
+
+    /** After a web turn the sheet opens on Links */
+    fun firstSourceTab(m: ChatMessage): Int = sourceTabs(m).indexOf("Links").coerceAtLeast(0)
+
+    /** The web switch is greyed with Notes (only my notes), and Notes picked turns it off (168) */
+    fun webAllowed(mode: String): Boolean = mode != "notes"
+    fun webWith(web: Boolean, mode: String): Boolean = web && webAllowed(mode)
 
     fun title(raw: String): String = raw.trim().takeIf { it.isNotEmpty() && it != "New Chat" } ?: "New chat"
 }

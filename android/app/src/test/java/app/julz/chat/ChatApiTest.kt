@@ -214,6 +214,73 @@ class ChatApiTest {
         assertEquals(emptyList<String>(), ChatApi.parseMessage("""{"id": "a1", "role": "assistant", "text": "x", "done": true, "time": 1}""")!!.sources)
     }
 
+    /** 26d, threat 168: web search is a flag julz-chat reads; never with Notes, which means only my notes */
+    @Test fun webIsAFlagAndNeverWithNotes() {
+        assertEquals(true, org.json.JSONObject(ChatApi.body("what is SearXNG", "", web = true)!!).getBoolean("web"))
+        val learn = org.json.JSONObject(ChatApi.body("what is SearXNG", "learn", web = true)!!)
+        assertEquals("learn", learn.getString("mode"))
+        assertTrue(learn.getBoolean("web"))
+        // Off is left out, so a request stays what it was before 26d
+        assertEquals("{\"text\":\"hi\"}", ChatApi.body("hi", "", web = false))
+        assertNull(ChatApi.body("hi", "notes", web = true))
+        assertNull(ChatApi.body("", "", web = true))
+    }
+
+    /** The web chat mark (168): only a true from julz-chat, which works it out from the store */
+    @Test fun aWebChatIsMarkedOnlyByTrue() {
+        fun web(v: String) = ChatApi.parseView("""{"id": "$c1", "title": "t", "busy": false, "messages": [], "web": $v}""")!!.web
+        assertTrue(web("true"))
+        for (v in listOf("false", "\"true\"", "1", "null", "{}")) assertFalse(v, web(v))
+        assertFalse(ChatApi.parseView("""{"id": "$c1", "title": "t", "busy": false, "messages": []}""")!!.web)
+    }
+
+    /** The Sources sheet's links (238, threat 168): julz-chat checked them, the phone checks again.
+     *  The host shown is the one in the address, a title is page text with no control or bidi characters */
+    @Test fun webLinksAreCheckedAgain() {
+        fun parsed(links: String, searched: String = "[]", role: String = "assistant") = ChatApi.parseMessage(
+            """{"id": "a1", "role": "$role", "text": "x", "done": true, "time": 1, "searched": $searched, "links": $links}""")!!
+        fun link(url: String, host: String, title: String = "T") =
+            org.json.JSONObject().put("url", url).put("host", host).put("title", title)
+        fun links(vararg l: org.json.JSONObject) = parsed(org.json.JSONArray(l.toList()).toString()).links
+        assertEquals(listOf(WebLink("https://docs.searxng.org/admin/", "docs.searxng.org", "Admin docs")),
+            links(link("https://docs.searxng.org/admin/", "docs.searxng.org", "Admin docs")))
+        // The host must be the address's own: a row that says another is dropped
+        val bad = listOf(
+            link("https://evil.example/", "docs.searxng.org"),
+            link("https://docs.searxng.org.evil.example/", "docs.searxng.org"),
+            link("http://docs.searxng.org/", "docs.searxng.org"),
+            link("https://user@docs.searxng.org/", "docs.searxng.org"),
+            link("https://docs.searxng.org/a b", "docs.searxng.org"),
+            link("https://localhost/", "localhost"),
+            link("https://a.example/caf\u00e9", "a.example"),
+            link("https://xn--80ak6aa92e.com/", "\u0430pple.com"),
+            link("https://docs.searxng.org/" + "x".repeat(2_000), "docs.searxng.org"),
+            link("javascript:alert(1)", "docs.searxng.org"))
+        for (b in bad) assertEquals(b.toString(), emptyList<WebLink>(), links(b))
+        // Uppercase in the address is still its host, as Python's hostname lowers it
+        assertEquals(1, links(link("https://Docs.SearXNG.org/", "docs.searxng.org")).size)
+        val title = links(link("https://a.example/", "a.example", "Safe\u202e txt.exe\u200b\n page\u0007")).single().title
+        assertEquals("Safe txt.exe page", title)
+        assertEquals(ChatApi.MAX_LINK_TITLE, links(link("https://a.example/", "a.example", "t".repeat(500))).single().title.length)
+        val many = (0 until 14).map { link("https://a.example/$it", "a.example") }
+        assertEquals(ChatApi.MAX_LINKS, links(*many.toTypedArray()).size)
+        assertEquals(1, links(link("https://a.example/", "a.example"), link("https://a.example/", "a.example")).size)
+        for (v in listOf("{}", "\"x\"", "null", "[1, null, \"https://a.example/\"]"))
+            assertEquals(v, emptyList<WebLink>(), parsed(v).links)
+        assertEquals(emptyList<WebLink>(), parsed(org.json.JSONArray(listOf(link("https://a.example/", "a.example"))).toString(), role = "user").links)
+        assertEquals(emptyList<WebLink>(), ChatApi.parseMessage("""{"id": "a1", "role": "assistant", "text": "x", "done": true, "time": 1}""")!!.links)
+    }
+
+    @Test fun searchedQueriesArePlainAndCapped() {
+        fun searched(v: String, role: String = "assistant") = ChatApi.parseMessage(
+            """{"id": "a1", "role": "$role", "text": "x", "done": true, "time": 1, "searched": $v}""")!!.searched
+        assertEquals(listOf("SearXNG license", "searxng agpl"), searched("""["SearXNG license", "searxng agpl", "SearXNG license"]"""))
+        assertEquals(listOf("a b"), searched(org.json.JSONArray(listOf("a\u202e\n b", " ", "q".repeat(ChatApi.MAX_QUERY + 1))).toString()))
+        assertEquals(ChatApi.MAX_QUERIES, searched(org.json.JSONArray((0 until 9).map { "q$it" }).toString()).size)
+        for (v in listOf("{}", "\"q\"", "null", "[1, null]")) assertEquals(v, emptyList<String>(), searched(v))
+        assertEquals(emptyList<String>(), searched("""["q"]""", role = "user"))
+    }
+
     @Test fun aSendReplyNeedsTwoGoodIds() {
         val m = "a1000000-0000-4000-8000-000000000000"
         assertEquals(Sent(c1, m), ChatApi.parseSent("""{"chat": "$c1", "message": "$m"}"""))
