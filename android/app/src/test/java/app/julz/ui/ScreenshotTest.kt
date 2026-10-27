@@ -126,11 +126,11 @@ class ScreenshotTest {
     // The mode chips in both composer layouts (135, 133b): left of send when roomy, above the box
     // when single line; on, the placeholder says she teaches
     @Composable
-    private fun composer(roomy: Boolean, mode: String, draft: String = "") =
+    private fun composer(roomy: Boolean, mode: String, draft: String = "", web: Boolean = false) =
         androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.bg),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom) {
             Composer(draft, {}, busy = false, sending = false, focus = null, roomy = roomy, mode = mode,
-                setMode = {}, send = {}, stop = {})
+                setMode = {}, send = {}, stop = {}, web = web)
         }
 
     // A change Julz asked for in the chat (208, threat 156): the card text whole and plain, then
@@ -214,6 +214,10 @@ class ScreenshotTest {
     @Test fun composerRoomyLearn() = paparazzi.snapshot { composer(roomy = true, mode = "learn") }
     @Test fun composerLineLearn() = paparazzi.snapshot { composer(roomy = false, mode = "learn", draft = "What is a /26?") }
     @Test fun composerLineNotes() = paparazzi.snapshot { composer(roomy = false, mode = "notes") }
+    // Web search (26d): on is the globe and a word in a pill; greyed with Notes; send only with words (262)
+    @Test fun composerRoomyWeb() = paparazzi.snapshot { composer(roomy = true, mode = "learn", draft = "What is SearXNG?", web = true) }
+    @Test fun composerRoomyNotesNoWeb() = paparazzi.snapshot { composer(roomy = true, mode = "notes", web = true) }
+    @Test fun composerLineWeb() = paparazzi.snapshot { composer(roomy = false, mode = "", draft = "and its license?", web = true) }
 
     // Code colours and the system label (204): bash and PowerShell side by side, an unknown
     // language stays plain
@@ -227,13 +231,20 @@ class ScreenshotTest {
         }
     }
 
-    // Notes found under an answer (133c): compact chips that wrap, a Claude note marked, a long name cut
-    @Test fun notesFound() = paparazzi.snapshot {
-        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.bg)
-            .padding(J.gutter)) {
-            NotesFound(listOf("study/cert-map.md", "study/interview/htb-and-certs.md", "Claude/cpts/00-cpts-overview.md",
-                "daily/2026-10-26.md", "study/network-plus/" + "subnetting and vlsm practice ".repeat(3).trim() + ".md",
-                "Claude/julz/11-glossary.md")) {}
-        }
-    }
+    // The Sources sheet (238), drawn as the sheet's body: Links after a web turn (the queries,
+    // then each page's real host above its title), and Notes with a Claude note marked
+    private val webAnswer = app.julz.chat.ChatMessage("a1", false, "x", true, 1, null,
+        sources = listOf("study/cert-map.md", "Claude/cpts/00-cpts-overview.md"),
+        searched = listOf("SearXNG license", "searxng agpl"),
+        links = listOf(app.julz.chat.WebLink("https://docs.searxng.org/", "docs.searxng.org", "Welcome to SearXNG \u2014 SearXNG Documentation"),
+            app.julz.chat.WebLink("https://github.com/searxng/searxng", "github.com", "searxng/searxng: SearXNG is a free internet metasearch engine which aggregates results from various search services and databases"),
+            app.julz.chat.WebLink("https://en.wikipedia.org/wiki/Searx", "en.wikipedia.org", "")))
+
+    @Composable
+    private fun sheetBody(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) =
+        androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize().background(J.sheet).padding(J.gutter),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(J.sp4), content = content)
+
+    @Test fun sourcesLinks() = paparazzi.snapshot { sheetBody { SourcesBody(webAnswer, {}, {}) } }
+    @Test fun sourcesNotes() = paparazzi.snapshot { sheetBody { SourcesBody(webAnswer.copy(links = emptyList(), searched = emptyList()), {}, {}) } }
 }

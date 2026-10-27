@@ -207,6 +207,28 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 5. Leave the chat, open it again from My chats. [Notes is still on.]
 6. TalkBack on each chip. ["Learn" and "Notes", each a switch, on or off.]
 
+### Web search (26d, 238, 262, 168)
+1. New chat, roomy box. [The wheel, then a globe, nothing on the right until I type.] Type a
+   letter. [Send fades in; the box does not move.] Delete it. [Send fades out.]
+2. Tap the globe. [It becomes a pill with "Web"; TalkBack says "Web search, switch, on".] Ask
+   "What is SearXNG?". [An answer that names sites, not "your notes"; Sources › beside Copy.]
+3. Tap Sources ›. [It opens on Links: "Searched: ..." first, then each page as its site above its
+   title.] Tap a page. [The link check, then the browser on that page.] If her answer had notes
+   too: [Notes | Links on top; Notes lists them.]
+4. Same chat, "and what license is it under?". [Searched shows a SearXNG license query.] Roll to
+   Learn, web still on, ask "How does SearXNG keep searches private?". [A search, and a question
+   back or a hint.]
+5. The header. ["web chat · tools stay off".] Globe off, "save a note called test web". [She does
+   not save it: tools stay off in this chat.]
+6. Roll to Notes. [The globe greys out and goes off; TalkBack says "Off with Notes".] Roll back to
+   Chat. [The globe stays off until I tap it.]
+7. New chat. [Globe off, no web chat line.] Open the web chat from My chats. [The line is back,
+   the globe off.]
+8. Single line box (Settings), web on. [The globe in its pill, no word; a short question stays on
+   one line.]
+9. On the laptop, the check 220 waits for: `sudo journalctl -k -g apparmor --since -10min`.
+   [No docker-default denial.]
+
 ### Changes Julz asks for (208, 156)
 1. Native chat: "add 'buy a USB hub' to my week list" (a note in daily/). [She says it is not
    added yet and waits on Approve; no "done".] Approve. [A card "Julz asks in the chat" with
@@ -292,10 +314,11 @@ is-active julz-chat.service`) and served on 8445. After an Open WebUI upgrade, f
 22. Tailscale off on the phone, send a message (128). ["The phone cannot find the laptop. Is
     Tailscale running on the phone?", the words still in the field.] Tailscale back on, send again.
     [It goes.] After 10 idle minutes, a message: ["Thinking" for up to about 35 s, never an error.]
-23. Ask "What is CPTS?" (133c). [Once the answer is done, "Notes found" under it with up to six
-    chips, a Claude note as "Claude · name"; none while she writes.] Tap a chip. [That note opens
-    in Notes; back returns to the chat.] Ask "hi". [No chips.] Rename a found note in Obsidian,
-    wait for the notes list to update, tap its chip. ["That note is not in your notes list now."]
+23. Ask "What is CPTS?" (133c, 238). [Once the answer is done, "Sources ›" beside Copy; none while
+    she writes.] Tap it. [A sheet with up to six notes, a Claude note as "Claude · name", its folder
+    under it; no Notes | Links tabs.] Tap a note. [That note opens in Notes; back returns to the
+    chat.] Ask "hi". [No Sources.] Rename a found note in Obsidian, wait for the notes list to
+    update, tap it in Sources. ["That note is not in your notes list now."]
 24. After 10 idle minutes, open Chat and type a short question for about half a minute, then send
     (260, threat 167). [Her first words in about 12 s, not 35; `curl -s 127.0.0.1:11434/api/ps` on
     the laptop lists julz and bge-m3 while I type.] Close and open Chat again within a minute.

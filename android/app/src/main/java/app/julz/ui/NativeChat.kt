@@ -30,9 +30,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -60,8 +63,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -180,6 +185,12 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     // brings its own back
     var chatMode by remember { mutableStateOf("") }
     val modeNow by androidx.compose.runtime.rememberUpdatedState(chatMode)
+    // Web search (26d, 168): on for this chat, off in a new one or another opened; julz-chat keeps
+    // tools off in a chat that had a web turn whatever this says
+    var web by remember { mutableStateOf(false) }
+    val webNow by androidx.compose.runtime.rememberUpdatedState(web)
+    // The answer whose Sources sheet is open (238)
+    var sourcesOf by remember { mutableStateOf<ChatMessage?>(null) }
 
     suspend fun call(path: String, body: String? = null, delete: Boolean = false) =
         withContext(Dispatchers.IO) { ChatApi.call(origin, path, token, body, delete) }
@@ -282,8 +293,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
             }
             return
         }
-        if (editing != null && id != null) start(ChatApi.edit(id), ChatApi.body(draft, modeNow))
-        else start(ChatApi.send(id), ChatApi.body(draft, modeNow))
+        if (editing != null && id != null) start(ChatApi.edit(id), ChatApi.body(draft, modeNow, webNow))
+        else start(ChatApi.send(id), ChatApi.body(draft, modeNow, webNow))
     }
 
     fun stop() {
@@ -348,12 +359,15 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
         val short = J.rail && WindowInsets.isImeVisible
         if (!short) Box(Modifier.padding(horizontal = J.gutter)) {
-            // An archived chat says so: writing in it brings it back (26b)
-            ScreenHeader(ChatLogic.title(view?.title ?: ""), sub = if (view?.archived == true) "archived · writing brings it back" else null,
+            // An archived chat says so: writing in it brings it back (26b); a web chat that its
+            // tools stay off, so a switched off globe does not look like they came back (168)
+            val sub = listOfNotNull("archived · writing brings it back".takeIf { view?.archived == true },
+                "web chat · tools stay off".takeIf { view?.web == true }).joinToString(" · ").ifEmpty { null }
+            ScreenHeader(ChatLogic.title(view?.title ?: ""), sub = sub,
                 content = true, action = {
                 Row(horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
                     RoundButton(Icons.chats, "My chats") { sheet = ChatsSheet.Mine; scope.launch { loadList() } }
-                    RoundButton(Icons.plus, "New chat") { editing = null; setChat(null) }
+                    RoundButton(Icons.plus, "New chat") { editing = null; web = false; setChat(null) }
                 }
             })
         }
@@ -410,7 +424,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
                     // No fade out: a removed row stayed drawn over its place while it faded, and "Thinking"
                     // lay on the first lines of the answer (found 19 Oct)
                     Box((if (still) Modifier else Modifier.animateItem(fadeOutSpec = null)).arrive(m.time >= openedAt && !still)) {
-                    if (m.user) Mine(m) { menu = m } else Answer(m, context, { menu = m }, openNote, retry = {
+                    if (m.user) Mine(m) { menu = m } else Answer(m, context, { menu = m }, { sourcesOf = m }, retry = {
                         val vv = view
                         if (vv != null && ChatLogic.canRetry(vv, m)) start(ChatApi.retry(vv.id), "{}")
                     }) {
@@ -479,7 +493,8 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
         }
         // While I edit, the button sends the edit; Cancel brings Stop back (203)
         Composer(draft, setDraft, busy = view?.busy == true && editing == null, sending = sending, focus = editing?.id, roomy = ChatPrefs.roomy,
-            mode = chatMode, setMode = { chatMode = it }, send = ::send, stop = ::stop, warm = ::warm)
+            mode = chatMode, setMode = { chatMode = it; web = ChatLogic.webWith(web, it) }, web = web, setWeb = { web = it },
+            send = ::send, stop = ::stop, warm = ::warm)
     }
 
     // One sheet at a time: what a message offers, the text I sign, or my chats
@@ -488,6 +503,7 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
     val held = menu
     val v = view
     val mode = sheet
+    val found = sourcesOf
     when {
         held != null && v != null -> JulzSheet(onDismiss = { menu = null }) {
             SheetTitle(if (held.user) "Your message" else "Julz's answer")
@@ -522,9 +538,12 @@ fun NativeChat(origins: Origins, origin: String, token: String, chatId: String?,
                 }
             }
         }
+        found != null -> JulzSheet(onDismiss = { sourcesOf = null }) {
+            SourcesBody(found, openNote = { sourcesOf = null; openNote(it) }, openLink = { LinkCheck.open(context, Uri.parse(it)) })
+        }
         mode != null -> JulzSheet(onDismiss = { sheet = null }) {
             ChatsSheetBody(mode, chats, archived, undo, note, problem, chatId,
-                open = { sheet = null; editing = null; setChat(it.id) },
+                open = { sheet = null; editing = null; if (it.id != chatId) web = false; setChat(it.id) },
                 archive = { c, on -> archive(c, on) },
                 askDelete = { c -> sheet = ChatsSheet.Delete(c, mode) },
                 delete = { c, back -> delete(c); sheet = back },
@@ -610,14 +629,15 @@ private fun SheetTitle(title: String, sub: String? = null, icon: androidx.compos
  *  greyed with its reason when it cannot run. */
 @Composable
 private fun MenuRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, sub: String,
-                    enabled: Boolean = true, onClick: () -> Unit) {
+                    enabled: Boolean = true, subLines: Int = Int.MAX_VALUE, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = J.row).clickable(role = Role.Button, enabled = enabled, onClick = onClick)
         .padding(vertical = J.sp3), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(J.sp4)) {
-        Icon(icon, null, tint = if (enabled) J.accText else J.faint, modifier = Modifier.size(22.dp))
+        Icon(icon, null, tint = if (enabled) J.accText else J.faint, modifier = Modifier.size(J.icon))
         Column(Modifier.weight(1f)) {
             Text(title, style = J.item.copy(color = if (enabled) J.text else J.faint))
-            Text(sub, style = J.sec.copy(color = if (enabled) J.muted else J.faint))
+            Text(sub, style = J.sec.copy(color = if (enabled) J.muted else J.faint), maxLines = subLines,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -712,7 +732,7 @@ private fun Mine(m: ChatMessage, hold: () -> Unit) {
  *  hold it for more. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, open: (String) -> Unit, retry: () -> Unit, copy: () -> Unit) {
+private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, sources: () -> Unit, retry: () -> Unit, copy: () -> Unit) {
     Column(Modifier.fillMaxWidth().combinedClickable(onLongClickLabel = "More", onLongClick = hold, onClick = {}),
         verticalArrangement = Arrangement.spacedBy(J.sp3)) {
         if (m.text.isNotEmpty()) {
@@ -731,17 +751,21 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, open: (St
             Text("Retry", style = J.sec.copy(color = J.accText, fontWeight = FontWeight(700)),
                 modifier = Modifier.heightIn(min = J.tap).clickable(role = Role.Button, onClick = retry).padding(horizontal = J.sp2, vertical = J.sp3))
         } }
-        // 133c, threat 165: the notes retrieval found, drawn by the app outside the answer's text;
-        // found, not used, so the words claim no more
-        if (m.done && m.sources.isNotEmpty()) NotesFound(m.sources, open)
-        // Starts at the answer's text edge; the tap area reaches right, not left (found 18 Oct)
+        // Starts at the answer's text edge; the tap area reaches right, not left (found 18 Oct).
+        // Sources beside Copy (238): the notes retrieval found (133c, threat 165) and a web turn's
+        // pages (168), drawn by the app outside the answer's text, in a sheet, so no extra height
         androidx.compose.animation.AnimatedVisibility(m.done && m.text.isNotEmpty(), enter = androidx.compose.animation.fadeIn(
-            androidx.compose.animation.core.tween(300, delayMillis = 150))) { Row(Modifier.heightIn(min = J.tap).clip(J.pill)
-            .clickable(role = Role.Button, onClickLabel = "Copy the answer", onClick = copy)
-            .padding(end = J.sp3), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
-            Icon(Icons.copy, null, tint = J.muted, modifier = Modifier.size(18.dp))
-            Text("Copy", style = J.sec.copy(color = J.muted, fontWeight = FontWeight(600)))
+            androidx.compose.animation.core.tween(300, delayMillis = 150))) { Row(horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+            Row(Modifier.heightIn(min = J.tap).clip(J.pill)
+                .clickable(role = Role.Button, onClickLabel = "Copy the answer", onClick = copy)
+                .padding(end = J.sp3), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
+                Icon(Icons.copy, null, tint = J.muted, modifier = Modifier.size(18.dp))
+                Text("Copy", style = J.sec.copy(color = J.muted, fontWeight = FontWeight(600)))
+            }
+            if (ChatLogic.sourceTabs(m).isNotEmpty()) Text("Sources ›", style = J.sec.copy(color = J.muted, fontWeight = FontWeight(600)),
+                modifier = Modifier.heightIn(min = J.tap).clip(J.pill).clickable(role = Role.Button, onClickLabel = "Show the sources", onClick = sources)
+                    .padding(horizontal = J.sp3).wrapContentHeight(Alignment.CenterVertically))
         } }
     }
 }
@@ -755,7 +779,7 @@ private fun Answer(m: ChatMessage, context: Context, hold: () -> Unit, open: (St
 @Composable
 internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, sending: Boolean, focus: String?,
                       roomy: Boolean, mode: String, setMode: (String) -> Unit, send: () -> Unit, stop: () -> Unit,
-                      warm: () -> Unit = {}) {
+                      warm: () -> Unit = {}, web: Boolean = false, setWeb: (Boolean) -> Unit = {}) {
     val can = ChatLogic.canSend(draft, busy, sending)
     val sendNow by androidx.compose.runtime.rememberUpdatedState(send)
     val stopNow by androidx.compose.runtime.rememberUpdatedState(stop)
@@ -784,11 +808,17 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
                 }
             })
     }
+    // Nothing to send, no button (262, as Claude and Gemini): it fades in with the first character,
+    // in a slot that keeps its size, so nothing moves; the slot is free for the mic later (12)
+    val still = stillMotion()
     val sendButton = @Composable { modifier: Modifier ->
-        Box(modifier.keepsKeyboard()) {  // typing goes on after Send (228)
-            IconButton(if (busy) Icons.stop else Icons.send, if (busy) "Stop the answer" else "Send",
-                if (busy || can) J.acc else J.raise, if (busy || can) J.onAcc else J.faint, enabled = busy || can,
-                line = false) { if (busy) stopNow() else sendNow() }
+        Box(modifier.size(J.tap).keepsKeyboard()) {  // typing goes on after Send (228)
+            androidx.compose.animation.AnimatedVisibility(busy || can,
+                enter = if (still) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200, easing = J.ease)),
+                exit = if (still) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150))) {
+                IconButton(if (busy) Icons.stop else Icons.send, if (busy) "Stop the answer" else "Send",
+                    J.acc, J.onAcc, enabled = busy || can, line = false) { if (busy) stopNow() else sendNow() }
+            }
         }
     }
     val box = Modifier.fillMaxWidth().padding(horizontal = J.gutter, vertical = J.sp2)
@@ -797,6 +827,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
         field(Modifier.fillMaxWidth().padding(end = J.sp3, bottom = J.sp2))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             ModeWheel(mode, setMode)
+            WebSwitch(web, ChatLogic.webAllowed(mode), setWeb)
             Box(Modifier.weight(1f))
             sendButton(Modifier)
         }
@@ -805,6 +836,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
             verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(J.sp2)) {
             // The modes roll up and down beside the words (my note 26 Oct: smaller, vertical)
             ModeWheel(mode, setMode, Modifier.padding(vertical = inset))
+            WebSwitch(web, ChatLogic.webAllowed(mode), setWeb, Modifier.padding(vertical = inset), word = false)
             // One line of 24 sp, centred against the button: (40 + 12 - 24) / 2 above and below
             field(Modifier.weight(1f).padding(vertical = 14.dp))
             sendButton(Modifier.padding(vertical = inset))
@@ -812,24 +844,53 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
     }
 }
 
-/** Notes found under an answer (133c): a tap opens the note in the notes browser. Compact as
- *  the mode chips; a Claude note says so, as its name does in retrieval (58). */
+/** The Sources sheet (238): Notes | Links, only the tabs with something in them, opening on Links
+ *  after a web turn. A note opens in the notes browser; found, not used, so the words claim no more
+ *  (133c). A page's row shows its real host above its title, which strangers wrote (168), and opens
+ *  through the link check (104, 138). */
 @Composable
-internal fun NotesFound(paths: List<String>, open: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-        Text("Notes found", style = J.cap.copy(color = J.muted))
-        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(J.sp2),
-            verticalArrangement = Arrangement.spacedBy(J.sp2)) {
-            for (p in paths) {
-                val name = p.substringAfterLast('/').removeSuffix(".md")
-                Row(Modifier.heightIn(min = 32.dp).clip(J.pill).border(1.dp, J.line, J.pill).background(J.raise)
-                    .clickable(role = Role.Button, onClickLabel = "Open the note") { open(p) }
-                    .padding(horizontal = J.sp3), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (p.startsWith("Claude/")) "Claude \u00b7 $name" else name,
-                        style = J.cap.copy(color = J.text, fontWeight = FontWeight(600)), maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                }
-            }
+internal fun SourcesBody(m: ChatMessage, openNote: (String) -> Unit, openLink: (String) -> Unit) {
+    val tabs = ChatLogic.sourceTabs(m)
+    var tab by remember(m.id) { mutableStateOf(ChatLogic.firstSourceTab(m)) }
+    val links = tabs.getOrNull(tab) == "Links"
+    SheetTitle("Sources", if (links) "Pages the web search found. Strangers wrote them: the site comes first."
+        else "Notes the search in your vault found for this answer.")
+    if (tabs.size > 1) Segmented(tabs, tab) { tab = it }
+    if (links) {
+        if (m.searched.isNotEmpty()) Text("Searched: " + m.searched.joinToString(" \u00b7 "), style = J.sec)
+        if (m.links.isEmpty()) Text("No pages came back.", style = J.sec)
+        else Column(Modifier.fillMaxWidth().glass().padding(horizontal = J.inset)) {
+            for (l in m.links) MenuRow(Icons.globe, l.host, l.title.ifEmpty { l.url }, subLines = 2) { openLink(l.url) }
+        }
+    } else Column(Modifier.fillMaxWidth().glass().padding(horizontal = J.inset)) {
+        for (p in m.sources) {
+            val name = p.substringAfterLast('/').removeSuffix(".md")
+            // A Claude note says so, as its name does in retrieval (58)
+            MenuRow(Icons.folder, if (p.startsWith("Claude/")) "Claude \u00b7 $name" else name, p.substringBeforeLast('/')) { openNote(p) }
+        }
+    }
+}
+
+/** Web search for this chat (26d, 168): the globe alone when off; on, the globe and "Web" in an
+ *  accent pill, as Claude shows a tool that is on, so on is a shape and a word, not a colour only.
+ *  Greyed with Notes, which means only my notes. A switch to TalkBack, its state read out. In the
+ *  single line box the word stays off: it squeezed my words onto a second line; the pill still
+ *  says on by its shape */
+@Composable
+private fun WebSwitch(on: Boolean, enabled: Boolean, set: (Boolean) -> Unit, modifier: Modifier = Modifier, word: Boolean = true) {
+    val tint = when { !enabled -> J.faint; on -> J.accText; else -> J.muted }
+    Box(modifier.heightIn(min = J.tap).widthIn(min = J.tap).clip(J.pill)
+        .toggleable(on && enabled, enabled = enabled, role = Role.Switch, onValueChange = set)
+        .semantics(mergeDescendants = true) {
+            contentDescription = "Web search"
+            if (!enabled) stateDescription = "Off with Notes"
+        }, contentAlignment = Alignment.Center) {
+        Row(Modifier.height(J.iconButton).clip(J.pill)
+            .then(if (on && enabled) Modifier.background(J.acc.copy(alpha = 0.16f)).border(1.dp, J.acc.copy(alpha = 0.5f), J.pill) else Modifier)
+            .padding(horizontal = if (on && enabled && word) J.sp3 else J.sp2), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(J.sp1)) {
+            Icon(Icons.globe, null, tint = tint, modifier = Modifier.size(J.icon))
+            if (on && enabled && word) Text("Web", style = J.cap.copy(color = J.accText, fontWeight = J.ts.fontWeight), maxLines = 1)
         }
     }
 }

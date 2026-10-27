@@ -21,6 +21,7 @@ Text is in sp and space in dp, so the phone's font size scales everything.
 - Space goes in steps of 4, named by role in the Layout system below.
 - Every tap target is at least 48. Main buttons are 56, list rows and tabs 64, small controls
   (`SmallPill`, the wheel) look 36.
+- An icon in a button or a menu row is 22 (`J.icon`), in a 40 shape (`J.iconButton`).
 - Corners are 12 for small things, 20 for rows and 28 for cards.
 
 ## Layout system
