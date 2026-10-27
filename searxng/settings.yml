@@ -21,3 +21,12 @@ search:
 
 valkey:
   url: false
+
+# 27 Oct (268): Google, DuckDuckGo, Brave, Qwant and Wikipedia all refused this IP (CAPTCHA,
+# access denied, too many requests), so every search was empty. Bing and Yahoo, off by default,
+# still answered. The defaults stay: SearXNG suspends a blocked engine and retries it later.
+engines:
+  - name: bing
+    disabled: false
+  - name: yahoo
+    disabled: false
