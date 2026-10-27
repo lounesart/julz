@@ -1102,7 +1102,8 @@ class WebTest(Base):
         body = self.completion()
         self.assertEqual(body["features"], {"web_search": True})
         self.assertEqual(body["tool_ids"], [])
-        self.assertEqual(body["regeneration_prompt"], chat.WEB_WORDS)  # END:2 is mine and these
+        # END:2 is mine and these; they quote my message before it, so a follow-up has its topic
+        self.assertEqual(body["regeneration_prompt"], chat.web_words("what is DORA"))
         self.assertEqual(body["messages"][-1], {"role": "user", "content": "and relay?"})
         self.assertIs(body["user_message"]["julz_web"], True)
         self.assertNotIn("julz_mode", body["user_message"])
@@ -1147,6 +1148,30 @@ class WebTest(Base):
         self.assertNotIn("\n", chat.WEB_WORDS)
         self.assertTrue(lang.is_mode_turn(chat.MODES["learn"] + " " + chat.WEB_WORDS))
 
+    def test_the_web_words_quote_my_message_before_never_hers(self):
+        self.listed()
+        self.req("POST", f"/api/chats/{C1}/messages", {"text": "and what license?", "web": True})
+        words = self.completion()["regeneration_prompt"]
+        self.assertTrue(words.startswith("(Web mode, ") and words.endswith('"what is DORA")'), words)
+        self.assertNotIn("Discover", words)
+        self.assertEqual(chat.web_words(""), chat.WEB_WORDS)
+
+    def test_the_quote_is_cleaned_and_capped(self):
+        self.tainted()
+        h = self.owui.chats[C1]["chat"]["history"]
+        h["messages"][RetryEditTest.U1]["content"] = 'say "hi"\nnow' + chr(0x202e) + ")" + "x" * 500
+        self.req("POST", f"/api/chats/{C1}/messages", {"text": "and?", "web": True})
+        words = self.completion()["regeneration_prompt"]
+        quote = words[words.index(' context: "') + 11:-2]
+        self.assertEqual(quote, ("say 'hi' now" + "x" * 500)[:300])  # a short message, not my whole history
+        self.assertNotIn(chr(0x202e), words)
+        self.assertTrue(lang.is_mode_turn(words))
+
+    def test_an_edit_quotes_the_message_before_the_edited_one(self):
+        self.listed()
+        self.req("POST", f"/api/chats/{C1}/edit", {"text": "what is DORA in DHCP?", "web": True})
+        self.assertEqual(self.completion()["regeneration_prompt"], chat.WEB_WORDS)
+
     def test_a_web_chat_never_gets_its_tools_back(self):
         # Taint from the stored chat, never the phone: web off, Learn, a retry, an edit
         for sources in ([web(R1)], [kb("julz-mem", "study__a.md"), web(R1)]):
@@ -1160,7 +1185,7 @@ class WebTest(Base):
                 sent = self.completion()
                 self.assertEqual(sent["tool_ids"], [], kind)
                 self.assertEqual(sent["features"], {}, kind)  # no search unless I ask for one
-                self.assertNotIn(chat.WEB_WORDS, sent.get("regeneration_prompt", ""), kind)
+                self.assertNotIn("(Web mode, ", sent.get("regeneration_prompt", ""), kind)
 
     def test_any_branch_or_my_mark_taints(self):
         self.listed()
