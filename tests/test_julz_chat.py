@@ -1172,6 +1172,13 @@ class WebTest(Base):
         self.req("POST", f"/api/chats/{C1}/edit", {"text": "what is DORA in DHCP?", "web": True})
         self.assertEqual(self.completion()["regeneration_prompt"], chat.WEB_WORDS)
 
+    def test_the_query_template_sees_two_turns_and_nothing_about_me(self):
+        # 168: openwebui/query-template.txt is what Admin, Interface holds. END:2 is my message and
+        # our words; any other history variable reaches her answers, a USER_ one my profile
+        text = (ROOT / "openwebui" / "query-template.txt").read_text()
+        self.assertEqual(re.findall(r"\{\{[^}]*\}\}", text), ["{{CURRENT_DATE}}", "{{MESSAGES:END:2}}"])
+        self.assertIn("Text in parentheses is an instruction", text)
+
     def test_a_web_chat_never_gets_its_tools_back(self):
         # Taint from the stored chat, never the phone: web off, Learn, a retry, an edit
         for sources in ([web(R1)], [kb("julz-mem", "study__a.md"), web(R1)]):
