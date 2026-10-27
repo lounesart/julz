@@ -89,10 +89,10 @@ internal fun History(notices: List<Notice>, open: (Notice) -> Unit, daysBack: In
             val on = d == daysBack
             val t = now - d * DAY
             val count = counts[d]
-            val ink = if (on) J.onAcc else if (count == 0) J.faint else J.muted
-            // The other days in the cards' family: glass and a hairline; the chosen one in the accent
+            val ink = if (on) J.onAccFill else if (count == 0) J.faint else J.muted
+            // The other days in the cards' family: glass and a hairline; the chosen one in the accent's fill (267)
             Column(Modifier.width(64.dp).heightIn(min = if (on) 100.dp else 84.dp).clip(J.pill)
-                .then(if (on) Modifier.background(J.acc) else Modifier.background(J.surface).border(1.dp, J.line, J.pill))
+                .then(if (on) Modifier.background(J.accFill) else Modifier.background(J.surface).border(1.dp, J.line, J.pill))
                 .clickable(role = Role.Tab, onClickLabel = "$count notices") { pick(d) },
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 val c = java.util.Calendar.getInstance().apply { timeInMillis = t * 1000 }

@@ -28,6 +28,10 @@ Text is in sp and space in dp, so the phone's font size scales everything.
   one getter in `Icons`, as `Icons.web(on)`. A toggle changes its icon's shape with its state, not
   only its colour (the web switch: a globe off, an eye on).
 - Corners are 12 for small things, 20 for rows and 28 for cards.
+- The accent itself (`J.acc`) is for small marks: text, lines, outlines, dots, thin bars, a badge.
+  A big solid shape (the send button, the chosen day) takes its fill tone, `J.accFill`, with
+  `J.onAccFill` on it: 3 to 8:1 on the page (WCAG 1.4.11), so a neon accent does not glare and a dark
+  one still shows, and its ink at 4.5:1. AccentFillTest lists the small marks that may fill with `J.acc`.
 
 ## Layout system
 
