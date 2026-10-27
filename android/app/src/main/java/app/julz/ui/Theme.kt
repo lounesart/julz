@@ -53,6 +53,9 @@ object J {
     val accText get() = Color(Palette.readable(Look.prefs.accentColor, Look.prefs.preset.bg))
     /** Text on the accent: dark on a light accent, so it keeps 4.5:1 */
     val onAcc get() = if (Palette.isLight(Look.prefs.accentColor)) Color(0xFF09070A) else Color.White
+    /** The accent for big solid shapes (267), 3 to 8:1 on the page, and the ink on it at 4.5:1 */
+    val accFill get() = Color(Palette.fill(Look.prefs.accentColor, Look.prefs.preset.bg))
+    val onAccFill get() = Color(Palette.onFill(Palette.fill(Look.prefs.accentColor, Look.prefs.preset.bg)))
     val onPastel = Color(0xFF120A10)
 
     // Semantic colours (22d integrity): what a colour means, in one place; the kinds and the

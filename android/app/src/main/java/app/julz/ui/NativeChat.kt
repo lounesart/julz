@@ -819,7 +819,7 @@ internal fun Composer(draft: String, setDraft: (String) -> Unit, busy: Boolean, 
                 enter = if (still) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200, easing = J.ease)),
                 exit = if (still) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(150))) {
                 IconButton(if (busy) Icons.stop else Icons.send, if (busy) "Stop the answer" else "Send",
-                    J.acc, J.onAcc, enabled = busy || can, line = false) { if (busy) stopNow() else sendNow() }
+                    J.accFill, J.onAccFill, enabled = busy || can, line = false) { if (busy) stopNow() else sendNow() }
             }
         }
     }

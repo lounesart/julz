@@ -50,6 +50,37 @@ object Palette {
         }
         return c
     }
+
+    /** The accent for a big solid shape (267): send, the chosen day. Mixed toward the background
+     *  until it is at most 8:1 on it, as Material tones a saturated colour down on dark surfaces
+     *  (Acid was 16.5:1, as bright as the text, and glared); toward white until 3:1 when too dark,
+     *  the least for a shape on the page (WCAG 1.4.11; Red Stone was 2.9:1). Then away from its ink
+     *  until that reads at 4.5:1 (1.4.3): a mid tone is under it with dark and white alike (Magenta
+     *  on Red Stone, 4.48:1), so it goes darker under white ink, lighter under dark. Small marks
+     *  keep the accent itself */
+    fun fill(accent: Int, bg: Int): Int {
+        val white = 0xFFFFFFFF.toInt()
+        fun mix(from: Int, to: Int, t: Double): Int {
+            fun ch(shift: Int) = ((from shr shift and 0xFF) * (1 - t) + (to shr shift and 0xFF) * t).toInt() shl shift
+            return (0xFF shl 24) or ch(16) or ch(8) or ch(0)
+        }
+        var c = accent
+        var step = 0
+        while (contrast(c, bg) > 8.0 && step < 50) { step++; c = mix(accent, bg, step / 50.0) }
+        step = 0
+        while (contrast(c, bg) < 3.0 && step < 50) { step++; c = mix(accent, white, step / 50.0) }
+        val toned = c
+        val away = if (onFill(toned) == white) bg else white
+        step = 0
+        while (contrast(onFill(c), c) < 4.5 && step < 50) { step++; c = mix(toned, away, step / 50.0) }
+        return c
+    }
+
+    /** Ink on a fill: dark or white, whichever reads better on it */
+    fun onFill(fill: Int): Int {
+        val dark = 0xFF09070A.toInt()
+        return if (contrast(dark, fill) >= contrast(0xFFFFFFFF.toInt(), fill)) dark else 0xFFFFFFFF.toInt()
+    }
 }
 
 /** [outline]: the selected item outlined in the accent instead of filled white (22b, 22c).

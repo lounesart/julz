@@ -19,6 +19,30 @@ class PaletteTest {
         for (a in listOf(0xFFB8FF3C.toInt(), 0xFF7FE3F0.toInt(), 0xFFF7D58B.toInt())) assertEquals(a, Palette.readable(a, bg))
     }
 
+    /** A big solid shape in the accent (267): between 3 and 8 to 1 on the background, so a neon
+     *  accent stops glaring on near black (Acid was 16.5, as bright as the text) and Red Stone
+     *  clears WCAG 1.4.11 (it was 2.9); its ink reads at 4.5 or more (1.4.3) */
+    @Test fun aFilledShapeSitsInItsBandOnEveryThemeWithEveryAccent() {
+        for (p in Palette.presets) for ((name, a) in Palette.accents + (p.name to p.accent)) {
+            val f = Palette.fill(a, p.bg)
+            val c = Palette.contrast(f, p.bg)
+            assertTrue("$name on ${p.name}: $c", c >= 3.0 && c <= 8.0)
+            assertTrue("ink on $name: ${Palette.contrast(Palette.onFill(f), f)}", Palette.contrast(Palette.onFill(f), f) >= 4.5)
+        }
+    }
+
+    // The default keeps its white ink: Magenta darkens a hair rather than flip to a dark icon
+    @Test fun magentaKeepsWhiteInk() {
+        val p = Palette.presets.first()
+        assertEquals(0xFFFFFFFF.toInt(), Palette.onFill(Palette.fill(p.accent, p.bg)))
+    }
+
+    @Test fun aFillAlreadyInItsBandStaysAsItIs() {
+        val bg = Palette.presets.first().bg
+        val orange = 0xFFFF7A3D.toInt()
+        assertEquals(orange, Palette.fill(orange, bg))
+    }
+
     @Test fun contrastMatchesKnownValues() {
         assertEquals(21.0, Palette.contrast(0xFFFFFFFF.toInt(), 0xFF000000.toInt()), 0.01)
         assertEquals(1.0, Palette.contrast(0xFF777777.toInt(), 0xFF777777.toInt()), 0.01)
