@@ -51,7 +51,9 @@ OWUI_IDS = {"functions/julz_saves": "julz_honest_saves"}
 # Shown above the diff when only layout or comments differ, so y is safe
 FORMAT_ONLY = "same code, only formatting or comments differ: y makes the hash match\n"
 REBUILD = ("modelfiles/",)  # build-models.sh may pull a model, an install: I run it
-SUDO = ("run-webui.sh", "run-searxng.sh", "run-speaches.sh", "systemd/ollama-limits.conf")
+SUDO = ("run-webui.sh", "run-searxng.sh", "run-speaches.sh", "systemd/ollama-limits.conf", "searxng/")
+# Config a container reads from the release it was created from: its launcher runs again (268)
+RERUN = {"searxng/": "run-searxng.sh"}
 
 
 class DeployError(Exception):
@@ -153,7 +155,9 @@ def reminders(old: Path | None, new: Path, new_units: list[str]) -> list[str]:
              for rel in _changed(old, new, PASTE) if (new / rel).exists()]
     if _changed(old, new, REBUILD):
         lines.append("modelfiles changed: run ./build-models.sh")
-    lines += [f"sudo needed: {rel} changed, run it yourself" for rel in _changed(old, new, SUDO)]
+    lines += [f"sudo needed: {rel} changed, run "
+              f"{next((s for p, s in RERUN.items() if rel.startswith(p)), 'it')} yourself"
+              for rel in _changed(old, new, SUDO)]
     lines += [f"new unit {u}: systemctl --user enable --now {u}" for u in new_units
               if u.endswith((".path", ".timer")) or u in LONG_RUNNING]
     return lines

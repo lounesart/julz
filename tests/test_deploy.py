@@ -192,6 +192,15 @@ class DeployTest(unittest.TestCase):
         self.assertNotIn("--tools", out)
         self.assertNotIn("sudo", out)
 
+    def test_a_searxng_config_change_names_its_launcher(self):
+        # 268: the container reads settings.yml from the release it was created from
+        self.deploy()
+        (self.repo / "searxng").mkdir()
+        self.commit("searxng/settings.yml", "use_default_settings: true\n")
+        self.git("tag", "v2")
+        self.assertIn("sudo needed: searxng/settings.yml changed, run run-searxng.sh yourself",
+                      self.deploy())
+
     def test_new_unit_files_are_named_not_enabled(self):
         self.deploy()
         self.commit("systemd/julz-b.timer", "[Timer]\n")
