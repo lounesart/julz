@@ -367,6 +367,8 @@ class App:
         text = str(m.get("content") or "")
         if allowed is not None and m["role"] == "assistant":
             text = plain_links(text, allowed)
+        if m["role"] == "assistant":
+            text = no_source_tags(text, self.running(m))
         out = {"id": str(m.get("id", "")), "role": m["role"], "text": text,
                "done": not self.running(m),
                "time": m.get("timestamp") if isinstance(m.get("timestamp"), int) else 0}
@@ -755,6 +757,24 @@ def addresses(text: str) -> list[str]:
         out.append(text[at:end])
         at = text.find("https://", at + 8)
     return out
+
+
+# The rag template's tag the 4B copies after her sentences (271); Notes found names the notes.
+# Bounded, so a long answer cannot make it slow
+SOURCE_TAG = re.compile(r' ?\(source id="\d{1,4}"(?:, name="[^"\n]{0,80}")?\)')
+SOURCE_HEAD = "(source"
+
+
+def no_source_tags(text: str, running: bool) -> str:
+    """Her answer without retrieval tags; while she writes, a tag not yet closed at the end is
+    held back, so it never flashes on the phone."""
+    text = SOURCE_TAG.sub("", text)
+    if running:
+        at = text.rfind("(", max(0, len(text) - 120))
+        tail = text[at:] if at >= 0 else ""
+        if tail and ")" not in tail and (tail.startswith(SOURCE_HEAD) or SOURCE_HEAD.startswith(tail)):
+            text = text[:at].removesuffix(" ")
+    return text
 
 
 def plain_links(text: str, allowed: set[str]) -> str:

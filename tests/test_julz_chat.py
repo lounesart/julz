@@ -5,6 +5,7 @@ import json
 import os
 import re
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -1264,6 +1265,11 @@ class WebTest(Base):
                           [web(R1)], mine="check https://mine.example/a please")
         self.assertEqual(got["text"], "Your link https://mine.example/a and hxxps://evil.example/b")
 
+    def test_retrieval_tags_never_reach_the_app(self):
+        # 271: the 4B copies the rag context's tag after her sentences; Notes found names the notes
+        got = self.answer('Finish the path (source id="9", name="julz-claude"). Then report (source id="8").')
+        self.assertEqual(got["text"], "Finish the path. Then report.")
+
     def test_a_chat_with_no_web_turn_keeps_its_links(self):
         self.assertEqual(self.answer("See https://evil.example/x")["text"], "See https://evil.example/x")
 
@@ -1478,6 +1484,35 @@ class UnitTest(unittest.TestCase):
     def test_deploy_restarts_it(self):
         deploy = load("deploy", "deploy.py")
         self.assertIn("julz-chat.service", deploy.LONG_RUNNING)
+
+
+class SourceTagTest(unittest.TestCase):
+    """271: retrieval tags out of her answers, a half written one too while she writes."""
+
+    def test_whole_tags_go_with_the_space_before(self):
+        cases = [
+            ('a (source id="9", name="julz-claude").', "a."),
+            ('a (source id="12") b', "a b"),
+            ('a(source id="1", name="julz-mem")', "a"),
+            ("plain (source of truth) stays", "plain (source of truth) stays"),
+            ('(source id="x") not a number stays', '(source id="x") not a number stays'),
+            ('long (source id="1", name="' + "n" * 81 + '") stays', 'long (source id="1", name="' + "n" * 81 + '") stays'),
+        ]
+        for text, want in cases:
+            self.assertEqual(chat.no_source_tags(text, running=False), want, text)
+
+    def test_a_half_tag_at_the_end_is_held_back_only_while_answering(self):
+        for tail in (' (sour', ' (source', ' (source id="9', ' (source id="9", name="julz-cl'):
+            self.assertEqual(chat.no_source_tags("Finish the path" + tail, running=True), "Finish the path")
+            self.assertEqual(chat.no_source_tags("Finish the path" + tail, running=False), "Finish the path" + tail)
+        self.assertEqual(chat.no_source_tags("ends with (sourdough", running=True), "ends with (sourdough")
+        self.assertEqual(chat.no_source_tags("the (source of truth) here", running=True), "the (source of truth) here")
+
+    def test_a_long_answer_is_quick(self):
+        text = '(source id="' * 20000
+        start = time.monotonic()
+        chat.no_source_tags(text, running=True)
+        self.assertLess(time.monotonic() - start, 0.5)
 
 
 if __name__ == "__main__":
