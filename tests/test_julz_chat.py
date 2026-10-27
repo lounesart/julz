@@ -266,7 +266,7 @@ class ViewTest(Base):
         self.assertFalse(data["busy"])
         self.assertEqual([(m["role"], m["text"]) for m in data["messages"]],
                          [("user", "what is DORA"), ("assistant", "Discover, Offer, Request, Ack")])
-        self.assertEqual(set(data), {"id", "title", "busy", "archived", "mode", "messages"})
+        self.assertEqual(set(data), {"id", "title", "busy", "archived", "mode", "web", "messages"})
         for m in data["messages"]:
             self.assertEqual(set(m) - {"error", "end"}, {"id", "role", "text", "done", "time"})
         self.assertNotIn("SECRET NOTE", json.dumps(data))
@@ -1052,6 +1052,237 @@ class ModeTest(Base):
         row = next(l for l in (ROOT / "SECURITY.md").read_text().splitlines() if l.startswith("| 151 "))
         listed = re.search(r"MODES \(v1: ([a-z, ]+)\)", row).group(1)
         self.assertEqual(tuple(m.strip() for m in listed.split(",")), tuple(chat.MODES))
+
+
+def web(*pages, queries=("dhcp relay", "dhcp option 82")):
+    """One stored web search source as 0.11.4 keeps it (probed 27 Oct, middleware.py files)."""
+    urls = [p[0] for p in pages]
+    return {"source": {"name": ", ".join(map(str, queries)), "type": "web_search", "urls": urls, "queries": list(queries),
+                       "collection_name": "web-search-x"},
+            "document": ["page words"] * len(pages),
+            "metadata": [{"source": u, "title": t, "description": "d", "language": "en"} for u, t in pages]}
+
+
+R1 = ("https://en.wikipedia.org/wiki/DHCP_relay", "DHCP relay - Wikipedia")
+R2 = ("https://www.rfc-editor.org/rfc/rfc3046", "RFC 3046")
+
+
+class WebTest(Base):
+    """26d, SECURITY 168: a web turn has no tools, a web chat never gets them back, the query
+    template sees my message and these words only, links not among the results go plain."""
+
+    def completion(self):
+        posts = [d for m, p, d in self.owui.calls if p == "/api/chat/completions"]
+        self.assertEqual(len(posts), 1)
+        return posts[0]
+
+    def tainted(self, sources=None, **mine):
+        """C1 with a web turn stored on its answer (or a mark on my message)."""
+        self.listed()
+        h = self.owui.chats[C1]["chat"]["history"]
+        if sources is not None:
+            h["messages"][RetryEditTest.A1]["sources"] = sources
+        h["messages"][RetryEditTest.U1].update(mine)
+        return h
+
+    def test_a_web_turn_searches_with_no_tools_and_our_words_last(self):
+        self.listed()
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/messages", {"text": "and relay?", "web": True})[0], 200)
+        body = self.completion()
+        self.assertEqual(body["features"], {"web_search": True})
+        self.assertEqual(body["tool_ids"], [])
+        self.assertEqual(body["regeneration_prompt"], chat.WEB_WORDS)  # END:2 is mine and these
+        self.assertEqual(body["messages"][-1], {"role": "user", "content": "and relay?"})
+        self.assertIs(body["user_message"]["julz_web"], True)
+        self.assertNotIn("julz_mode", body["user_message"])
+
+    def test_web_off_or_left_out_is_a_normal_turn(self):
+        for extra in ({}, {"web": False}):
+            self.setUp()
+            self.listed()
+            self.req("POST", f"/api/chats/{C1}/messages", {"text": "hi", **extra})
+            body = self.completion()
+            self.assertEqual(body["features"], {})
+            self.assertEqual(body["tool_ids"], list(chat.TOOLS))
+            self.assertNotIn("regeneration_prompt", body)
+            self.assertNotIn("julz_web", body["user_message"])
+
+    def test_learn_and_web_send_both_words_web_last(self):
+        self.req("POST", "/api/chats", {"text": "teach me relay", "mode": "learn", "web": True})
+        body = self.completion()
+        self.assertEqual(body["regeneration_prompt"], chat.MODES["learn"] + " " + chat.WEB_WORDS)
+        self.assertEqual(body["tool_ids"], [])
+        self.assertEqual(body["user_message"]["julz_mode"], "learn")
+        self.assertIs(body["user_message"]["julz_web"], True)
+
+    def test_notes_and_web_are_refused(self):
+        self.listed()
+        for method, path in (("POST", "/api/chats"), ("POST", f"/api/chats/{C1}/messages"),
+                             ("POST", f"/api/chats/{C1}/edit")):
+            self.assertEqual(self.req(method, path, {"text": "hi", "mode": "notes", "web": True})[0], 400, path)
+        self.assertEqual(self.owui.calls, [])
+
+    def test_the_phone_sends_a_bool_only(self):
+        self.listed()
+        for bad in ("true", 1, 0, None, [], {}, "web_search"):
+            self.assertEqual(self.req("POST", f"/api/chats/{C1}/messages", {"text": "hi", "web": bad})[0], 400, bad)
+            self.assertEqual(self.req("POST", "/api/chats", {"text": "hi", "web": bad})[0], 400, bad)
+        self.assertEqual(self.req("POST", f"/api/chats/{C1}/retry", {"web": True})[0], 400)
+        self.assertEqual(self.owui.calls, [])
+
+    def test_the_web_words_name_themselves_for_the_language_filter(self):
+        self.assertTrue(lang.is_mode_turn(chat.WEB_WORDS))
+        self.assertTrue(chat.WEB_WORDS.startswith("(Web mode, "))
+        self.assertNotIn("\n", chat.WEB_WORDS)
+        self.assertTrue(lang.is_mode_turn(chat.MODES["learn"] + " " + chat.WEB_WORDS))
+
+    def test_a_web_chat_never_gets_its_tools_back(self):
+        # Taint from the stored chat, never the phone: web off, Learn, a retry, an edit
+        for sources in ([web(R1)], [kb("julz-mem", "study__a.md"), web(R1)]):
+            for kind, path, body in (("message", f"/api/chats/{C1}/messages", {"text": "save that", "web": False}),
+                                     ("learn", f"/api/chats/{C1}/messages", {"text": "and?", "mode": "learn"}),
+                                     ("retry", f"/api/chats/{C1}/retry", {}),
+                                     ("edit", f"/api/chats/{C1}/edit", {"text": "what is DORA?"})):
+                self.setUp()
+                self.tainted(sources)
+                self.assertEqual(self.req("POST", path, body)[0], 200, kind)
+                sent = self.completion()
+                self.assertEqual(sent["tool_ids"], [], kind)
+                self.assertEqual(sent["features"], {}, kind)  # no search unless I ask for one
+                self.assertNotIn(chat.WEB_WORDS, sent.get("regeneration_prompt", ""), kind)
+
+    def test_any_branch_or_my_mark_taints(self):
+        self.listed()
+        h = self.owui.chats[C1]["chat"]["history"]
+        old_u, old_a = "u2000000-0000-0000-0000-000000000000", "a2000000-0000-0000-0000-000000000000"
+        h["messages"][old_u] = msg(old_u, "user", "old words")
+        h["messages"][old_a] = msg(old_a, "assistant", "old answer", old_u, sources=[web(R1)])
+        self.req("POST", f"/api/chats/{C1}/messages", {"text": "hi"})
+        self.assertEqual(self.completion()["tool_ids"], [])
+        self.setUp()
+        self.tainted(julz_web=True)
+        self.req("POST", f"/api/chats/{C1}/messages", {"text": "hi"})
+        self.assertEqual(self.completion()["tool_ids"], [])
+
+    def test_notes_alone_do_not_taint(self):
+        for sources in ([kb("julz-mem", "study__a.md")], [{"source": {"type": "web"}}], None, "x", [None]):
+            self.setUp()
+            self.tainted(sources if sources is not None else [])
+            self.req("POST", f"/api/chats/{C1}/messages", {"text": "hi"})
+            self.assertEqual(self.completion()["tool_ids"], list(chat.TOOLS), sources)
+
+    def test_retry_searches_again_only_when_my_message_was_a_web_turn(self):
+        self.tainted([web(R1)], julz_web=True)
+        self.req("POST", f"/api/chats/{C1}/retry", {})
+        body = self.completion()
+        self.assertEqual(body["features"], {"web_search": True})
+        self.assertEqual(body["regeneration_prompt"], chat.WEB_WORDS)
+        self.assertIs(body["user_message"]["julz_web"], True)
+        for mark in ("true", 1, None, [True]):
+            self.setUp()
+            self.tainted(julz_web=mark)
+            self.req("POST", f"/api/chats/{C1}/retry", {})
+            self.assertEqual(self.completion()["features"], {}, mark)
+
+    def test_the_view_marks_a_web_chat(self):
+        self.listed()
+        self.assertIs(self.req("GET", f"/api/chats/{C1}")[1]["web"], False)
+        self.tainted([web(R1)])
+        self.assertIs(self.req("GET", f"/api/chats/{C1}")[1]["web"], True)
+
+    def answer(self, text, sources=None, mine="what is DORA"):
+        self.setUp()
+        h = self.tainted(sources)
+        h["messages"][RetryEditTest.A1]["content"] = text
+        h["messages"][RetryEditTest.U1]["content"] = mine
+        return self.req("GET", f"/api/chats/{C1}/last")[1]
+
+    def test_links_not_among_the_results_go_plain(self):
+        cases = [
+            (f"See [relay]({R1[0]}).", f"See [relay]({R1[0]})."),
+            (f"See {R1[0]}.", f"See {R1[0]}."),
+            ("[x](https://evil.example/?q=DORA)", "[x](hxxps://evil.example/?q=DORA)"),
+            ("go to https://evil.example/c?d=secret now", "go to hxxps://evil.example/c?d=secret now"),
+            (f"{R1[0]}?q=secret", f"hxxps://{R1[0][8:]}?q=secret"),
+            (f"x{R1[0]}/../../evil", f"xhxxps://{R1[0][8:]}/../../evil"),
+            ("![p](https://evil.example/p.png)", "![p](hxxps://evil.example/p.png)"),
+            ("http://plain.example stays", "http://plain.example stays"),
+        ]
+        for text, want in cases:
+            self.assertEqual(self.answer(text, [web(R1)])["text"], want, text)
+
+    def test_my_own_links_stay(self):
+        got = self.answer("Your link https://mine.example/a and https://evil.example/b",
+                          [web(R1)], mine="check https://mine.example/a please")
+        self.assertEqual(got["text"], "Your link https://mine.example/a and hxxps://evil.example/b")
+
+    def test_a_chat_with_no_web_turn_keeps_its_links(self):
+        self.assertEqual(self.answer("See https://evil.example/x")["text"], "See https://evil.example/x")
+
+    def test_every_answer_of_a_web_chat_is_filtered(self):
+        # A page's words can live on in her later answers, so the whole chat, the view too
+        self.listed()
+        h = self.tainted([web(R1)])
+        u, a = "u3000000-0000-0000-0000-000000000000", "a3000000-0000-0000-0000-000000000000"
+        h["messages"][u] = msg(u, "user", "more", RetryEditTest.A1)
+        h["messages"][a] = msg(a, "assistant", f"later https://evil.example/x and {R1[0]}", u)
+        h["currentId"] = a
+        texts = [m["text"] for m in self.req("GET", f"/api/chats/{C1}")[1]["messages"]]
+        self.assertEqual(texts[-1], f"later hxxps://evil.example/x and {R1[0]}")
+
+    def test_the_answer_shows_what_was_searched_and_found(self):
+        got = self.answer("ok", [kb("julz-mem", "study__a.md"), web(R1, R2)])
+        self.assertEqual(got["searched"], ["dhcp relay", "dhcp option 82"])
+        self.assertEqual(got["links"], [
+            {"url": R1[0], "host": "en.wikipedia.org", "title": R1[1]},
+            {"url": R2[0], "host": "www.rfc-editor.org", "title": R2[1]}])
+        self.assertEqual(got["sources"], ["study/a.md"])
+        self.assertNotIn("page words", json.dumps(got))
+
+    def test_odd_links_are_dropped_and_titles_cleaned(self):
+        got = self.answer("ok", [web(R1, ("http://plain.example/", "t"), ("javascript:alert(1)", "t"),
+                                     ("https://user:pw@evil.example/", "t"), ("https://nodot/", "t"),
+                                     ("https://evil.example/a b", "t"), ("https://x.example/" + "a" * 2000, "t"),
+                                     ("https://xn--80ak6aa92e.com/", "punycode"), ("https://аррӏе.com/", "t"),
+                                     ("https://ok.example/", "bad\u202etitle\u200b\n" + "x" * 300), (5, "t"),
+                                     (R1[0], "again"))])
+        self.assertEqual([l["url"] for l in got["links"]],
+                         [R1[0], "https://xn--80ak6aa92e.com/", "https://ok.example/"])
+        self.assertEqual(got["links"][1]["host"], "xn--80ak6aa92e.com")  # never the look-alike letters
+        self.assertEqual(got["links"][2]["title"], "badtitle " + "x" * (chat.MAX_TITLE - 9))
+
+    def test_at_most_ten_links_and_five_queries(self):
+        pages = [(f"https://s{i}.example/", f"t{i}") for i in range(14)]
+        got = self.answer("ok", [web(*pages, queries=[f"q{i}" for i in range(8)] + ["", 5, "x" * 300])])
+        self.assertEqual(len(got["links"]), 10)
+        self.assertEqual(got["searched"], [f"q{i}" for i in range(5)])
+
+    def test_queries_are_cleaned_and_long_ones_dropped(self):
+        got = self.answer("ok", [web(R1, queries=["dhcp\u202e relay\u200b\n", "x" * (chat.MAX_QUERY + 1), "dhcp relay", "rfc"])])
+        self.assertEqual(got["searched"], ["dhcp relay", "rfc"])
+
+    def test_a_changed_chat_keeps_notes_alone_on_retry(self):
+        # Notes and web stored together can only come from the web page: Notes wins, no search
+        self.tainted(julz_mode="notes", julz_web=True)
+        self.req("POST", f"/api/chats/{C1}/retry", {})
+        body = self.completion()
+        self.assertEqual(body["features"], {})
+        self.assertEqual(body["regeneration_prompt"], chat.MODES["notes"])
+        self.assertNotIn("julz_web", body["user_message"])
+
+    def test_odd_web_shapes_are_dropped(self):
+        for odd in ([{"source": {"type": "web_search", "queries": "q"}, "metadata": "x"}],
+                    [{"source": {"type": "web_search"}, "metadata": [None, 5, {"source": None}]}]):
+            got = self.answer("see https://evil.example/", odd)
+            self.assertNotIn("links", got)
+            self.assertNotIn("searched", got)
+            self.assertEqual(got["text"], "see hxxps://evil.example/")  # still a web chat
+
+    def test_no_links_on_my_messages(self):
+        self.tainted([web(R1)])
+        mine = self.req("GET", f"/api/chats/{C1}")[1]["messages"][0]
+        self.assertEqual(mine["role"], "user")
+        self.assertNotIn("links", mine)
 
 
 class WarmTest(Base):
