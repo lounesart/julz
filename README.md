@@ -1,4 +1,26 @@
-# julz
+<div align="center">
+
+<img src="docs/media/banner.png" alt="Julz, a private AI assistant on my own laptop" width="100%">
+
+<br>
+
+**[Watch it](#watch-it)** &nbsp;&nbsp;
+**[The app](#the-app)** &nbsp;&nbsp;
+**[How it stays safe](#how-it-stays-safe)** &nbsp;&nbsp;
+**[What is in here](#what-is-in-here)** &nbsp;&nbsp;
+**[Reading order](#reading-order)** &nbsp;&nbsp;
+**[Tests](#running-the-tests)**
+
+<br>
+
+[![tests](https://img.shields.io/github/actions/workflow/status/lounesart/julz/ci.yml?branch=main&label=tests&style=for-the-badge&labelColor=09070A&color=E8742A)](https://github.com/lounesart/julz/actions/workflows/ci.yml)
+![python](https://img.shields.io/badge/python-laptop-09070A?style=for-the-badge&logo=python&logoColor=F5F2F4)
+![kotlin](https://img.shields.io/badge/kotlin-phone-09070A?style=for-the-badge&logo=kotlin&logoColor=F5F2F4)
+![local](https://img.shields.io/badge/runs-locally-E8742A?style=for-the-badge&labelColor=09070A)
+
+</div>
+
+<br>
 
 A private AI assistant that runs on my own laptop. She is a study mentor who knows my notes,
 does small jobs through tools I wrote myself, and can hand bigger coding tasks to Claude Code
@@ -7,6 +29,59 @@ enforced in code or by the operating system rather than by the prompt.
 
 There is also an Android app, so I can talk to her, see my todos and notes, and approve her
 work with my fingerprint from the phone. It reaches the laptop over a private network only.
+
+> [!NOTE]
+> This is my own setup, built around one laptop and one phone. The code is here to read and learn
+> from. It is not a packaged product with an installer.
+
+* * *
+
+## Watch it
+
+<div align="center">
+
+<a href="docs/media/julz-promo.mp4"><img src="docs/media/preview.webp" alt="A short loop of the phone app" width="300"></a>
+
+<sub>A one minute tour of the phone app. Tap the loop for the full video.</sub>
+
+</div>
+
+<div align="right"><a href="#readme">Back to top</a></div>
+
+## The app
+
+<div align="center">
+
+| | | |
+|:---:|:---:|:---:|
+| <img src="docs/media/shot-1.png" width="240" alt="A web answer"> | <img src="docs/media/shot-2.png" width="240" alt="A note with callouts and a chart"> | <img src="docs/media/shot-3.png" width="240" alt="Python with highlighting"> |
+| Web search through my own SearXNG | Notes drawn with callouts and charts | Code in its own colours |
+| <img src="docs/media/shot-4.png" width="240" alt="A goal being planned"> | <img src="docs/media/shot-5.png" width="240" alt="The sign panel"> | <img src="docs/media/shot-6.png" width="240" alt="The feed in the Acid look"> |
+| Goals with hours and due dates | Every change signed with my fingerprint | Several looks, sharp or round |
+
+</div>
+
+Three modes on one wheel. Chat to think out loud, Learn to be taught, Notes to ask only what I
+wrote. Answers show tables, callouts, charts and highlighted code, and a long press on any answer
+retries it, saves it to my notes or keeps it as a test case when it was wrong.
+
+<div align="right"><a href="#readme">Back to top</a></div>
+
+## How it stays safe
+
+- The models, the chat and my notes stay on the laptop. The phone reaches it over Tailscale only.
+- Claude Code runs a task only after I read the exact spec on the phone and sign it with my
+  fingerprint, and then inside a sandbox with its own project folder.
+- Text from web pages is treated as data. Evals check that pages written to give her orders fail.
+- Every change to my notes is a git commit, so anything she did can be undone, and the phone
+  tells me when a note was deleted.
+- Each systemd unit is locked down on its own, and every push runs the tests and a gitleaks scan.
+
+> [!IMPORTANT]
+> The full threat model stays private. To report a security problem, see
+> [.github/SECURITY.md](.github/SECURITY.md).
+
+<div align="right"><a href="#readme">Back to top</a></div>
 
 ## What is in here
 
@@ -37,6 +112,8 @@ work with my fingerprint from the phone. It reaches the laptop over a private ne
 
 Every push runs the tests and a gitleaks scan of the whole history on GitHub Actions.
 
+<div align="right"><a href="#readme">Back to top</a></div>
+
 ## Reading order
 
 1. systemd/README.md for the units and how they are set up.
@@ -55,3 +132,8 @@ python3 -m unittest discover -s tests
 
 The sandbox tests need `bwrap` and skip themselves without it, and the unit tests skip without
 a systemd user session.
+
+> [!TIP]
+> The phone app has its own tests. Run them from `android/` with `./gradlew testDebugUnitTest`.
+
+<div align="right"><a href="#readme">Back to top</a></div>
